@@ -1,5 +1,18 @@
 basePath: /api/v1
 definitions:
+  controller.ChangeRoleRequest:
+    properties:
+      role:
+        enum:
+        - student
+        - mentor
+        - employee
+        - team_lead
+        example: mentor
+        type: string
+    required:
+    - role
+    type: object
   controller.HealthResponse:
     properties:
       status:
@@ -58,21 +71,11 @@ definitions:
       phone:
         example: "+919876543210"
         type: string
-      role:
-        enum:
-        - student
-        - mentor
-        - employee
-        - team_lead
-        - super_admin
-        example: student
-        type: string
     required:
     - email
     - first_name
     - last_name
     - password
-    - role
     type: object
   controller.RegisterResponse:
     properties:
@@ -891,6 +894,54 @@ paths:
       security:
       - BearerAuth: []
       summary: Update user
+      tags:
+      - users
+  /users/{id}/role:
+    patch:
+      consumes:
+      - application/json
+      description: Promotes or changes a user's role. Only super_admin can call this.
+        The old role-specific profile is deleted and a new one is created.
+      parameters:
+      - description: User ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: New role
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/controller.ChangeRoleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.User'
+        "400":
+          description: Invalid role
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: User not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Change user role
       tags:
       - users
   /users/deleted:

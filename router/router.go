@@ -47,11 +47,12 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 		protected.Use(middleware.JWTAuth(cfg.JWT.Secret))
 		{
 			// Users — static paths registered before /:id so Gin matches them first
-			protected.GET("/users",         userCtrl.GetAll)
-			protected.GET("/users/deleted", userCtrl.GetDeleted)
-			protected.GET("/users/search",  userCtrl.Search)
-			protected.PATCH("/users/:id",   userCtrl.Update)
-			protected.DELETE("/users/:id",  userCtrl.Delete)
+			protected.GET("/users",                                                        userCtrl.GetAll)
+			protected.GET("/users/deleted",                                                userCtrl.GetDeleted)
+			protected.GET("/users/search",                                                 userCtrl.Search)
+			protected.PATCH("/users/:id",                                                  userCtrl.Update)
+			protected.PATCH("/users/:id/role", middleware.RequireRole(models.RoleSuperAdmin), userCtrl.ChangeRole)
+			protected.DELETE("/users/:id",                                                 userCtrl.Delete)
 
 			// Mentors list — for batch manager dropdown
 			protected.GET("/mentors", userCtrl.GetMentors)

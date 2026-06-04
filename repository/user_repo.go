@@ -152,7 +152,8 @@ func (r *UserRepository) scanUsers(ctx context.Context, q string, args ...interf
 	return users, rows.Err()
 }
 
-// Register inserts a user row and a default profile row for the role in a single transaction.
+// Register inserts a user row and a student profile row in a single transaction.
+// All new registrations default to the student role.
 func (r *UserRepository) Register(ctx context.Context, user models.User) (string, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
@@ -163,33 +164,83 @@ func (r *UserRepository) Register(ctx context.Context, user models.User) (string
 	var userID string
 	err = tx.QueryRow(ctx, `
 		INSERT INTO users (email, password_hash, first_name, last_name, phone, date_of_birth, role)
-		VALUES ($1, $2, $3, $4, NULLIF($5,''), NULLIF($6,'')::DATE, $7)
+		VALUES ($1, $2, $3, $4, NULLIF($5,''), NULLIF($6,'')::DATE, 'student')
 		RETURNING id`,
 		user.Email, user.PasswordHash, user.FirstName, user.LastName,
-		user.Phone, user.DateOfBirth, user.Role,
+		user.Phone, user.DateOfBirth,
 	).Scan(&userID)
 	if err != nil {
 		return "", fmt.Errorf("insert user: %w", err)
 	}
 
-	switch user.Role {
-	case models.RoleStudent:
-		_, err = tx.Exec(ctx, `INSERT INTO students (user_id) VALUES ($1)`, userID)
-	case models.RoleMentor:
-		_, err = tx.Exec(ctx, `INSERT INTO mentors (user_id) VALUES ($1)`, userID)
-	case models.RoleEmployee:
-		_, err = tx.Exec(ctx, `INSERT INTO employees (user_id) VALUES ($1)`, userID)
-	case models.RoleTeamLead:
-		_, err = tx.Exec(ctx, `INSERT INTO team_leads (user_id) VALUES ($1)`, userID)
-	case models.RoleSuperAdmin:
-		_, err = tx.Exec(ctx, `INSERT INTO super_admins (user_id) VALUES ($1)`, userID)
-	}
-
-	if err != nil {
-		return "", fmt.Errorf("insert profile: %w", err)
+	if _, err = tx.Exec(ctx, `INSERT INTO students (user_id) VALUES ($1)`, userID); err != nil {
+		return "", fmt.Errorf("insert student profile: %w", err)
 	}
 
 	return userID, tx.Commit(ctx)
+}
+
+// profileTable maps a role to its dedicated profile table.
+var profileTable = map[models.Role]string{
+	models.RoleStudent:  "students",
+	models.RoleMentor:   "mentors",
+	models.RoleEmployee: "employees",
+	models.RoleTeamLead: "team_leads",
+}
+
+// ChangeUserRole updates a user's role and swaps their role-specific profile row atomically.
+// The old profile row is deleted and a new empty one is created in the target table.
+func (r *UserRepository) ChangeUserRole(ctx context.Context, userID string, newRole models.Role) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	// Fetch current role
+	var currentRole models.Role
+	err = tx.QueryRow(ctx,
+		`SELECT role FROM users WHERE id = $1 AND deleted_at IS NULL`, userID,
+	).Scan(&currentRole)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return pgx.ErrNoRows
+	}
+	if err != nil {
+		return fmt.Errorf("fetch role: %w", err)
+	}
+
+	if currentRole == newRole {
+		return nil
+	}
+
+	oldTable, ok := profileTable[currentRole]
+	if !ok {
+		return fmt.Errorf("no profile table for current role %q", currentRole)
+	}
+	newTable, ok := profileTable[newRole]
+	if !ok {
+		return fmt.Errorf("no profile table for new role %q", newRole)
+	}
+
+	if _, err = tx.Exec(ctx,
+		fmt.Sprintf(`DELETE FROM %s WHERE user_id = $1`, oldTable), userID,
+	); err != nil {
+		return fmt.Errorf("delete old profile: %w", err)
+	}
+
+	if _, err = tx.Exec(ctx,
+		fmt.Sprintf(`INSERT INTO %s (user_id) VALUES ($1)`, newTable), userID,
+	); err != nil {
+		return fmt.Errorf("insert new profile: %w", err)
+	}
+
+	if _, err = tx.Exec(ctx,
+		`UPDATE users SET role = $1 WHERE id = $2`, newRole, userID,
+	); err != nil {
+		return fmt.Errorf("update role: %w", err)
+	}
+
+	return tx.Commit(ctx)
 }
 
 // UpdateUser applies a partial update — only non-nil fields in the input are changed.

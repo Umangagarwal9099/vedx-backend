@@ -89,15 +89,14 @@ func (ctrl *AuthController) Login(c *gin.Context) {
 
 // ── Register ──────────────────────────────────────────────────────────────────
 
-// RegisterRequest accepts the basic details needed to create any user account.
+// RegisterRequest accepts the basic details needed to create a student account.
 type RegisterRequest struct {
-	Email       string `json:"email"         binding:"required,email"                                                         example:"user@example.com"`
-	Password    string `json:"password"      binding:"required,min=8"                                                         example:"Secret@123"`
-	FirstName   string `json:"first_name"    binding:"required"                                                               example:"John"`
-	LastName    string `json:"last_name"     binding:"required"                                                               example:"Doe"`
-	Phone       string `json:"phone"                                                                                          example:"+919876543210"`
-	DateOfBirth string `json:"date_of_birth"                                                                                  example:"1998-05-20"`
-	Role        string `json:"role"          binding:"required,oneof=student mentor employee team_lead super_admin" enums:"student,mentor,employee,team_lead,super_admin" example:"student"`
+	Email       string `json:"email"         binding:"required,email" example:"user@example.com"`
+	Password    string `json:"password"      binding:"required,min=8"  example:"Secret@123"`
+	FirstName   string `json:"first_name"    binding:"required"         example:"John"`
+	LastName    string `json:"last_name"     binding:"required"         example:"Doe"`
+	Phone       string `json:"phone"                                    example:"+919876543210"`
+	DateOfBirth string `json:"date_of_birth"                            example:"1998-05-20"`
 }
 
 // RegisterResponse is returned on successful registration.
@@ -149,7 +148,7 @@ func (ctrl *AuthController) Register(c *gin.Context) {
 		LastName:     req.LastName,
 		Phone:        req.Phone,
 		DateOfBirth:  req.DateOfBirth,
-		Role:         models.Role(req.Role),
+		Role:         models.RoleStudent,
 	}
 
 	userID, err := ctrl.userRepo.Register(c.Request.Context(), user)

@@ -160,6 +160,53 @@ func (ctrl *UserController) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, user)
 }
 
+// ChangeRoleRequest holds the target role for a promotion.
+type ChangeRoleRequest struct {
+	Role string `json:"role" binding:"required,oneof=student mentor employee team_lead" enums:"student,mentor,employee,team_lead" example:"mentor"`
+}
+
+// ChangeRole godoc
+//
+//	@Summary		Change user role
+//	@Description	Promotes or changes a user's role. Only super_admin can call this. The old role-specific profile is deleted and a new one is created.
+//	@Tags			users
+//	@Accept			json
+//	@Produce		json
+//	@Param			id		path		string				true	"User ID (UUID)"
+//	@Param			body	body		ChangeRoleRequest	true	"New role"
+//	@Success		200		{object}	models.User
+//	@Failure		400		{object}	map[string]string	"Invalid role"
+//	@Failure		404		{object}	map[string]string	"User not found"
+//	@Failure		500		{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/users/{id}/role [patch]
+func (ctrl *UserController) ChangeRole(c *gin.Context) {
+	id := c.Param("id")
+
+	var req ChangeRoleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := ctrl.userRepo.ChangeUserRole(c.Request.Context(), id, models.Role(req.Role)); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not change role"})
+		return
+	}
+
+	user, err := ctrl.userRepo.FindByID(c.Request.Context(), id)
+	if err != nil || user == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch updated user"})
+		return
+	}
+
+	c.JSON(http.StatusOK, user)
+}
+
 // Delete godoc
 //
 //	@Summary		Delete user
