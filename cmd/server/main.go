@@ -12,6 +12,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/umangagarwal/vedx-backend/config"
 	"github.com/umangagarwal/vedx-backend/db"
+	"github.com/umangagarwal/vedx-backend/docs"
 	"github.com/umangagarwal/vedx-backend/router"
 )
 
@@ -35,6 +36,11 @@ func main() {
 	// Load .env for local development — silently ignored in production
 	// where env vars are injected by the platform (Render, Railway, etc.)
 	_ = godotenv.Load()
+
+	if host := os.Getenv("PUBLIC_HOST"); host != "" {
+		docs.SwaggerInfo.Host = host
+		docs.SwaggerInfo.Schemes = []string{"https"}
+	}
 
 	cfg, err := config.Load()
 	if err != nil {
