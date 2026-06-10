@@ -11,6 +11,13 @@ type Config struct {
 	App      AppConfig
 	Database DatabaseConfig
 	JWT      JWTConfig
+	Storage  StorageConfig
+}
+
+type StorageConfig struct {
+	ProjectURL     string
+	ServiceRoleKey string
+	Bucket         string
 }
 
 type AppConfig struct {
@@ -87,6 +94,11 @@ func Load() (*Config, error) {
 		JWT: JWTConfig{
 			Secret:      require("JWT_SECRET"),
 			ExpiryHours: getInt("JWT_EXPIRY_HOURS", 24),
+		},
+		Storage: StorageConfig{
+			ProjectURL:     require("SUPABASE_URL"),
+			ServiceRoleKey: require("SUPABASE_SERVICE_KEY"),
+			Bucket:         get("SUPABASE_STORAGE_BUCKET", "events"),
 		},
 	}
 

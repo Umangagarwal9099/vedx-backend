@@ -86,6 +86,33 @@ definitions:
         example: 550e8400-e29b-41d4-a716-446655440000
         type: string
     type: object
+  models.Announcement:
+    properties:
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      image_url:
+        type: string
+      is_active:
+        type: boolean
+      name:
+        type: string
+      short_id:
+        type: string
+      updated_at:
+        type: string
+      urgency:
+        type: string
+      visibility:
+        type: string
+    type: object
   models.Batch:
     properties:
       additional_manager_id:
@@ -148,6 +175,35 @@ definitions:
       updated_at:
         type: string
     type: object
+  models.CreateAnnouncementInput:
+    properties:
+      description:
+        example: <p><b>Important:</b> The platform will be down for 2 hours.</p>
+        type: string
+      image_url:
+        example: https://cdn.example.com/banner.jpg
+        type: string
+      name:
+        example: System Maintenance on June 10
+        type: string
+      urgency:
+        enum:
+        - low
+        - medium
+        - high
+        example: high
+        type: string
+      visibility:
+        enum:
+        - existing_only
+        - existing_and_new
+        example: existing_only
+        type: string
+    required:
+    - name
+    - urgency
+    - visibility
+    type: object
   models.CreateBatchInput:
     properties:
       additional_manager_id:
@@ -192,6 +248,103 @@ definitions:
     required:
     - name
     type: object
+  models.CreateEventInput:
+    properties:
+      categories:
+        example:
+        - '[''workshop'''
+        - '''go'''
+        - '''backend'']'
+        items:
+          type: string
+        type: array
+      description:
+        example: <p><b>Join us</b> for a hands-on Go workshop.</p>
+        type: string
+      end_time:
+        example: "13:00"
+        type: string
+      event_date:
+        example: "2025-09-15"
+        type: string
+      event_manager:
+        example: uuid-of-manager
+        type: string
+      guest_access:
+        example: false
+        type: boolean
+      image_url:
+        example: https://cdn.example.com/event.jpg
+        type: string
+      mode:
+        enum:
+        - virtual
+        - in_person
+        example: virtual
+        type: string
+      name:
+        example: Go Workshop 2025
+        type: string
+      start_time:
+        example: "10:00"
+        type: string
+      status:
+        enum:
+        - published
+        - unpublished
+        example: unpublished
+        type: string
+    required:
+    - end_time
+    - event_date
+    - mode
+    - name
+    - start_time
+    - status
+    type: object
+  models.Event:
+    properties:
+      categories:
+        items:
+          type: string
+        type: array
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      description:
+        type: string
+      end_time:
+        type: string
+      event_date:
+        type: string
+      event_manager_id:
+        type: string
+      event_manager_name:
+        type: string
+      guest_access:
+        type: boolean
+      id:
+        type: string
+      image_url:
+        type: string
+      is_active:
+        type: boolean
+      mode:
+        type: string
+      name:
+        type: string
+      short_id:
+        type: string
+      start_time:
+        type: string
+      status:
+        type: string
+      updated_at:
+        type: string
+    type: object
   models.Role:
     enum:
     - student
@@ -206,6 +359,27 @@ definitions:
     - RoleEmployee
     - RoleTeamLead
     - RoleSuperAdmin
+  models.UpdateAnnouncementInput:
+    properties:
+      description:
+        example: <p>Updated description</p>
+        type: string
+      image_url:
+        example: https://cdn.example.com/new-banner.jpg
+        type: string
+      is_active:
+        example: false
+        type: boolean
+      name:
+        example: Updated Announcement Title
+        type: string
+      urgency:
+        example: medium
+        type: string
+      visibility:
+        example: existing_and_new
+        type: string
+    type: object
   models.UpdateBatchInput:
     properties:
       additional_manager_id:
@@ -246,6 +420,49 @@ definitions:
         type: string
       thumbnail:
         example: https://cdn.example.com/new-thumb.jpg
+        type: string
+    type: object
+  models.UpdateEventInput:
+    properties:
+      categories:
+        example:
+        - '[''conference'''
+        - '''go'']'
+        items:
+          type: string
+        type: array
+      description:
+        example: <p>Updated description</p>
+        type: string
+      end_time:
+        example: "12:00"
+        type: string
+      event_date:
+        example: "2025-09-20"
+        type: string
+      event_manager:
+        example: uuid-of-manager
+        type: string
+      guest_access:
+        example: true
+        type: boolean
+      image_url:
+        example: https://cdn.example.com/new.jpg
+        type: string
+      is_active:
+        example: false
+        type: boolean
+      mode:
+        example: in_person
+        type: string
+      name:
+        example: Go Workshop 2025 — Updated
+        type: string
+      start_time:
+        example: "09:00"
+        type: string
+      status:
+        example: published
         type: string
     type: object
   models.UpdateUserInput:
@@ -298,6 +515,158 @@ info:
   title: Vedex API
   version: "1.0"
 paths:
+  /announcements:
+    get:
+      description: 'Returns all non-deleted announcements. Use query params to filter:
+        name (partial match), urgency (low|medium|high), is_active (true|false).'
+      parameters:
+      - description: Filter by name (case-insensitive, partial match)
+        in: query
+        name: name
+        type: string
+      - description: 'Filter by urgency: low | medium | high'
+        in: query
+        name: urgency
+        type: string
+      - description: 'Filter by status: true | false'
+        in: query
+        name: is_active
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Announcement'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List announcements
+      tags:
+      - announcements
+    post:
+      consumes:
+      - application/json
+      description: Create a new announcement. Description supports rich text (HTML/Markdown).
+        Use POST /upload/image first to get the image_url.
+      parameters:
+      - description: Announcement details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateAnnouncementInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Announcement'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create announcement
+      tags:
+      - announcements
+  /announcements/{short_id}:
+    delete:
+      description: Soft-delete an announcement by its short_id (sets deleted_at; the
+        row is retained).
+      parameters:
+      - description: Announcement short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Announcement not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete announcement
+      tags:
+      - announcements
+    patch:
+      consumes:
+      - application/json
+      description: Partially update an announcement by its short_id. Send only the
+        fields you want to change.
+      parameters:
+      - description: Announcement short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Fields to update (all optional)
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateAnnouncementInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Announcement'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Announcement not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update announcement
+      tags:
+      - announcements
   /auth/login:
     post:
       consumes:
@@ -757,6 +1126,154 @@ paths:
       summary: Search courses
       tags:
       - courses
+  /events:
+    get:
+      description: Returns all non-deleted events ordered newest first. Use query
+        params `name` and `status` to filter results.
+      parameters:
+      - description: Filter by event name (case-insensitive, partial match)
+        in: query
+        name: name
+        type: string
+      - description: 'Filter by status: published | unpublished'
+        in: query
+        name: status
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Event'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List events
+      tags:
+      - events
+    post:
+      consumes:
+      - application/json
+      description: Create a new event. The image_url should be the URL returned after
+        uploading to storage. Description supports rich text (HTML/Markdown).
+      parameters:
+      - description: Event details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateEventInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Event'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create event
+      tags:
+      - events
+  /events/{short_id}:
+    delete:
+      description: Soft-delete an event by its short_id (sets deleted_at; the row
+        is retained).
+      parameters:
+      - description: Event short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Event not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete event
+      tags:
+      - events
+    patch:
+      consumes:
+      - application/json
+      description: Partially update an event by its short_id. Send only the fields
+        you want to change.
+      parameters:
+      - description: Event short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Fields to update (all optional)
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateEventInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Event'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Event not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update event
+      tags:
+      - events
   /health:
     get:
       description: Returns server health status
@@ -794,6 +1311,45 @@ paths:
       summary: List mentors
       tags:
       - users
+  /upload/image:
+    post:
+      consumes:
+      - multipart/form-data
+      description: 'Upload an image from a device file picker or camera capture. Returns
+        the public URL to use in create/update event. Max size 10 MB. Allowed types:
+        JPEG, PNG, WebP, GIF.'
+      parameters:
+      - description: Image file
+        in: formData
+        name: image
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'url: public URL of the uploaded image'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Upload failed
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Upload event image
+      tags:
+      - upload
   /users:
     get:
       description: Returns all active (non-deleted) users.

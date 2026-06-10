@@ -11,6 +11,7 @@ import (
 	"github.com/umangagarwal/vedx-backend/middleware"
 	"github.com/umangagarwal/vedx-backend/models"
 	"github.com/umangagarwal/vedx-backend/repository"
+	"github.com/umangagarwal/vedx-backend/service"
 )
 
 func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
@@ -21,15 +22,23 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	// Repositories
-	userRepo   := repository.NewUserRepository(pool)
-	courseRepo := repository.NewCourseRepository(pool)
-	batchRepo  := repository.NewBatchRepository(pool)
+	userRepo         := repository.NewUserRepository(pool)
+	courseRepo       := repository.NewCourseRepository(pool)
+	batchRepo        := repository.NewBatchRepository(pool)
+	eventRepo        := repository.NewEventRepository(pool)
+	announcementRepo := repository.NewAnnouncementRepository(pool)
+
+	// Services
+	storageSvc := service.NewStorageService(cfg.Storage)
 
 	// Controllers
 	authCtrl   := controller.NewAuthController(userRepo, cfg.JWT.Secret)
 	userCtrl   := controller.NewUserController(userRepo)
 	courseCtrl := controller.NewCourseController(courseRepo)
 	batchCtrl  := controller.NewBatchController(batchRepo)
+	eventCtrl        := controller.NewEventController(eventRepo)
+	announcementCtrl := controller.NewAnnouncementController(announcementRepo)
+	uploadCtrl       := controller.NewUploadController(storageSvc)
 
 	v1 := r.Group("/api/v1")
 	{
@@ -76,6 +85,27 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				batches.PATCH("/:short_id",     batchCtrl.Update)
 				batches.DELETE("/:short_id",    batchCtrl.Delete)
 			}
+
+			// Events
+			events := protected.Group("/events")
+			{
+				events.POST("",              middleware.RequireRole(models.RoleSuperAdmin), eventCtrl.Create)
+				events.GET("",               eventCtrl.GetAll)
+				events.PATCH("/:short_id",   eventCtrl.Update)
+				events.DELETE("/:short_id",  eventCtrl.Delete)
+			}
+
+			// Announcements
+			announcements := protected.Group("/announcements")
+			{
+				announcements.POST("",             middleware.RequireRole(models.RoleSuperAdmin), announcementCtrl.Create)
+				announcements.GET("",              announcementCtrl.GetAll)
+				announcements.PATCH("/:short_id",  announcementCtrl.Update)
+				announcements.DELETE("/:short_id", announcementCtrl.Delete)
+			}
+
+			// Upload
+			protected.POST("/upload/image", uploadCtrl.UploadEventImage)
 		}
 	}
 

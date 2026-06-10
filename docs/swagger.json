@@ -16,6 +16,238 @@
     "host": "localhost:8080",
     "basePath": "/api/v1",
     "paths": {
+        "/announcements": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns all non-deleted announcements. Use query params to filter: name (partial match), urgency (low|medium|high), is_active (true|false).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "announcements"
+                ],
+                "summary": "List announcements",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by name (case-insensitive, partial match)",
+                        "name": "name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by urgency: low | medium | high",
+                        "name": "urgency",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by status: true | false",
+                        "name": "is_active",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.Announcement"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create a new announcement. Description supports rich text (HTML/Markdown). Use POST /upload/image first to get the image_url.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "announcements"
+                ],
+                "summary": "Create announcement",
+                "parameters": [
+                    {
+                        "description": "Announcement details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateAnnouncementInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.Announcement"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/announcements/{short_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Soft-delete an announcement by its short_id (sets deleted_at; the row is retained).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "announcements"
+                ],
+                "summary": "Delete announcement",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Announcement short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Announcement not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Partially update an announcement by its short_id. Send only the fields you want to change.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "announcements"
+                ],
+                "summary": "Update announcement",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Announcement short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to update (all optional)",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateAnnouncementInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Announcement"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Announcement not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/auth/login": {
             "post": {
                 "description": "Single login endpoint for all roles. Returns a JWT — send it as `Authorization: Bearer \u003ctoken\u003e` on protected requests.",
@@ -716,6 +948,232 @@
                 }
             }
         },
+        "/events": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns all non-deleted events ordered newest first. Use query params `name` and `status` to filter results.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "events"
+                ],
+                "summary": "List events",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by event name (case-insensitive, partial match)",
+                        "name": "name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by status: published | unpublished",
+                        "name": "status",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.Event"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create a new event. The image_url should be the URL returned after uploading to storage. Description supports rich text (HTML/Markdown).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "events"
+                ],
+                "summary": "Create event",
+                "parameters": [
+                    {
+                        "description": "Event details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateEventInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.Event"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/events/{short_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Soft-delete an event by its short_id (sets deleted_at; the row is retained).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "events"
+                ],
+                "summary": "Delete event",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Event short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Event not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Partially update an event by its short_id. Send only the fields you want to change.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "events"
+                ],
+                "summary": "Update event",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Event short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to update (all optional)",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateEventInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Event"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Event not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/health": {
             "get": {
                 "description": "Returns server health status",
@@ -763,6 +1221,64 @@
                     },
                     "500": {
                         "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/upload/image": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Upload an image from a device file picker or camera capture. Returns the public URL to use in create/update event. Max size 10 MB. Allowed types: JPEG, PNG, WebP, GIF.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "upload"
+                ],
+                "summary": "Upload event image",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "Image file",
+                        "name": "image",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "url: public URL of the uploaded image",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Upload failed",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -1216,6 +1732,47 @@
                 }
             }
         },
+        "models.Announcement": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "image_url": {
+                    "type": "string"
+                },
+                "is_active": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "urgency": {
+                    "type": "string"
+                },
+                "visibility": {
+                    "type": "string"
+                }
+            }
+        },
         "models.Batch": {
             "type": "object",
             "properties": {
@@ -1310,6 +1867,45 @@
                 }
             }
         },
+        "models.CreateAnnouncementInput": {
+            "type": "object",
+            "required": [
+                "name",
+                "urgency",
+                "visibility"
+            ],
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "example": "\u003cp\u003e\u003cb\u003eImportant:\u003c/b\u003e The platform will be down for 2 hours.\u003c/p\u003e"
+                },
+                "image_url": {
+                    "type": "string",
+                    "example": "https://cdn.example.com/banner.jpg"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "System Maintenance on June 10"
+                },
+                "urgency": {
+                    "type": "string",
+                    "enum": [
+                        "low",
+                        "medium",
+                        "high"
+                    ],
+                    "example": "high"
+                },
+                "visibility": {
+                    "type": "string",
+                    "enum": [
+                        "existing_only",
+                        "existing_and_new"
+                    ],
+                    "example": "existing_only"
+                }
+            }
+        },
         "models.CreateBatchInput": {
             "type": "object",
             "required": [
@@ -1370,6 +1966,143 @@
                 }
             }
         },
+        "models.CreateEventInput": {
+            "type": "object",
+            "required": [
+                "end_time",
+                "event_date",
+                "mode",
+                "name",
+                "start_time",
+                "status"
+            ],
+            "properties": {
+                "categories": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "['workshop'",
+                        "'go'",
+                        "'backend']"
+                    ]
+                },
+                "description": {
+                    "type": "string",
+                    "example": "\u003cp\u003e\u003cb\u003eJoin us\u003c/b\u003e for a hands-on Go workshop.\u003c/p\u003e"
+                },
+                "end_time": {
+                    "type": "string",
+                    "example": "13:00"
+                },
+                "event_date": {
+                    "type": "string",
+                    "example": "2025-09-15"
+                },
+                "event_manager": {
+                    "type": "string",
+                    "example": "uuid-of-manager"
+                },
+                "guest_access": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "image_url": {
+                    "type": "string",
+                    "example": "https://cdn.example.com/event.jpg"
+                },
+                "mode": {
+                    "type": "string",
+                    "enum": [
+                        "virtual",
+                        "in_person"
+                    ],
+                    "example": "virtual"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "Go Workshop 2025"
+                },
+                "start_time": {
+                    "type": "string",
+                    "example": "10:00"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "published",
+                        "unpublished"
+                    ],
+                    "example": "unpublished"
+                }
+            }
+        },
+        "models.Event": {
+            "type": "object",
+            "properties": {
+                "categories": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "end_time": {
+                    "type": "string"
+                },
+                "event_date": {
+                    "type": "string"
+                },
+                "event_manager_id": {
+                    "type": "string"
+                },
+                "event_manager_name": {
+                    "type": "string"
+                },
+                "guest_access": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "image_url": {
+                    "type": "string"
+                },
+                "is_active": {
+                    "type": "boolean"
+                },
+                "mode": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "start_time": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
         "models.Role": {
             "type": "string",
             "enum": [
@@ -1386,6 +2119,35 @@
                 "RoleTeamLead",
                 "RoleSuperAdmin"
             ]
+        },
+        "models.UpdateAnnouncementInput": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "example": "\u003cp\u003eUpdated description\u003c/p\u003e"
+                },
+                "image_url": {
+                    "type": "string",
+                    "example": "https://cdn.example.com/new-banner.jpg"
+                },
+                "is_active": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "name": {
+                    "type": "string",
+                    "example": "Updated Announcement Title"
+                },
+                "urgency": {
+                    "type": "string",
+                    "example": "medium"
+                },
+                "visibility": {
+                    "type": "string",
+                    "example": "existing_and_new"
+                }
+            }
         },
         "models.UpdateBatchInput": {
             "type": "object",
@@ -1442,6 +2204,65 @@
                 "thumbnail": {
                     "type": "string",
                     "example": "https://cdn.example.com/new-thumb.jpg"
+                }
+            }
+        },
+        "models.UpdateEventInput": {
+            "type": "object",
+            "properties": {
+                "categories": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "['conference'",
+                        "'go']"
+                    ]
+                },
+                "description": {
+                    "type": "string",
+                    "example": "\u003cp\u003eUpdated description\u003c/p\u003e"
+                },
+                "end_time": {
+                    "type": "string",
+                    "example": "12:00"
+                },
+                "event_date": {
+                    "type": "string",
+                    "example": "2025-09-20"
+                },
+                "event_manager": {
+                    "type": "string",
+                    "example": "uuid-of-manager"
+                },
+                "guest_access": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "image_url": {
+                    "type": "string",
+                    "example": "https://cdn.example.com/new.jpg"
+                },
+                "is_active": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "mode": {
+                    "type": "string",
+                    "example": "in_person"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "Go Workshop 2025 — Updated"
+                },
+                "start_time": {
+                    "type": "string",
+                    "example": "09:00"
+                },
+                "status": {
+                    "type": "string",
+                    "example": "published"
                 }
             }
         },

@@ -33,3 +33,8 @@ To create a super admin, set `role` to `super_admin` in the register payload.
 Optional fields:
 - `phone`
 - `date_of_birth`
+
+
+
+swag init -g cmd/server/main.go   // swagger update 
+go run cmd/server/main.go // run command
