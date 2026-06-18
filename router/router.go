@@ -22,23 +22,27 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	// Repositories
-	userRepo         := repository.NewUserRepository(pool)
-	courseRepo       := repository.NewCourseRepository(pool)
-	batchRepo        := repository.NewBatchRepository(pool)
-	eventRepo        := repository.NewEventRepository(pool)
-	announcementRepo := repository.NewAnnouncementRepository(pool)
+	userRepo             := repository.NewUserRepository(pool)
+	courseRepo           := repository.NewCourseRepository(pool)
+	batchRepo            := repository.NewBatchRepository(pool)
+	eventRepo            := repository.NewEventRepository(pool)
+	announcementRepo     := repository.NewAnnouncementRepository(pool)
+	codingQuestionRepo   := repository.NewCodingQuestionRepository(pool)
+	submissionRepo       := repository.NewSubmissionRepository(pool)
 
 	// Services
 	storageSvc := service.NewStorageService(cfg.Storage)
 
 	// Controllers
-	authCtrl   := controller.NewAuthController(userRepo, cfg.JWT.Secret)
-	userCtrl   := controller.NewUserController(userRepo)
-	courseCtrl := controller.NewCourseController(courseRepo)
-	batchCtrl  := controller.NewBatchController(batchRepo)
-	eventCtrl        := controller.NewEventController(eventRepo)
-	announcementCtrl := controller.NewAnnouncementController(announcementRepo)
-	uploadCtrl       := controller.NewUploadController(storageSvc)
+	authCtrl             := controller.NewAuthController(userRepo, cfg.JWT.Secret)
+	userCtrl             := controller.NewUserController(userRepo)
+	courseCtrl           := controller.NewCourseController(courseRepo)
+	batchCtrl            := controller.NewBatchController(batchRepo)
+	eventCtrl            := controller.NewEventController(eventRepo)
+	announcementCtrl     := controller.NewAnnouncementController(announcementRepo)
+	uploadCtrl           := controller.NewUploadController(storageSvc)
+	codingQuestionCtrl   := controller.NewCodingQuestionController(codingQuestionRepo)
+	submissionCtrl       := controller.NewSubmissionController(submissionRepo)
 
 	v1 := r.Group("/api/v1")
 	{
@@ -102,6 +106,28 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				announcements.GET("",              announcementCtrl.GetAll)
 				announcements.PATCH("/:short_id",  announcementCtrl.Update)
 				announcements.DELETE("/:short_id", announcementCtrl.Delete)
+			}
+
+			// Coding Questions — static paths before /:short_id
+			cq := protected.Group("/coding-questions")
+			{
+				cq.POST("",              middleware.RequireRole(models.RoleSuperAdmin), codingQuestionCtrl.Create)
+				cq.GET("",               codingQuestionCtrl.GetAll)
+				cq.GET("/admin",         codingQuestionCtrl.GetAllAdmin)
+				cq.GET("/:short_id",     codingQuestionCtrl.GetByShortID)
+				cq.PATCH("/:short_id",   codingQuestionCtrl.Update)
+				cq.DELETE("/:short_id",  codingQuestionCtrl.Delete)
+			}
+
+			// Submissions
+			subs := protected.Group("/submissions")
+			{
+				subs.POST("",                    submissionCtrl.Create)
+				subs.GET("/me",                  submissionCtrl.GetMySubmissions)
+				subs.GET("/question/:short_id",  submissionCtrl.GetByQuestion)
+				// Admin/mentor — see all students' submissions
+				subs.GET("/admin",               submissionCtrl.GetAllAdmin)
+				subs.GET("/user/:user_id",        submissionCtrl.GetByUserAdmin)
 			}
 
 			// Upload
