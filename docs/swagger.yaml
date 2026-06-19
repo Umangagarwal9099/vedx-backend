@@ -152,6 +152,69 @@ definitions:
       updated_at:
         type: string
     type: object
+  models.CodingExample:
+    properties:
+      explanation:
+        type: string
+      input:
+        type: string
+      output:
+        type: string
+    type: object
+  models.CodingQuestion:
+    properties:
+      constraints:
+        items:
+          type: string
+        type: array
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      description:
+        type: string
+      difficulty:
+        type: string
+      examples:
+        items:
+          $ref: '#/definitions/models.CodingExample'
+        type: array
+      id:
+        type: string
+      is_active:
+        type: boolean
+      languages:
+        items:
+          type: string
+        type: array
+      short_id:
+        type: string
+      starter_code:
+        $ref: '#/definitions/models.StarterCode'
+      test_cases:
+        items:
+          $ref: '#/definitions/models.CodingTestCase'
+        type: array
+      title:
+        type: string
+      topics:
+        items:
+          type: string
+        type: array
+      updated_at:
+        type: string
+    type: object
+  models.CodingTestCase:
+    properties:
+      expected_output:
+        type: string
+      input:
+        type: string
+      is_hidden:
+        type: boolean
+    type: object
   models.Course:
     properties:
       created_at:
@@ -234,6 +297,44 @@ definitions:
     - end_date
     - start_date
     type: object
+  models.CreateCodingQuestionInput:
+    properties:
+      constraints:
+        items:
+          type: string
+        type: array
+      description:
+        type: string
+      difficulty:
+        type: string
+      examples:
+        items:
+          $ref: '#/definitions/models.CodingExample'
+        type: array
+      languages:
+        items:
+          type: string
+        type: array
+      starter_code:
+        $ref: '#/definitions/models.StarterCode'
+      test_cases:
+        items:
+          $ref: '#/definitions/models.CodingTestCase'
+        type: array
+      title:
+        type: string
+      topics:
+        items:
+          type: string
+        type: array
+    required:
+    - description
+    - difficulty
+    - languages
+    - starter_code
+    - test_cases
+    - title
+    type: object
   models.CreateCourseInput:
     properties:
       description:
@@ -302,6 +403,32 @@ definitions:
     - start_time
     - status
     type: object
+  models.CreateSubmissionInput:
+    properties:
+      code:
+        type: string
+      language:
+        type: string
+      passed_tests:
+        type: integer
+      question_short_id:
+        type: string
+      status:
+        allOf:
+        - $ref: '#/definitions/models.SubmissionStatus'
+        enum:
+        - accepted
+        - wrong_answer
+        - runtime_error
+        - compile_error
+      total_tests:
+        type: integer
+    required:
+    - code
+    - language
+    - question_short_id
+    - status
+    type: object
   models.Event:
     properties:
       categories:
@@ -359,6 +486,70 @@ definitions:
     - RoleEmployee
     - RoleTeamLead
     - RoleSuperAdmin
+  models.StarterCode:
+    additionalProperties:
+      type: string
+    type: object
+  models.Submission:
+    properties:
+      code:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      language:
+        type: string
+      passed_tests:
+        type: integer
+      question_short_id:
+        type: string
+      status:
+        $ref: '#/definitions/models.SubmissionStatus'
+      total_tests:
+        type: integer
+      user_id:
+        type: string
+    type: object
+  models.SubmissionStatus:
+    enum:
+    - accepted
+    - wrong_answer
+    - runtime_error
+    - compile_error
+    type: string
+    x-enum-varnames:
+    - SubmissionAccepted
+    - SubmissionWrongAnswer
+    - SubmissionRuntimeError
+    - SubmissionCompileError
+  models.SubmissionView:
+    properties:
+      code:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      language:
+        type: string
+      passed_tests:
+        type: integer
+      question_short_id:
+        type: string
+      question_title:
+        type: string
+      status:
+        $ref: '#/definitions/models.SubmissionStatus'
+      student_email:
+        type: string
+      student_name:
+        type: string
+      total_tests:
+        type: integer
+      user_id:
+        type: string
+    type: object
   models.UpdateAnnouncementInput:
     properties:
       description:
@@ -406,6 +597,39 @@ definitions:
       start_date:
         example: "2024-02-01"
         type: string
+    type: object
+  models.UpdateCodingQuestionInput:
+    properties:
+      constraints:
+        items:
+          type: string
+        type: array
+      description:
+        type: string
+      difficulty:
+        type: string
+      examples:
+        items:
+          $ref: '#/definitions/models.CodingExample'
+        type: array
+      is_active:
+        type: boolean
+      languages:
+        items:
+          type: string
+        type: array
+      starter_code:
+        $ref: '#/definitions/models.StarterCode'
+      test_cases:
+        items:
+          $ref: '#/definitions/models.CodingTestCase'
+        type: array
+      title:
+        type: string
+      topics:
+        items:
+          type: string
+        type: array
     type: object
   models.UpdateCourseInput:
     properties:
@@ -946,6 +1170,203 @@ paths:
       summary: Filter batches
       tags:
       - batches
+  /coding-questions:
+    get:
+      description: Returns all active, non-deleted coding questions ordered by creation
+        date.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.CodingQuestion'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List coding questions (student view)
+      tags:
+      - coding-questions
+    post:
+      consumes:
+      - application/json
+      description: Create a new coding practice question. Restricted to super_admin.
+      parameters:
+      - description: Question details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateCodingQuestionInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.CodingQuestion'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create coding question
+      tags:
+      - coding-questions
+  /coding-questions/{short_id}:
+    delete:
+      description: Soft-delete a coding question by its short_id.
+      parameters:
+      - description: Question short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Question not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete coding question
+      tags:
+      - coding-questions
+    get:
+      description: Returns a single active coding question by its short_id.
+      parameters:
+      - description: Question short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.CodingQuestion'
+        "404":
+          description: Question not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get coding question by short_id
+      tags:
+      - coding-questions
+    patch:
+      consumes:
+      - application/json
+      description: Partially update a coding question by its short_id.
+      parameters:
+      - description: Question short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateCodingQuestionInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.CodingQuestion'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Question not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update coding question
+      tags:
+      - coding-questions
+  /coding-questions/admin:
+    get:
+      description: Returns all non-deleted coding questions including inactive ones.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.CodingQuestion'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List all coding questions (admin view)
+      tags:
+      - coding-questions
   /courses:
     get:
       description: Returns all active and inactive non-deleted courses.
@@ -1311,6 +1732,151 @@ paths:
       summary: List mentors
       tags:
       - users
+  /submissions:
+    post:
+      consumes:
+      - application/json
+      description: Save a code submission for the authenticated user against a coding
+        question.
+      parameters:
+      - description: Submission payload
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateSubmissionInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Submission'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Submit code solution
+      tags:
+      - submissions
+  /submissions/admin:
+    get:
+      description: Returns every submission with student name, email, and question
+        title.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.SubmissionView'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List all submissions (admin/mentor)
+      tags:
+      - submissions
+  /submissions/me:
+    get:
+      description: Returns all submissions made by the authenticated user across all
+        questions.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Submission'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get current user's submissions
+      tags:
+      - submissions
+  /submissions/question/{short_id}:
+    get:
+      description: Returns all submissions by the authenticated user for the given
+        coding question short_id.
+      parameters:
+      - description: Question short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Submission'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get current user's submissions for a specific question
+      tags:
+      - submissions
+  /submissions/user/{user_id}:
+    get:
+      description: Returns all submissions for the given user UUID, including question
+        title and user details.
+      parameters:
+      - description: User ID (UUID)
+        in: path
+        name: user_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.SubmissionView'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List submissions for a specific user (admin/mentor)
+      tags:
+      - submissions
   /upload/image:
     post:
       consumes:

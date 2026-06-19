@@ -19,11 +19,14 @@ func NewSubmissionController(repo *repository.SubmissionRepository) *SubmissionC
 // Create godoc
 //
 //	@Summary		Submit code solution
+//	@Description	Save a code submission for the authenticated user against a coding question.
 //	@Tags			submissions
 //	@Accept			json
 //	@Produce		json
-//	@Param			body	body		models.CreateSubmissionInput	true	"Submission"
+//	@Param			body	body		models.CreateSubmissionInput	true	"Submission payload"
 //	@Success		201		{object}	models.Submission
+//	@Failure		400		{object}	map[string]string	"Validation error"
+//	@Failure		500		{object}	map[string]string	"Internal server error"
 //	@Security		BearerAuth
 //	@Router			/submissions [post]
 func (ctrl *SubmissionController) Create(c *gin.Context) {
@@ -46,9 +49,11 @@ func (ctrl *SubmissionController) Create(c *gin.Context) {
 // GetMySubmissions godoc
 //
 //	@Summary		Get current user's submissions
+//	@Description	Returns all submissions made by the authenticated user across all questions.
 //	@Tags			submissions
 //	@Produce		json
 //	@Success		200	{array}		models.Submission
+//	@Failure		500	{object}	map[string]string	"Internal server error"
 //	@Security		BearerAuth
 //	@Router			/submissions/me [get]
 func (ctrl *SubmissionController) GetMySubmissions(c *gin.Context) {
@@ -68,10 +73,12 @@ func (ctrl *SubmissionController) GetMySubmissions(c *gin.Context) {
 // GetByQuestion godoc
 //
 //	@Summary		Get current user's submissions for a specific question
+//	@Description	Returns all submissions by the authenticated user for the given coding question short_id.
 //	@Tags			submissions
 //	@Produce		json
 //	@Param			short_id	path	string	true	"Question short ID"
 //	@Success		200			{array}	models.Submission
+//	@Failure		500			{object}	map[string]string	"Internal server error"
 //	@Security		BearerAuth
 //	@Router			/submissions/question/{short_id} [get]
 func (ctrl *SubmissionController) GetByQuestion(c *gin.Context) {
@@ -96,6 +103,7 @@ func (ctrl *SubmissionController) GetByQuestion(c *gin.Context) {
 //	@Tags			submissions
 //	@Produce		json
 //	@Success		200	{array}		models.SubmissionView
+//	@Failure		500	{object}	map[string]string	"Internal server error"
 //	@Security		BearerAuth
 //	@Router			/submissions/admin [get]
 func (ctrl *SubmissionController) GetAllAdmin(c *gin.Context) {
@@ -113,10 +121,12 @@ func (ctrl *SubmissionController) GetAllAdmin(c *gin.Context) {
 // GetByUserAdmin godoc
 //
 //	@Summary		List submissions for a specific user (admin/mentor)
+//	@Description	Returns all submissions for the given user UUID, including question title and user details.
 //	@Tags			submissions
 //	@Produce		json
 //	@Param			user_id	path	string	true	"User ID (UUID)"
-//	@Success		200		{array}	models.SubmissionView
+//	@Success		200		{array}		models.SubmissionView
+//	@Failure		500		{object}	map[string]string	"Internal server error"
 //	@Security		BearerAuth
 //	@Router			/submissions/user/{user_id} [get]
 func (ctrl *SubmissionController) GetByUserAdmin(c *gin.Context) {

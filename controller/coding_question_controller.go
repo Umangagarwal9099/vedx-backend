@@ -27,9 +27,9 @@ func NewCodingQuestionController(repo *repository.CodingQuestionRepository) *Cod
 //	@Produce		json
 //	@Param			body	body		models.CreateCodingQuestionInput	true	"Question details"
 //	@Success		201		{object}	models.CodingQuestion
-//	@Failure		400		{object}	map[string]string
-//	@Failure		403		{object}	map[string]string
-//	@Failure		500		{object}	map[string]string
+//	@Failure		400		{object}	map[string]string	"Validation error"
+//	@Failure		403		{object}	map[string]string	"Forbidden"
+//	@Failure		500		{object}	map[string]string	"Internal server error"
 //	@Security		BearerAuth
 //	@Router			/coding-questions [post]
 func (ctrl *CodingQuestionController) Create(c *gin.Context) {
@@ -55,7 +55,7 @@ func (ctrl *CodingQuestionController) Create(c *gin.Context) {
 //	@Tags			coding-questions
 //	@Produce		json
 //	@Success		200	{array}		models.CodingQuestion
-//	@Failure		500	{object}	map[string]string
+//	@Failure		500	{object}	map[string]string	"Internal server error"
 //	@Security		BearerAuth
 //	@Router			/coding-questions [get]
 func (ctrl *CodingQuestionController) GetAll(c *gin.Context) {
@@ -77,7 +77,7 @@ func (ctrl *CodingQuestionController) GetAll(c *gin.Context) {
 //	@Tags			coding-questions
 //	@Produce		json
 //	@Success		200	{array}		models.CodingQuestion
-//	@Failure		500	{object}	map[string]string
+//	@Failure		500	{object}	map[string]string	"Internal server error"
 //	@Security		BearerAuth
 //	@Router			/coding-questions/admin [get]
 func (ctrl *CodingQuestionController) GetAllAdmin(c *gin.Context) {
@@ -100,8 +100,8 @@ func (ctrl *CodingQuestionController) GetAllAdmin(c *gin.Context) {
 //	@Produce		json
 //	@Param			short_id	path		string	true	"Question short ID"
 //	@Success		200			{object}	models.CodingQuestion
-//	@Failure		404			{object}	map[string]string
-//	@Failure		500			{object}	map[string]string
+//	@Failure		404			{object}	map[string]string	"Question not found"
+//	@Failure		500			{object}	map[string]string	"Internal server error"
 //	@Security		BearerAuth
 //	@Router			/coding-questions/{short_id} [get]
 func (ctrl *CodingQuestionController) GetByShortID(c *gin.Context) {
@@ -128,9 +128,9 @@ func (ctrl *CodingQuestionController) GetByShortID(c *gin.Context) {
 //	@Param			short_id	path		string							true	"Question short ID"
 //	@Param			body		body		models.UpdateCodingQuestionInput	true	"Fields to update"
 //	@Success		200			{object}	models.CodingQuestion
-//	@Failure		400			{object}	map[string]string
-//	@Failure		404			{object}	map[string]string
-//	@Failure		500			{object}	map[string]string
+//	@Failure		400			{object}	map[string]string	"Validation error"
+//	@Failure		404			{object}	map[string]string	"Question not found"
+//	@Failure		500			{object}	map[string]string	"Internal server error"
 //	@Security		BearerAuth
 //	@Router			/coding-questions/{short_id} [patch]
 func (ctrl *CodingQuestionController) Update(c *gin.Context) {
@@ -171,8 +171,8 @@ func (ctrl *CodingQuestionController) Update(c *gin.Context) {
 //	@Produce		json
 //	@Param			short_id	path	string	true	"Question short ID"
 //	@Success		204			"No Content"
-//	@Failure		404			{object}	map[string]string
-//	@Failure		500			{object}	map[string]string
+//	@Failure		404			{object}	map[string]string	"Question not found"
+//	@Failure		500			{object}	map[string]string	"Internal server error"
 //	@Security		BearerAuth
 //	@Router			/coding-questions/{short_id} [delete]
 func (ctrl *CodingQuestionController) Delete(c *gin.Context) {
