@@ -54,6 +54,17 @@ func main() {
 	defer pool.Close()
 	log.Println("Connected to Supabase PostgreSQL")
 
+	// Keepalive: ping every 30 s so Supabase never closes idle connections.
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			_ = pool.Ping(ctx)
+			cancel()
+		}
+	}()
+
 	r := router.New(pool, cfg)
 
 	srv := &http.Server{
