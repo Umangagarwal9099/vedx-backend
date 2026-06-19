@@ -22,7 +22,7 @@ func NewUserRepository(pool *pgxpool.Pool) *UserRepository {
 func (r *UserRepository) EmailExists(ctx context.Context, email string) (bool, error) {
 	var exists bool
 	err := r.pool.QueryRow(ctx,
-		`SELECT EXISTS(SELECT 1 FROM users WHERE email = $1 AND deleted_at IS NULL)`, email,
+		`SELECT EXISTS(SELECT 1 FROM users WHERE LOWER(email) = LOWER($1) AND deleted_at IS NULL)`, email,
 	).Scan(&exists)
 	return exists, err
 }
@@ -33,7 +33,7 @@ func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*models
 		       COALESCE(phone, ''), COALESCE(date_of_birth::TEXT, ''),
 		       role, is_active, created_at, updated_at
 		FROM users
-		WHERE email = $1 AND is_active = TRUE AND deleted_at IS NULL
+		WHERE LOWER(email) = LOWER($1) AND is_active = TRUE AND deleted_at IS NULL
 		LIMIT 1`
 
 	var u models.User

@@ -2,6 +2,7 @@ package controller
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/umangagarwal/vedx-backend/auth"
@@ -55,6 +56,7 @@ func (ctrl *AuthController) Login(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
 
 	user, err := ctrl.userRepo.FindByEmail(c.Request.Context(), req.Email)
 	if err != nil {
@@ -124,6 +126,7 @@ func (ctrl *AuthController) Register(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
 
 	exists, err := ctrl.userRepo.EmailExists(c.Request.Context(), req.Email)
 	if err != nil {
