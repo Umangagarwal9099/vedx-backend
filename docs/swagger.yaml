@@ -1,0 +1,2137 @@
+basePath: /api/v1
+definitions:
+  controller.ChangeRoleRequest:
+    properties:
+      role:
+        enum:
+        - student
+        - mentor
+        - employee
+        - team_lead
+        example: mentor
+        type: string
+    required:
+    - role
+    type: object
+  controller.HealthResponse:
+    properties:
+      status:
+        example: ok
+        type: string
+    type: object
+  controller.LoginRequest:
+    properties:
+      email:
+        example: user@example.com
+        type: string
+      password:
+        example: secret123
+        minLength: 6
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  controller.LoginResponse:
+    properties:
+      first_name:
+        example: John
+        type: string
+      last_name:
+        example: Doe
+        type: string
+      role:
+        example: student
+        type: string
+      token:
+        example: eyJhbGci...
+        type: string
+      user_id:
+        example: 550e8400-e29b-41d4-a716-446655440000
+        type: string
+    type: object
+  controller.RegisterRequest:
+    properties:
+      date_of_birth:
+        example: "1998-05-20"
+        type: string
+      email:
+        example: user@example.com
+        type: string
+      first_name:
+        example: John
+        type: string
+      last_name:
+        example: Doe
+        type: string
+      password:
+        example: Secret@123
+        minLength: 8
+        type: string
+      phone:
+        example: "+919876543210"
+        type: string
+    required:
+    - email
+    - first_name
+    - last_name
+    - password
+    type: object
+  controller.RegisterResponse:
+    properties:
+      message:
+        example: registration successful
+        type: string
+      user_id:
+        example: 550e8400-e29b-41d4-a716-446655440000
+        type: string
+    type: object
+  models.Announcement:
+    properties:
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      image_url:
+        type: string
+      is_active:
+        type: boolean
+      name:
+        type: string
+      short_id:
+        type: string
+      updated_at:
+        type: string
+      urgency:
+        type: string
+      visibility:
+        type: string
+    type: object
+  models.Batch:
+    properties:
+      additional_manager_id:
+        type: string
+      additional_manager_name:
+        type: string
+      batch_manager_id:
+        type: string
+      batch_manager_name:
+        type: string
+      batch_number:
+        type: string
+      course_id:
+        type: string
+      course_name:
+        type: string
+      course_short_id:
+        type: string
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      end_date:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      module:
+        type: string
+      short_id:
+        type: string
+      start_date:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.CodingExample:
+    properties:
+      explanation:
+        type: string
+      input:
+        type: string
+      output:
+        type: string
+    type: object
+  models.CodingQuestion:
+    properties:
+      constraints:
+        items:
+          type: string
+        type: array
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      description:
+        type: string
+      difficulty:
+        type: string
+      examples:
+        items:
+          $ref: '#/definitions/models.CodingExample'
+        type: array
+      id:
+        type: string
+      is_active:
+        type: boolean
+      languages:
+        items:
+          type: string
+        type: array
+      short_id:
+        type: string
+      starter_code:
+        $ref: '#/definitions/models.StarterCode'
+      test_cases:
+        items:
+          $ref: '#/definitions/models.CodingTestCase'
+        type: array
+      title:
+        type: string
+      topics:
+        items:
+          type: string
+        type: array
+      updated_at:
+        type: string
+    type: object
+  models.CodingTestCase:
+    properties:
+      expected_output:
+        type: string
+      input:
+        type: string
+      is_hidden:
+        type: boolean
+    type: object
+  models.Course:
+    properties:
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      name:
+        type: string
+      short_id:
+        type: string
+      thumbnail:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.CreateAnnouncementInput:
+    properties:
+      description:
+        example: <p><b>Important:</b> The platform will be down for 2 hours.</p>
+        type: string
+      image_url:
+        example: https://cdn.example.com/banner.jpg
+        type: string
+      name:
+        example: System Maintenance on June 10
+        type: string
+      urgency:
+        enum:
+        - low
+        - medium
+        - high
+        example: high
+        type: string
+      visibility:
+        enum:
+        - existing_only
+        - existing_and_new
+        example: existing_only
+        type: string
+    required:
+    - name
+    - urgency
+    - visibility
+    type: object
+  models.CreateBatchInput:
+    properties:
+      additional_manager_id:
+        example: use GET /mentors to pick a real ID
+        type: string
+      batch_manager_id:
+        example: use GET /mentors to pick a real ID
+        type: string
+      batch_number:
+        example: BATCH-2024-001
+        type: string
+      course_short_id:
+        example: A3F72C1D
+        type: string
+      end_date:
+        example: "2024-06-15"
+        type: string
+      module:
+        example: Module 1
+        type: string
+      start_date:
+        example: "2024-01-15"
+        type: string
+    required:
+    - batch_manager_id
+    - batch_number
+    - course_short_id
+    - end_date
+    - start_date
+    type: object
+  models.CreateCodingQuestionInput:
+    properties:
+      constraints:
+        items:
+          type: string
+        type: array
+      description:
+        type: string
+      difficulty:
+        type: string
+      examples:
+        items:
+          $ref: '#/definitions/models.CodingExample'
+        type: array
+      languages:
+        items:
+          type: string
+        type: array
+      starter_code:
+        $ref: '#/definitions/models.StarterCode'
+      test_cases:
+        items:
+          $ref: '#/definitions/models.CodingTestCase'
+        type: array
+      title:
+        type: string
+      topics:
+        items:
+          type: string
+        type: array
+    required:
+    - description
+    - difficulty
+    - languages
+    - starter_code
+    - test_cases
+    - title
+    type: object
+  models.CreateCourseInput:
+    properties:
+      description:
+        example: Learn Go from scratch
+        type: string
+      name:
+        example: Go for Beginners
+        type: string
+      thumbnail:
+        example: https://cdn.example.com/thumb.jpg
+        type: string
+    required:
+    - name
+    type: object
+  models.CreateEventInput:
+    properties:
+      categories:
+        example:
+        - '[''workshop'''
+        - '''go'''
+        - '''backend'']'
+        items:
+          type: string
+        type: array
+      description:
+        example: <p><b>Join us</b> for a hands-on Go workshop.</p>
+        type: string
+      end_time:
+        example: "13:00"
+        type: string
+      event_date:
+        example: "2025-09-15"
+        type: string
+      event_manager:
+        example: uuid-of-manager
+        type: string
+      guest_access:
+        example: false
+        type: boolean
+      image_url:
+        example: https://cdn.example.com/event.jpg
+        type: string
+      mode:
+        enum:
+        - virtual
+        - in_person
+        example: virtual
+        type: string
+      name:
+        example: Go Workshop 2025
+        type: string
+      start_time:
+        example: "10:00"
+        type: string
+      status:
+        enum:
+        - published
+        - unpublished
+        example: unpublished
+        type: string
+    required:
+    - end_time
+    - event_date
+    - mode
+    - name
+    - start_time
+    - status
+    type: object
+  models.CreateSubmissionInput:
+    properties:
+      code:
+        type: string
+      language:
+        type: string
+      passed_tests:
+        type: integer
+      question_short_id:
+        type: string
+      status:
+        allOf:
+        - $ref: '#/definitions/models.SubmissionStatus'
+        enum:
+        - accepted
+        - wrong_answer
+        - runtime_error
+        - compile_error
+      total_tests:
+        type: integer
+    required:
+    - code
+    - language
+    - question_short_id
+    - status
+    type: object
+  models.Event:
+    properties:
+      categories:
+        items:
+          type: string
+        type: array
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      description:
+        type: string
+      end_time:
+        type: string
+      event_date:
+        type: string
+      event_manager_id:
+        type: string
+      event_manager_name:
+        type: string
+      guest_access:
+        type: boolean
+      id:
+        type: string
+      image_url:
+        type: string
+      is_active:
+        type: boolean
+      mode:
+        type: string
+      name:
+        type: string
+      short_id:
+        type: string
+      start_time:
+        type: string
+      status:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.Role:
+    enum:
+    - student
+    - mentor
+    - employee
+    - team_lead
+    - super_admin
+    type: string
+    x-enum-varnames:
+    - RoleStudent
+    - RoleMentor
+    - RoleEmployee
+    - RoleTeamLead
+    - RoleSuperAdmin
+  models.StarterCode:
+    additionalProperties:
+      type: string
+    type: object
+  models.Submission:
+    properties:
+      code:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      language:
+        type: string
+      passed_tests:
+        type: integer
+      question_short_id:
+        type: string
+      status:
+        $ref: '#/definitions/models.SubmissionStatus'
+      total_tests:
+        type: integer
+      user_id:
+        type: string
+    type: object
+  models.SubmissionStatus:
+    enum:
+    - accepted
+    - wrong_answer
+    - runtime_error
+    - compile_error
+    type: string
+    x-enum-varnames:
+    - SubmissionAccepted
+    - SubmissionWrongAnswer
+    - SubmissionRuntimeError
+    - SubmissionCompileError
+  models.SubmissionView:
+    properties:
+      code:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      language:
+        type: string
+      passed_tests:
+        type: integer
+      question_short_id:
+        type: string
+      question_title:
+        type: string
+      status:
+        $ref: '#/definitions/models.SubmissionStatus'
+      student_email:
+        type: string
+      student_name:
+        type: string
+      total_tests:
+        type: integer
+      user_id:
+        type: string
+    type: object
+  models.UpdateAnnouncementInput:
+    properties:
+      description:
+        example: <p>Updated description</p>
+        type: string
+      image_url:
+        example: https://cdn.example.com/new-banner.jpg
+        type: string
+      is_active:
+        example: false
+        type: boolean
+      name:
+        example: Updated Announcement Title
+        type: string
+      urgency:
+        example: medium
+        type: string
+      visibility:
+        example: existing_and_new
+        type: string
+    type: object
+  models.UpdateBatchInput:
+    properties:
+      additional_manager_id:
+        example: ""
+        type: string
+      batch_manager_id:
+        example: use GET /mentors to pick a real ID
+        type: string
+      batch_number:
+        example: BATCH-2024-002
+        type: string
+      course_short_id:
+        example: B4G83D2E
+        type: string
+      end_date:
+        example: "2024-07-01"
+        type: string
+      is_active:
+        example: false
+        type: boolean
+      module:
+        example: Module 2
+        type: string
+      start_date:
+        example: "2024-02-01"
+        type: string
+    type: object
+  models.UpdateCodingQuestionInput:
+    properties:
+      constraints:
+        items:
+          type: string
+        type: array
+      description:
+        type: string
+      difficulty:
+        type: string
+      examples:
+        items:
+          $ref: '#/definitions/models.CodingExample'
+        type: array
+      is_active:
+        type: boolean
+      languages:
+        items:
+          type: string
+        type: array
+      starter_code:
+        $ref: '#/definitions/models.StarterCode'
+      test_cases:
+        items:
+          $ref: '#/definitions/models.CodingTestCase'
+        type: array
+      title:
+        type: string
+      topics:
+        items:
+          type: string
+        type: array
+    type: object
+  models.UpdateCourseInput:
+    properties:
+      description:
+        example: Deep dive into Go internals
+        type: string
+      is_active:
+        example: false
+        type: boolean
+      name:
+        example: Go Advanced
+        type: string
+      thumbnail:
+        example: https://cdn.example.com/new-thumb.jpg
+        type: string
+    type: object
+  models.UpdateEventInput:
+    properties:
+      categories:
+        example:
+        - '[''conference'''
+        - '''go'']'
+        items:
+          type: string
+        type: array
+      description:
+        example: <p>Updated description</p>
+        type: string
+      end_time:
+        example: "12:00"
+        type: string
+      event_date:
+        example: "2025-09-20"
+        type: string
+      event_manager:
+        example: uuid-of-manager
+        type: string
+      guest_access:
+        example: true
+        type: boolean
+      image_url:
+        example: https://cdn.example.com/new.jpg
+        type: string
+      is_active:
+        example: false
+        type: boolean
+      mode:
+        example: in_person
+        type: string
+      name:
+        example: Go Workshop 2025 — Updated
+        type: string
+      start_time:
+        example: "09:00"
+        type: string
+      status:
+        example: published
+        type: string
+    type: object
+  models.UpdateUserInput:
+    properties:
+      date_of_birth:
+        example: "1998-05-20"
+        type: string
+      first_name:
+        example: John
+        type: string
+      last_name:
+        example: Doe
+        type: string
+      phone:
+        example: "+919876543210"
+        type: string
+    type: object
+  models.User:
+    properties:
+      created_at:
+        type: string
+      date_of_birth:
+        type: string
+      deleted_at:
+        type: string
+      email:
+        type: string
+      first_name:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      last_name:
+        type: string
+      phone:
+        type: string
+      role:
+        $ref: '#/definitions/models.Role'
+      updated_at:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: umangagarwal9099@gmail.com
+    name: Umang Agarwal
+  description: 'Vedex backend API. Authenticate via POST /api/v1/auth/login to get
+    a JWT, then pass it as `Authorization: Bearer <token>` on protected endpoints.'
+  title: Vedex API
+  version: "1.0"
+paths:
+  /announcements:
+    get:
+      description: 'Returns all non-deleted announcements. Use query params to filter:
+        name (partial match), urgency (low|medium|high), is_active (true|false).'
+      parameters:
+      - description: Filter by name (case-insensitive, partial match)
+        in: query
+        name: name
+        type: string
+      - description: 'Filter by urgency: low | medium | high'
+        in: query
+        name: urgency
+        type: string
+      - description: 'Filter by status: true | false'
+        in: query
+        name: is_active
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Announcement'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List announcements
+      tags:
+      - announcements
+    post:
+      consumes:
+      - application/json
+      description: Create a new announcement. Description supports rich text (HTML/Markdown).
+        Use POST /upload/image first to get the image_url.
+      parameters:
+      - description: Announcement details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateAnnouncementInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Announcement'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create announcement
+      tags:
+      - announcements
+  /announcements/{short_id}:
+    delete:
+      description: Soft-delete an announcement by its short_id (sets deleted_at; the
+        row is retained).
+      parameters:
+      - description: Announcement short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Announcement not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete announcement
+      tags:
+      - announcements
+    patch:
+      consumes:
+      - application/json
+      description: Partially update an announcement by its short_id. Send only the
+        fields you want to change.
+      parameters:
+      - description: Announcement short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Fields to update (all optional)
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateAnnouncementInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Announcement'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Announcement not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update announcement
+      tags:
+      - announcements
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: 'Single login endpoint for all roles. Returns a JWT — send it as
+        `Authorization: Bearer <token>` on protected requests.'
+      parameters:
+      - description: Email and password
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/controller.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/controller.LoginResponse'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Invalid credentials
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Login
+      tags:
+      - auth
+  /auth/register:
+    post:
+      consumes:
+      - application/json
+      description: Register a new user. A unique user ID is generated automatically
+        and returned in the response.
+      parameters:
+      - description: Registration payload
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/controller.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/controller.RegisterResponse'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Email already registered
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Register
+      tags:
+      - auth
+  /batches:
+    get:
+      description: Returns all non-deleted batches with full course and manager details.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Batch'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List batches
+      tags:
+      - batches
+    post:
+      consumes:
+      - application/json
+      description: Create a new batch. Restricted to super_admin. A short unique ID
+        is generated automatically. Provide course_short_id to link to a course.
+      parameters:
+      - description: Batch details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateBatchInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Batch'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create batch
+      tags:
+      - batches
+  /batches/{short_id}:
+    delete:
+      description: Soft-delete a batch by its short_id.
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Batch not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete batch
+      tags:
+      - batches
+    patch:
+      consumes:
+      - application/json
+      description: Partially update a batch by its short_id. Send only the fields
+        you want to change. Use is_active to activate or deactivate. Set additional_manager_id
+        to "" to clear it.
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Fields to update (all optional)
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateBatchInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Batch'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Batch not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update batch
+      tags:
+      - batches
+  /batches/filter:
+    get:
+      description: Filter non-deleted batches by any combination of fields. All query
+        params are optional.
+      parameters:
+      - description: Partial batch number
+        in: query
+        name: batch_number
+        type: string
+      - description: Exact course short ID
+        in: query
+        name: course_short_id
+        type: string
+      - description: Exact batch manager user ID (UUID)
+        in: query
+        name: batch_manager_id
+        type: string
+      - description: Partial module name
+        in: query
+        name: module
+        type: string
+      - description: Exact start date (YYYY-MM-DD)
+        in: query
+        name: start_date
+        type: string
+      - description: Exact end date (YYYY-MM-DD)
+        in: query
+        name: end_date
+        type: string
+      - description: true or false
+        in: query
+        name: is_active
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Batch'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Filter batches
+      tags:
+      - batches
+  /coding-questions:
+    get:
+      description: Returns all active, non-deleted coding questions ordered by creation
+        date.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.CodingQuestion'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List coding questions (student view)
+      tags:
+      - coding-questions
+    post:
+      consumes:
+      - application/json
+      description: Create a new coding practice question. Restricted to super_admin.
+      parameters:
+      - description: Question details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateCodingQuestionInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.CodingQuestion'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create coding question
+      tags:
+      - coding-questions
+  /coding-questions/{short_id}:
+    delete:
+      description: Soft-delete a coding question by its short_id.
+      parameters:
+      - description: Question short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Question not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete coding question
+      tags:
+      - coding-questions
+    get:
+      description: Returns a single active coding question by its short_id.
+      parameters:
+      - description: Question short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.CodingQuestion'
+        "404":
+          description: Question not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get coding question by short_id
+      tags:
+      - coding-questions
+    patch:
+      consumes:
+      - application/json
+      description: Partially update a coding question by its short_id.
+      parameters:
+      - description: Question short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateCodingQuestionInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.CodingQuestion'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Question not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update coding question
+      tags:
+      - coding-questions
+  /coding-questions/admin:
+    get:
+      description: Returns all non-deleted coding questions including inactive ones.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.CodingQuestion'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List all coding questions (admin view)
+      tags:
+      - coding-questions
+  /courses:
+    get:
+      description: Returns all active and inactive non-deleted courses.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Course'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List courses
+      tags:
+      - courses
+    post:
+      consumes:
+      - application/json
+      description: Create a new course. Restricted to super_admin role. A short unique
+        ID is generated automatically.
+      parameters:
+      - description: Course details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateCourseInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Course'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create course
+      tags:
+      - courses
+  /courses/{short_id}:
+    delete:
+      description: Soft-delete a course by its short_id (sets deleted_at; the row
+        is retained).
+      parameters:
+      - description: Course short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Course not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete course
+      tags:
+      - courses
+    patch:
+      consumes:
+      - application/json
+      description: Partially update a course by its short_id. Send only the fields
+        you want to change. Use is_active to activate or deactivate.
+      parameters:
+      - description: Course short ID (e.g. A3F72C1D)
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Fields to update (all optional)
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateCourseInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Course'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Course not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update course
+      tags:
+      - courses
+  /courses/search:
+    get:
+      description: Search non-deleted courses by name or description. Pass the search
+        term as query param `q`.
+      parameters:
+      - description: Search term
+        in: query
+        name: q
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Course'
+            type: array
+        "400":
+          description: Missing query param
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Search courses
+      tags:
+      - courses
+  /events:
+    get:
+      description: Returns all non-deleted events ordered newest first. Use query
+        params `name` and `status` to filter results.
+      parameters:
+      - description: Filter by event name (case-insensitive, partial match)
+        in: query
+        name: name
+        type: string
+      - description: 'Filter by status: published | unpublished'
+        in: query
+        name: status
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Event'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List events
+      tags:
+      - events
+    post:
+      consumes:
+      - application/json
+      description: Create a new event. The image_url should be the URL returned after
+        uploading to storage. Description supports rich text (HTML/Markdown).
+      parameters:
+      - description: Event details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateEventInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Event'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create event
+      tags:
+      - events
+  /events/{short_id}:
+    delete:
+      description: Soft-delete an event by its short_id (sets deleted_at; the row
+        is retained).
+      parameters:
+      - description: Event short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Event not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete event
+      tags:
+      - events
+    patch:
+      consumes:
+      - application/json
+      description: Partially update an event by its short_id. Send only the fields
+        you want to change.
+      parameters:
+      - description: Event short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Fields to update (all optional)
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateEventInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Event'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Event not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update event
+      tags:
+      - events
+  /health:
+    get:
+      description: Returns server health status
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/controller.HealthResponse'
+      summary: Health check
+      tags:
+      - system
+  /mentors:
+    get:
+      description: Returns all active mentors. Use this to populate the batch manager
+        dropdown.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.User'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List mentors
+      tags:
+      - users
+  /submissions:
+    post:
+      consumes:
+      - application/json
+      description: Save a code submission for the authenticated user against a coding
+        question.
+      parameters:
+      - description: Submission payload
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateSubmissionInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Submission'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Submit code solution
+      tags:
+      - submissions
+  /submissions/admin:
+    get:
+      description: Returns every submission with student name, email, and question
+        title.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.SubmissionView'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List all submissions (admin/mentor)
+      tags:
+      - submissions
+  /submissions/me:
+    get:
+      description: Returns all submissions made by the authenticated user across all
+        questions.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Submission'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get current user's submissions
+      tags:
+      - submissions
+  /submissions/question/{short_id}:
+    get:
+      description: Returns all submissions by the authenticated user for the given
+        coding question short_id.
+      parameters:
+      - description: Question short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Submission'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get current user's submissions for a specific question
+      tags:
+      - submissions
+  /submissions/user/{user_id}:
+    get:
+      description: Returns all submissions for the given user UUID, including question
+        title and user details.
+      parameters:
+      - description: User ID (UUID)
+        in: path
+        name: user_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.SubmissionView'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List submissions for a specific user (admin/mentor)
+      tags:
+      - submissions
+  /upload/image:
+    post:
+      consumes:
+      - multipart/form-data
+      description: 'Upload an image from a device file picker or camera capture. Returns
+        the public URL to use in create/update event. Max size 10 MB. Allowed types:
+        JPEG, PNG, WebP, GIF.'
+      parameters:
+      - description: Image file
+        in: formData
+        name: image
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'url: public URL of the uploaded image'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Upload failed
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Upload event image
+      tags:
+      - upload
+  /users:
+    get:
+      description: Returns all active (non-deleted) users.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.User'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List users
+      tags:
+      - users
+  /users/{id}:
+    delete:
+      description: Soft-delete a user by ID (sets deleted_at; the row is retained
+        in the database).
+      parameters:
+      - description: User ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: User not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete user
+      tags:
+      - users
+    patch:
+      consumes:
+      - application/json
+      description: Partially update a user — send only the fields you want to change
+        (first_name, last_name, phone, date_of_birth).
+      parameters:
+      - description: User ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Fields to update (all optional)
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateUserInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.User'
+        "400":
+          description: No fields provided / validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: User not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update user
+      tags:
+      - users
+  /users/{id}/role:
+    patch:
+      consumes:
+      - application/json
+      description: Promotes or changes a user's role. Only super_admin can call this.
+        The old role-specific profile is deleted and a new one is created.
+      parameters:
+      - description: User ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: New role
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/controller.ChangeRoleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.User'
+        "400":
+          description: Invalid role
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: User not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Change user role
+      tags:
+      - users
+  /users/deleted:
+    get:
+      description: Returns all soft-deleted users (where deleted_at is set).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.User'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List deleted users
+      tags:
+      - users
+  /users/search:
+    get:
+      description: Search active users by name (first, last, or full), email, phone,
+        or user ID. Pass the term as query param `q`.
+      parameters:
+      - description: Search term
+        in: query
+        name: q
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.User'
+            type: array
+        "400":
+          description: Missing query param
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Search users
+      tags:
+      - users
+schemes:
+- http
+- https
+securityDefinitions:
+  BearerAuth:
+    description: 'Format: `Bearer <token>`'
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

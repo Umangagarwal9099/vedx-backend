@@ -1,0 +1,25 @@
+# Config (contains credentials — never commit)
+config/config.yaml
+.env
+
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/bin/
+/tmp/
+
+# Go build artifacts
+*.test
+*.out
+vendor/
+
+# Swagger docs are committed so Render can build without installing swag
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
