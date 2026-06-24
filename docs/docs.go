@@ -1484,6 +1484,529 @@ const docTemplate = `{
                 }
             }
         },
+        "/feedback-forms": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns all non-deleted feedback forms ordered newest first.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "feedback-forms"
+                ],
+                "summary": "List feedback forms",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.FeedbackForm"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Step 1 + 2: pick a form_type and a template. No title or description needed — the title is auto-generated from the template. Valid combos: session_feedback → blank_form | trainer_performance | course_content | overall_satisfaction; link_to_course → blank_form | content_rating | csat | course_rating; general_survey → blank_form only. Restricted to super_admin, mentor, and team_lead.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "feedback-forms"
+                ],
+                "summary": "Create feedback form",
+                "parameters": [
+                    {
+                        "description": "form_type + template only",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateFeedbackFormInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.FeedbackForm"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error or invalid form_type/template combo",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/feedback-forms/{short_id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns a single non-deleted feedback form along with all its questions ordered by order_index.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "feedback-forms"
+                ],
+                "summary": "Get feedback form with questions",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Form short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.FeedbackFormWithQuestions"
+                        }
+                    },
+                    "404": {
+                        "description": "Form not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Soft-delete a feedback form by its short_id (sets deleted_at; the row is retained). Restricted to super_admin, mentor, and team_lead.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "feedback-forms"
+                ],
+                "summary": "Delete feedback form",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Form short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Form not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Partially update a feedback form by its short_id. Send only the fields you want to change. Use is_active: false to disable the form and is_active: true to re-enable it. Restricted to super_admin, mentor, and team_lead.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "feedback-forms"
+                ],
+                "summary": "Update feedback form",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Form short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to update (all optional)",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateFeedbackFormInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.FeedbackForm"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Form not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/feedback-forms/{short_id}/questions": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Add a new question to an existing feedback form. Supported types: session_rating, trainer_rating, single_choice, multiple_choice, star_rating, linear_scale, date, number, short_answer, long_answer. For scale types supply scale_min/scale_max and optional start_label/end_label. For choice types supply options[]. Restricted to super_admin, mentor, and team_lead.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "feedback-forms"
+                ],
+                "summary": "Add question to form",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Form short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Question details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateFeedbackFormQuestionInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.FeedbackFormQuestion"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Form not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/feedback-forms/{short_id}/questions/{q_short_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Permanently remove a question from a feedback form. Restricted to super_admin, mentor, and team_lead.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "feedback-forms"
+                ],
+                "summary": "Delete a question",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Form short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Question short ID",
+                        "name": "q_short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Form or question not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Partially update a question in a feedback form. Send only the fields you want to change. To clear the options array send \"options\": []. To clear scale labels send \"start_label\": \"\" or \"end_label\": \"\". Restricted to super_admin, mentor, and team_lead.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "feedback-forms"
+                ],
+                "summary": "Update a question",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Form short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Question short ID",
+                        "name": "q_short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to update (all optional)",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateFeedbackFormQuestionInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.FeedbackFormQuestion"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Form or question not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/health": {
             "get": {
                 "description": "Returns server health status",
@@ -2722,6 +3245,101 @@ const docTemplate = `{
                 }
             }
         },
+        "models.CreateFeedbackFormInput": {
+            "type": "object",
+            "required": [
+                "form_type",
+                "template"
+            ],
+            "properties": {
+                "form_type": {
+                    "type": "string",
+                    "enum": [
+                        "session_feedback",
+                        "link_to_course",
+                        "general_survey"
+                    ],
+                    "example": "session_feedback"
+                },
+                "template": {
+                    "type": "string",
+                    "enum": [
+                        "blank_form",
+                        "trainer_performance",
+                        "course_content",
+                        "overall_satisfaction",
+                        "content_rating",
+                        "csat",
+                        "course_rating"
+                    ],
+                    "example": "trainer_performance"
+                }
+            }
+        },
+        "models.CreateFeedbackFormQuestionInput": {
+            "type": "object",
+            "required": [
+                "question_text",
+                "question_type"
+            ],
+            "properties": {
+                "end_label": {
+                    "type": "string",
+                    "example": "Excellent"
+                },
+                "is_required": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "options": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "Option A",
+                        "Option B",
+                        "Option C"
+                    ]
+                },
+                "order_index": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "question_text": {
+                    "type": "string",
+                    "example": "Rate the trainer's performance"
+                },
+                "question_type": {
+                    "type": "string",
+                    "enum": [
+                        "session_rating",
+                        "trainer_rating",
+                        "single_choice",
+                        "multiple_choice",
+                        "star_rating",
+                        "linear_scale",
+                        "date",
+                        "number",
+                        "short_answer",
+                        "long_answer"
+                    ],
+                    "example": "star_rating"
+                },
+                "scale_max": {
+                    "type": "integer",
+                    "example": 5
+                },
+                "scale_min": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "start_label": {
+                    "type": "string",
+                    "example": "Poor"
+                }
+            }
+        },
         "models.CreateSubmissionInput": {
             "type": "object",
             "required": [
@@ -2819,6 +3437,138 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "status": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.FeedbackForm": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "form_type": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_active": {
+                    "type": "boolean"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "template": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.FeedbackFormQuestion": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "end_label": {
+                    "type": "string"
+                },
+                "form_id": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_required": {
+                    "type": "boolean"
+                },
+                "options": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "order_index": {
+                    "type": "integer"
+                },
+                "question_text": {
+                    "type": "string"
+                },
+                "question_type": {
+                    "type": "string"
+                },
+                "scale_max": {
+                    "type": "integer"
+                },
+                "scale_min": {
+                    "type": "integer"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "start_label": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.FeedbackFormWithQuestions": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "form_type": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_active": {
+                    "type": "boolean"
+                },
+                "questions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.FeedbackFormQuestion"
+                    }
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "template": {
+                    "type": "string"
+                },
+                "title": {
                     "type": "string"
                 },
                 "updated_at": {
@@ -3130,6 +3880,67 @@ const docTemplate = `{
                 "status": {
                     "type": "string",
                     "example": "published"
+                }
+            }
+        },
+        "models.UpdateFeedbackFormInput": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "example": "Optional description"
+                },
+                "is_active": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "title": {
+                    "type": "string",
+                    "example": "Custom Form Title"
+                }
+            }
+        },
+        "models.UpdateFeedbackFormQuestionInput": {
+            "type": "object",
+            "properties": {
+                "end_label": {
+                    "type": "string",
+                    "example": "High"
+                },
+                "is_required": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "options": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "A",
+                        "B",
+                        "C"
+                    ]
+                },
+                "order_index": {
+                    "type": "integer",
+                    "example": 2
+                },
+                "question_text": {
+                    "type": "string",
+                    "example": "Updated question text"
+                },
+                "scale_max": {
+                    "type": "integer",
+                    "example": 10
+                },
+                "scale_min": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "start_label": {
+                    "type": "string",
+                    "example": "Low"
                 }
             }
         },

@@ -29,6 +29,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	announcementRepo     := repository.NewAnnouncementRepository(pool)
 	codingQuestionRepo   := repository.NewCodingQuestionRepository(pool)
 	submissionRepo       := repository.NewSubmissionRepository(pool)
+	feedbackFormRepo     := repository.NewFeedbackFormRepository(pool)
 
 	// Services
 	storageSvc := service.NewStorageService(cfg.Storage)
@@ -43,6 +44,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	uploadCtrl           := controller.NewUploadController(storageSvc)
 	codingQuestionCtrl   := controller.NewCodingQuestionController(codingQuestionRepo)
 	submissionCtrl       := controller.NewSubmissionController(submissionRepo)
+	feedbackFormCtrl     := controller.NewFeedbackFormController(feedbackFormRepo)
 
 	v1 := r.Group("/api/v1")
 	{
@@ -128,6 +130,21 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				// Admin/mentor — see all students' submissions
 				subs.GET("/admin",               submissionCtrl.GetAllAdmin)
 				subs.GET("/user/:user_id",        submissionCtrl.GetByUserAdmin)
+			}
+
+			// Feedback Forms
+			ffAuth := middleware.RequireRole(models.RoleSuperAdmin, models.RoleMentor, models.RoleTeamLead)
+			ff := protected.Group("/feedback-forms")
+			{
+				ff.POST("",              ffAuth, feedbackFormCtrl.Create)
+				ff.GET("",              feedbackFormCtrl.GetAll)
+				ff.GET("/:short_id",   feedbackFormCtrl.GetByShortID)
+				ff.PATCH("/:short_id", ffAuth, feedbackFormCtrl.Update)
+				ff.DELETE("/:short_id",ffAuth, feedbackFormCtrl.Delete)
+
+				ff.POST("/:short_id/questions",                ffAuth, feedbackFormCtrl.AddQuestion)
+				ff.PATCH("/:short_id/questions/:q_short_id",  ffAuth, feedbackFormCtrl.UpdateQuestion)
+				ff.DELETE("/:short_id/questions/:q_short_id", ffAuth, feedbackFormCtrl.DeleteQuestion)
 			}
 
 			// Upload

@@ -403,6 +403,79 @@ definitions:
     - start_time
     - status
     type: object
+  models.CreateFeedbackFormInput:
+    properties:
+      form_type:
+        enum:
+        - session_feedback
+        - link_to_course
+        - general_survey
+        example: session_feedback
+        type: string
+      template:
+        enum:
+        - blank_form
+        - trainer_performance
+        - course_content
+        - overall_satisfaction
+        - content_rating
+        - csat
+        - course_rating
+        example: trainer_performance
+        type: string
+    required:
+    - form_type
+    - template
+    type: object
+  models.CreateFeedbackFormQuestionInput:
+    properties:
+      end_label:
+        example: Excellent
+        type: string
+      is_required:
+        example: true
+        type: boolean
+      options:
+        example:
+        - Option A
+        - Option B
+        - Option C
+        items:
+          type: string
+        type: array
+      order_index:
+        example: 1
+        type: integer
+      question_text:
+        example: Rate the trainer's performance
+        type: string
+      question_type:
+        enum:
+        - session_rating
+        - trainer_rating
+        - single_choice
+        - multiple_choice
+        - star_rating
+        - linear_scale
+        - date
+        - number
+        - short_answer
+        - long_answer
+        example: star_rating
+        type: string
+      scale_max:
+        example: 5
+        type: integer
+      scale_min:
+        example: 1
+        type: integer
+      start_label:
+        example: Poor
+        type: string
+    required:
+    - question_text
+    - question_type
+    type: object
   models.CreateSubmissionInput:
     properties:
       code:
@@ -468,6 +541,93 @@ definitions:
       start_time:
         type: string
       status:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.FeedbackForm:
+    properties:
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      description:
+        type: string
+      form_type:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      short_id:
+        type: string
+      template:
+        type: string
+      title:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.FeedbackFormQuestion:
+    properties:
+      created_at:
+        type: string
+      end_label:
+        type: string
+      form_id:
+        type: string
+      id:
+        type: string
+      is_required:
+        type: boolean
+      options:
+        items:
+          type: string
+        type: array
+      order_index:
+        type: integer
+      question_text:
+        type: string
+      question_type:
+        type: string
+      scale_max:
+        type: integer
+      scale_min:
+        type: integer
+      short_id:
+        type: string
+      start_label:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.FeedbackFormWithQuestions:
+    properties:
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      description:
+        type: string
+      form_type:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      questions:
+        items:
+          $ref: '#/definitions/models.FeedbackFormQuestion'
+        type: array
+      short_id:
+        type: string
+      template:
+        type: string
+      title:
         type: string
       updated_at:
         type: string
@@ -687,6 +847,50 @@ definitions:
         type: string
       status:
         example: published
+        type: string
+    type: object
+  models.UpdateFeedbackFormInput:
+    properties:
+      description:
+        example: Optional description
+        type: string
+      is_active:
+        example: false
+        type: boolean
+      title:
+        example: Custom Form Title
+        type: string
+    type: object
+  models.UpdateFeedbackFormQuestionInput:
+    properties:
+      end_label:
+        example: High
+        type: string
+      is_required:
+        example: false
+        type: boolean
+      options:
+        example:
+        - A
+        - B
+        - C
+        items:
+          type: string
+        type: array
+      order_index:
+        example: 2
+        type: integer
+      question_text:
+        example: Updated question text
+        type: string
+      scale_max:
+        example: 10
+        type: integer
+      scale_min:
+        example: 1
+        type: integer
+      start_label:
+        example: Low
         type: string
     type: object
   models.UpdateUserInput:
@@ -1695,6 +1899,359 @@ paths:
       summary: Update event
       tags:
       - events
+  /feedback-forms:
+    get:
+      description: Returns all non-deleted feedback forms ordered newest first.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.FeedbackForm'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List feedback forms
+      tags:
+      - feedback-forms
+    post:
+      consumes:
+      - application/json
+      description: 'Step 1 + 2: pick a form_type and a template. No title or description
+        needed — the title is auto-generated from the template. Valid combos: session_feedback
+        → blank_form | trainer_performance | course_content | overall_satisfaction;
+        link_to_course → blank_form | content_rating | csat | course_rating; general_survey
+        → blank_form only. Restricted to super_admin, mentor, and team_lead.'
+      parameters:
+      - description: form_type + template only
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateFeedbackFormInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.FeedbackForm'
+        "400":
+          description: Validation error or invalid form_type/template combo
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create feedback form
+      tags:
+      - feedback-forms
+  /feedback-forms/{short_id}:
+    delete:
+      description: Soft-delete a feedback form by its short_id (sets deleted_at; the
+        row is retained). Restricted to super_admin, mentor, and team_lead.
+      parameters:
+      - description: Form short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Form not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete feedback form
+      tags:
+      - feedback-forms
+    get:
+      description: Returns a single non-deleted feedback form along with all its questions
+        ordered by order_index.
+      parameters:
+      - description: Form short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.FeedbackFormWithQuestions'
+        "404":
+          description: Form not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get feedback form with questions
+      tags:
+      - feedback-forms
+    patch:
+      consumes:
+      - application/json
+      description: 'Partially update a feedback form by its short_id. Send only the
+        fields you want to change. Use is_active: false to disable the form and is_active:
+        true to re-enable it. Restricted to super_admin, mentor, and team_lead.'
+      parameters:
+      - description: Form short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Fields to update (all optional)
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateFeedbackFormInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.FeedbackForm'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Form not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update feedback form
+      tags:
+      - feedback-forms
+  /feedback-forms/{short_id}/questions:
+    post:
+      consumes:
+      - application/json
+      description: 'Add a new question to an existing feedback form. Supported types:
+        session_rating, trainer_rating, single_choice, multiple_choice, star_rating,
+        linear_scale, date, number, short_answer, long_answer. For scale types supply
+        scale_min/scale_max and optional start_label/end_label. For choice types supply
+        options[]. Restricted to super_admin, mentor, and team_lead.'
+      parameters:
+      - description: Form short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Question details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateFeedbackFormQuestionInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.FeedbackFormQuestion'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Form not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Add question to form
+      tags:
+      - feedback-forms
+  /feedback-forms/{short_id}/questions/{q_short_id}:
+    delete:
+      description: Permanently remove a question from a feedback form. Restricted
+        to super_admin, mentor, and team_lead.
+      parameters:
+      - description: Form short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Question short ID
+        in: path
+        name: q_short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Form or question not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete a question
+      tags:
+      - feedback-forms
+    patch:
+      consumes:
+      - application/json
+      description: 'Partially update a question in a feedback form. Send only the
+        fields you want to change. To clear the options array send "options": [].
+        To clear scale labels send "start_label": "" or "end_label": "". Restricted
+        to super_admin, mentor, and team_lead.'
+      parameters:
+      - description: Form short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Question short ID
+        in: path
+        name: q_short_id
+        required: true
+        type: string
+      - description: Fields to update (all optional)
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateFeedbackFormQuestionInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.FeedbackFormQuestion'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Form or question not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update a question
+      tags:
+      - feedback-forms
   /health:
     get:
       description: Returns server health status
