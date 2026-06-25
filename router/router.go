@@ -30,6 +30,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	codingQuestionRepo   := repository.NewCodingQuestionRepository(pool)
 	submissionRepo       := repository.NewSubmissionRepository(pool)
 	feedbackFormRepo     := repository.NewFeedbackFormRepository(pool)
+	moduleRepo           := repository.NewModuleRepository(pool)
 
 	// Services
 	storageSvc := service.NewStorageService(cfg.Storage)
@@ -45,6 +46,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	codingQuestionCtrl   := controller.NewCodingQuestionController(codingQuestionRepo)
 	submissionCtrl       := controller.NewSubmissionController(submissionRepo)
 	feedbackFormCtrl     := controller.NewFeedbackFormController(feedbackFormRepo)
+	moduleCtrl           := controller.NewModuleController(moduleRepo)
 
 	v1 := r.Group("/api/v1")
 	{
@@ -136,6 +138,28 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				subs.GET("/user/:user_id",        submissionCtrl.GetByUserAdmin)
 			}
 
+			// Modules — only super_admin / team_lead may create, edit, or delete
+			modules := protected.Group("/modules")
+			{
+				modules.POST("",             adminOrAbove, moduleCtrl.Create)
+				modules.GET("",              moduleCtrl.GetAll)
+				modules.GET("/filter",       moduleCtrl.Filter)
+				modules.PATCH("/:short_id",  adminOrAbove, moduleCtrl.Update)
+				modules.DELETE("/:short_id", adminOrAbove, moduleCtrl.Delete)
+
+				// Sections — nested under a module
+				modules.POST("/:short_id/sections",                          adminOrAbove, moduleCtrl.AddSection)
+				modules.GET("/:short_id/sections",                           moduleCtrl.GetSections)
+				modules.PATCH("/:short_id/sections/:section_short_id",       adminOrAbove, moduleCtrl.UpdateSection)
+				modules.DELETE("/:short_id/sections/:section_short_id",      adminOrAbove, moduleCtrl.DeleteSection)
+
+				// Materials — nested under a section
+				modules.POST("/:short_id/sections/:section_short_id/materials",                              adminOrAbove, moduleCtrl.AddMaterial)
+				modules.GET("/:short_id/sections/:section_short_id/materials",                               moduleCtrl.GetMaterials)
+				modules.PATCH("/:short_id/sections/:section_short_id/materials/:material_short_id",          adminOrAbove, moduleCtrl.UpdateMaterial)
+				modules.DELETE("/:short_id/sections/:section_short_id/materials/:material_short_id",         adminOrAbove, moduleCtrl.DeleteMaterial)
+			}
+
 			// Feedback Forms
 			ffAuth := middleware.RequireRole(models.RoleSuperAdmin, models.RoleMentor, models.RoleTeamLead)
 			ff := protected.Group("/feedback-forms")
@@ -154,7 +178,8 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			}
 
 			// Upload
-			protected.POST("/upload/image", uploadCtrl.UploadEventImage)
+			protected.POST("/upload/image",    uploadCtrl.UploadEventImage)
+			protected.POST("/upload/material", uploadCtrl.UploadMaterial)
 		}
 	}
 

@@ -113,6 +113,21 @@ definitions:
       visibility:
         type: string
     type: object
+  models.AnswerInput:
+    properties:
+      array:
+        items:
+          type: string
+        type: array
+      number:
+        type: number
+      question_short_id:
+        type: string
+      text:
+        type: string
+    required:
+    - question_short_id
+    type: object
   models.Batch:
     properties:
       additional_manager_id:
@@ -476,6 +491,95 @@ definitions:
     - question_text
     - question_type
     type: object
+  models.CreateMaterialInput:
+    properties:
+      allow_access_on:
+        enum:
+        - both
+        - app
+        example: both
+        type: string
+      enable_downloads:
+        example: true
+        type: boolean
+      file_url:
+        example: https://example.com/video.mp4
+        type: string
+      is_prerequisite:
+        example: false
+        type: boolean
+      material_name:
+        example: Intro Video
+        type: string
+      material_type:
+        allOf:
+        - $ref: '#/definitions/models.MaterialType'
+        enum:
+        - link
+        - image
+        - video
+        - pdf
+        - audio
+        - doc
+        - sheet
+        - file
+        - zip
+        - slide
+        - assignment
+        - form
+        - exercise
+        example: video
+      max_views:
+        enum:
+        - unlimited
+        - limited
+        example: unlimited
+        type: string
+      max_views_count:
+        example: 5
+        type: integer
+    required:
+    - allow_access_on
+    - material_name
+    - material_type
+    - max_views
+    type: object
+  models.CreateModuleInput:
+    properties:
+      max_view_duration:
+        enum:
+        - unlimited
+        - restricted
+        example: restricted
+        type: string
+      module_branch:
+        example: Computer Science
+        type: string
+      module_name:
+        example: Introduction to Go
+        type: string
+      watch_time_minutes:
+        example: 120
+        type: integer
+    required:
+    - max_view_duration
+    - module_branch
+    - module_name
+    type: object
+  models.CreateModuleSectionInput:
+    properties:
+      is_prerequisite:
+        example: false
+        type: boolean
+      section_name:
+        example: Introduction
+        type: string
+      short_description:
+        example: Overview of the section
+        type: string
+    required:
+    - section_name
+    type: object
   models.CreateSubmissionInput:
     properties:
       code:
@@ -603,6 +707,19 @@ definitions:
       updated_at:
         type: string
     type: object
+  models.FeedbackFormResponse:
+    properties:
+      form_id:
+        type: string
+      id:
+        type: string
+      short_id:
+        type: string
+      submitted_at:
+        type: string
+      submitted_by:
+        type: string
+    type: object
   models.FeedbackFormWithQuestions:
     properties:
       created_at:
@@ -632,6 +749,87 @@ definitions:
       updated_at:
         type: string
     type: object
+  models.MaterialType:
+    enum:
+    - link
+    - image
+    - video
+    - pdf
+    - audio
+    - doc
+    - sheet
+    - file
+    - zip
+    - slide
+    - assignment
+    - form
+    - exercise
+    type: string
+    x-enum-varnames:
+    - MaterialTypeLink
+    - MaterialTypeImage
+    - MaterialTypeVideo
+    - MaterialTypePDF
+    - MaterialTypeAudio
+    - MaterialTypeDoc
+    - MaterialTypeSheet
+    - MaterialTypeFile
+    - MaterialTypeZip
+    - MaterialTypeSlide
+    - MaterialTypeAssignment
+    - MaterialTypeForm
+    - MaterialTypeExercise
+  models.Module:
+    properties:
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      max_view_duration:
+        description: '"unlimited" | "restricted"'
+        type: string
+      module_branch:
+        type: string
+      module_name:
+        type: string
+      short_id:
+        type: string
+      updated_at:
+        type: string
+      watch_time_minutes:
+        type: integer
+    type: object
+  models.ModuleSection:
+    properties:
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      is_prerequisite:
+        type: boolean
+      module_id:
+        type: string
+      section_name:
+        type: string
+      short_description:
+        type: string
+      short_id:
+        type: string
+      updated_at:
+        type: string
+    type: object
   models.Role:
     enum:
     - student
@@ -646,6 +844,41 @@ definitions:
     - RoleEmployee
     - RoleTeamLead
     - RoleSuperAdmin
+  models.SectionMaterial:
+    properties:
+      allow_access_on:
+        type: string
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      enable_downloads:
+        type: boolean
+      file_url:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      is_prerequisite:
+        type: boolean
+      material_name:
+        type: string
+      material_type:
+        $ref: '#/definitions/models.MaterialType'
+      max_views:
+        type: string
+      max_views_count:
+        type: integer
+      section_id:
+        type: string
+      short_id:
+        type: string
+      updated_at:
+        type: string
+    type: object
   models.StarterCode:
     additionalProperties:
       type: string
@@ -709,6 +942,16 @@ definitions:
         type: integer
       user_id:
         type: string
+    type: object
+  models.SubmitFeedbackFormInput:
+    properties:
+      answers:
+        items:
+          $ref: '#/definitions/models.AnswerInput'
+        minItems: 1
+        type: array
+    required:
+    - answers
     type: object
   models.UpdateAnnouncementInput:
     properties:
@@ -891,6 +1134,70 @@ definitions:
         type: integer
       start_label:
         example: Low
+        type: string
+    type: object
+  models.UpdateMaterialInput:
+    properties:
+      allow_access_on:
+        example: app
+        type: string
+      enable_downloads:
+        example: false
+        type: boolean
+      file_url:
+        example: https://example.com/updated.pdf
+        type: string
+      is_active:
+        example: false
+        type: boolean
+      is_prerequisite:
+        example: true
+        type: boolean
+      material_name:
+        example: Updated Intro Video
+        type: string
+      material_type:
+        allOf:
+        - $ref: '#/definitions/models.MaterialType'
+        example: pdf
+      max_views:
+        example: limited
+        type: string
+      max_views_count:
+        example: 10
+        type: integer
+    type: object
+  models.UpdateModuleInput:
+    properties:
+      is_active:
+        example: false
+        type: boolean
+      max_view_duration:
+        example: unlimited
+        type: string
+      module_branch:
+        example: Software Engineering
+        type: string
+      module_name:
+        example: Advanced Go
+        type: string
+      watch_time_minutes:
+        example: 180
+        type: integer
+    type: object
+  models.UpdateModuleSectionInput:
+    properties:
+      is_active:
+        example: false
+        type: boolean
+      is_prerequisite:
+        example: true
+        type: boolean
+      section_name:
+        example: Advanced Topics
+        type: string
+      short_description:
+        example: Deep dive into the topic
         type: string
     type: object
   models.UpdateUserInput:
@@ -2252,6 +2559,56 @@ paths:
       summary: Update a question
       tags:
       - feedback-forms
+  /feedback-forms/{short_id}/responses:
+    post:
+      consumes:
+      - application/json
+      description: Student submits answers to an active feedback form. Each answer
+        must reference a question_short_id belonging to this form. For text questions
+        supply "text", for numeric (star/scale/number) supply "number", for choice
+        questions supply "array".
+      parameters:
+      - description: Form short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Answers array
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.SubmitFeedbackFormInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.FeedbackFormResponse'
+        "400":
+          description: Validation error or question not found in form
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Form not found or not active
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Submit feedback form response
+      tags:
+      - feedback-forms
   /health:
     get:
       description: Returns server health status
@@ -2289,6 +2646,600 @@ paths:
       summary: List mentors
       tags:
       - users
+  /modules:
+    get:
+      description: Returns all non-deleted modules ordered newest first.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Module'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List modules
+      tags:
+      - modules
+    post:
+      consumes:
+      - application/json
+      description: Create a new module. Set max_view_duration to "unlimited" or "restricted".
+        When "restricted", watch_time_minutes is required and defines the maximum
+        minutes a student may view content. watch_time_minutes is ignored when max_view_duration
+        is "unlimited".
+      parameters:
+      - description: Module details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateModuleInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Module'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create module
+      tags:
+      - modules
+  /modules/{short_id}:
+    delete:
+      description: Soft-delete a module by its short_id.
+      parameters:
+      - description: Module short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Module not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete module
+      tags:
+      - modules
+    patch:
+      consumes:
+      - application/json
+      description: Partially update a module by its short_id. Send only the fields
+        you want to change. Switching max_view_duration to "unlimited" automatically
+        clears watch_time_minutes.
+      parameters:
+      - description: Module short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Fields to update (all optional)
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateModuleInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Module'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Module not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update module
+      tags:
+      - modules
+  /modules/{short_id}/sections:
+    get:
+      description: Returns all non-deleted sections for the given module ordered by
+        creation time.
+      parameters:
+      - description: Module short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.ModuleSection'
+            type: array
+        "404":
+          description: Module not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get sections of a module
+      tags:
+      - modules
+    post:
+      consumes:
+      - application/json
+      description: Add a new section to an existing module. Set is_prerequisite to
+        true if students must complete this section before accessing the rest of the
+        module.
+      parameters:
+      - description: Module short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Section details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateModuleSectionInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.ModuleSection'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Module not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Add section to module
+      tags:
+      - modules
+  /modules/{short_id}/sections/{section_short_id}:
+    delete:
+      description: Soft-delete a section from a module.
+      parameters:
+      - description: Module short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Section short ID
+        in: path
+        name: section_short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Module or section not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete a section
+      tags:
+      - modules
+    patch:
+      consumes:
+      - application/json
+      description: Partially update a section within a module. Send only the fields
+        you want to change.
+      parameters:
+      - description: Module short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Section short ID
+        in: path
+        name: section_short_id
+        required: true
+        type: string
+      - description: Fields to update (all optional)
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateModuleSectionInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ModuleSection'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Module or section not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update a section
+      tags:
+      - modules
+  /modules/{short_id}/sections/{section_short_id}/materials:
+    get:
+      description: Returns all active materials for the given section, ordered by
+        creation date.
+      parameters:
+      - description: Module short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Section short ID
+        in: path
+        name: section_short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.SectionMaterial'
+            type: array
+        "404":
+          description: Section not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List materials in a section
+      tags:
+      - modules
+    post:
+      consumes:
+      - application/json
+      description: Create a new material inside a section. For file-based materials
+        (video, pdf, image, etc.), first upload the file via POST /upload/material
+        to get a URL, then pass it as file_url. For link type, pass the external URL
+        directly as file_url. max_views must be "unlimited" or "limited"; if "limited",
+        max_views_count is required. allow_access_on must be "both" or "app".
+      parameters:
+      - description: Module short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Section short ID
+        in: path
+        name: section_short_id
+        required: true
+        type: string
+      - description: Material details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateMaterialInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.SectionMaterial'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Section not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Add material to a section
+      tags:
+      - modules
+  /modules/{short_id}/sections/{section_short_id}/materials/{material_short_id}:
+    delete:
+      description: Soft-delete a material from a section.
+      parameters:
+      - description: Module short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Section short ID
+        in: path
+        name: section_short_id
+        required: true
+        type: string
+      - description: Material short ID
+        in: path
+        name: material_short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Section or material not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete a material
+      tags:
+      - modules
+    patch:
+      consumes:
+      - application/json
+      description: Partially update a material. Send only the fields you want to change.
+      parameters:
+      - description: Module short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Section short ID
+        in: path
+        name: section_short_id
+        required: true
+        type: string
+      - description: Material short ID
+        in: path
+        name: material_short_id
+        required: true
+        type: string
+      - description: Fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateMaterialInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.SectionMaterial'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Section or material not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update a material
+      tags:
+      - modules
+  /modules/filter:
+    get:
+      description: Filter non-deleted modules by any combination of fields. All query
+        params are optional.
+      parameters:
+      - description: Partial module name
+        in: query
+        name: module_name
+        type: string
+      - description: Partial branch name
+        in: query
+        name: module_branch
+        type: string
+      - description: unlimited or restricted
+        in: query
+        name: max_view_duration
+        type: string
+      - description: true or false
+        in: query
+        name: is_active
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Module'
+            type: array
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Filter modules
+      tags:
+      - modules
   /submissions:
     post:
       consumes:
@@ -2471,6 +3422,45 @@ paths:
       security:
       - BearerAuth: []
       summary: Upload event image
+      tags:
+      - upload
+  /upload/material:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Upload any supported material file (image, video, audio, PDF, doc,
+        sheet, slide, zip, etc.) to Supabase Storage. Returns the public URL to use
+        when creating a section material. Max size 500 MB.
+      parameters:
+      - description: Material file
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'url: public URL of the uploaded file'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Upload failed
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Upload a material file
       tags:
       - upload
   /users:
