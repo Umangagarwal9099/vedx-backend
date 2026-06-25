@@ -72,53 +72,57 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			// Mentors list — for batch manager dropdown
 			protected.GET("/mentors", userCtrl.GetMentors)
 
-			// Courses — static paths registered before /:short_id
+			// Role sets used across multiple route groups
+			adminOrAbove   := middleware.RequireRole(models.RoleSuperAdmin, models.RoleTeamLead)
+			staffOrAbove   := middleware.RequireRole(models.RoleSuperAdmin, models.RoleTeamLead, models.RoleMentor)
+
+			// Courses — only super_admin / team_lead may create, edit, or delete
 			courses := protected.Group("/courses")
 			{
-				courses.POST("",                middleware.RequireRole(models.RoleSuperAdmin), courseCtrl.Create)
-				courses.GET("",                 courseCtrl.GetAll)
-				courses.GET("/search",          courseCtrl.Search)
-				courses.PATCH("/:short_id",     courseCtrl.Update)
-				courses.DELETE("/:short_id",    courseCtrl.Delete)
+				courses.POST("",             adminOrAbove, courseCtrl.Create)
+				courses.GET("",              courseCtrl.GetAll)
+				courses.GET("/search",       courseCtrl.Search)
+				courses.PATCH("/:short_id",  adminOrAbove, courseCtrl.Update)
+				courses.DELETE("/:short_id", adminOrAbove, courseCtrl.Delete)
 			}
 
-			// Batches — static paths registered before /:short_id
+			// Batches — only super_admin / team_lead may create, edit, or delete
 			batches := protected.Group("/batches")
 			{
-				batches.POST("",                middleware.RequireRole(models.RoleSuperAdmin), batchCtrl.Create)
-				batches.GET("",                 batchCtrl.GetAll)
-				batches.GET("/filter",          batchCtrl.Filter)
-				batches.PATCH("/:short_id",     batchCtrl.Update)
-				batches.DELETE("/:short_id",    batchCtrl.Delete)
+				batches.POST("",             adminOrAbove, batchCtrl.Create)
+				batches.GET("",              batchCtrl.GetAll)
+				batches.GET("/filter",       batchCtrl.Filter)
+				batches.PATCH("/:short_id",  adminOrAbove, batchCtrl.Update)
+				batches.DELETE("/:short_id", adminOrAbove, batchCtrl.Delete)
 			}
 
-			// Events
+			// Events — super_admin / team_lead / mentor may create, edit, or delete
 			events := protected.Group("/events")
 			{
-				events.POST("",              middleware.RequireRole(models.RoleSuperAdmin), eventCtrl.Create)
+				events.POST("",              staffOrAbove, eventCtrl.Create)
 				events.GET("",               eventCtrl.GetAll)
-				events.PATCH("/:short_id",   eventCtrl.Update)
-				events.DELETE("/:short_id",  eventCtrl.Delete)
+				events.PATCH("/:short_id",   staffOrAbove, eventCtrl.Update)
+				events.DELETE("/:short_id",  staffOrAbove, eventCtrl.Delete)
 			}
 
-			// Announcements
+			// Announcements — super_admin / team_lead / mentor may create, edit, or delete
 			announcements := protected.Group("/announcements")
 			{
-				announcements.POST("",             middleware.RequireRole(models.RoleSuperAdmin), announcementCtrl.Create)
+				announcements.POST("",             staffOrAbove, announcementCtrl.Create)
 				announcements.GET("",              announcementCtrl.GetAll)
-				announcements.PATCH("/:short_id",  announcementCtrl.Update)
-				announcements.DELETE("/:short_id", announcementCtrl.Delete)
+				announcements.PATCH("/:short_id",  staffOrAbove, announcementCtrl.Update)
+				announcements.DELETE("/:short_id", staffOrAbove, announcementCtrl.Delete)
 			}
 
-			// Coding Questions — static paths before /:short_id
+			// Coding Questions — super_admin / team_lead / mentor may create, edit, or delete
 			cq := protected.Group("/coding-questions")
 			{
-				cq.POST("",              middleware.RequireRole(models.RoleSuperAdmin), codingQuestionCtrl.Create)
+				cq.POST("",              staffOrAbove, codingQuestionCtrl.Create)
 				cq.GET("",               codingQuestionCtrl.GetAll)
 				cq.GET("/admin",         codingQuestionCtrl.GetAllAdmin)
 				cq.GET("/:short_id",     codingQuestionCtrl.GetByShortID)
-				cq.PATCH("/:short_id",   codingQuestionCtrl.Update)
-				cq.DELETE("/:short_id",  codingQuestionCtrl.Delete)
+				cq.PATCH("/:short_id",   staffOrAbove, codingQuestionCtrl.Update)
+				cq.DELETE("/:short_id",  staffOrAbove, codingQuestionCtrl.Delete)
 			}
 
 			// Submissions
@@ -145,6 +149,8 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				ff.POST("/:short_id/questions",                ffAuth, feedbackFormCtrl.AddQuestion)
 				ff.PATCH("/:short_id/questions/:q_short_id",  ffAuth, feedbackFormCtrl.UpdateQuestion)
 				ff.DELETE("/:short_id/questions/:q_short_id", ffAuth, feedbackFormCtrl.DeleteQuestion)
+
+				ff.POST("/:short_id/responses", feedbackFormCtrl.SubmitResponse)
 			}
 
 			// Upload

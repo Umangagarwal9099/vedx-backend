@@ -281,3 +281,40 @@ func (ctrl *FeedbackFormController) DeleteQuestion(c *gin.Context) {
 	}
 	c.Status(http.StatusNoContent)
 }
+
+// SubmitResponse godoc
+//
+//	@Summary		Submit feedback form response
+//	@Description	Student submits answers to an active feedback form. Each answer must reference a question_short_id belonging to this form. For text questions supply "text", for numeric (star/scale/number) supply "number", for choice questions supply "array".
+//	@Tags			feedback-forms
+//	@Accept			json
+//	@Produce		json
+//	@Param			short_id	path		string							true	"Form short ID"
+//	@Param			body		body		models.SubmitFeedbackFormInput	true	"Answers array"
+//	@Success		201			{object}	models.FeedbackFormResponse
+//	@Failure		400			{object}	map[string]string	"Validation error or question not found in form"
+//	@Failure		404			{object}	map[string]string	"Form not found or not active"
+//	@Failure		500			{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/feedback-forms/{short_id}/responses [post]
+func (ctrl *FeedbackFormController) SubmitResponse(c *gin.Context) {
+	shortID := c.Param("short_id")
+	userID  := c.GetString("user_id")
+
+	var input models.SubmitFeedbackFormInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	resp, err := ctrl.repo.CreateResponse(c.Request.Context(), shortID, userID, input)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "feedback form not found or not active"})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, resp)
+}

@@ -350,6 +350,76 @@ func (r *FeedbackFormRepository) DeleteQuestion(ctx context.Context, formShortID
 	return nil
 }
 
+// CreateResponse stores a student's feedback submission inside a transaction.
+// It inserts one row into feedback_form_responses and one row per answer into
+// feedback_form_answers, resolving question short_ids to UUIDs within the same tx.
+func (r *FeedbackFormRepository) CreateResponse(ctx context.Context, formShortID string, userID string, in models.SubmitFeedbackFormInput) (*models.FeedbackFormResponse, error) {
+	// Resolve form → UUID
+	var formID string
+	err := r.pool.QueryRow(ctx,
+		`SELECT id FROM feedback_forms WHERE short_id = $1 AND deleted_at IS NULL AND is_active = TRUE`, formShortID,
+	).Scan(&formID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, pgx.ErrNoRows
+	}
+	if err != nil {
+		return nil, fmt.Errorf("fetch form: %w", err)
+	}
+
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	// Insert response header
+	var resp models.FeedbackFormResponse
+	shortID := util.GenerateShortID()
+	err = tx.QueryRow(ctx,
+		`INSERT INTO feedback_form_responses (short_id, form_id, submitted_by)
+		 VALUES ($1, $2, $3::UUID)
+		 RETURNING id, short_id, form_id::TEXT, submitted_by::TEXT, submitted_at`,
+		shortID, formID, userID,
+	).Scan(&resp.ID, &resp.ShortID, &resp.FormID, &resp.SubmittedBy, &resp.SubmittedAt)
+	if err != nil {
+		return nil, fmt.Errorf("insert response: %w", err)
+	}
+
+	// Insert each answer
+	for _, a := range in.Answers {
+		var questionID string
+		err = tx.QueryRow(ctx,
+			`SELECT id FROM feedback_form_questions WHERE short_id = $1 AND form_id = $2`, a.QuestionShortID, formID,
+		).Scan(&questionID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("question %s not found in this form", a.QuestionShortID)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("fetch question: %w", err)
+		}
+
+		var arrJSON interface{}
+		if len(a.Array) > 0 {
+			b, _ := json.Marshal(a.Array)
+			arrJSON = string(b)
+		}
+
+		_, err = tx.Exec(ctx,
+			`INSERT INTO feedback_form_answers (response_id, question_id, answer_text, answer_number, answer_array)
+			 VALUES ($1, $2, $3, $4, $5::jsonb)`,
+			resp.ID, questionID, a.Text, a.Number, arrJSON,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("insert answer: %w", err)
+		}
+	}
+
+	if err = tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit tx: %w", err)
+	}
+	return &resp, nil
+}
+
 func (r *FeedbackFormRepository) findQuestions(ctx context.Context, formID string) ([]models.FeedbackFormQuestion, error) {
 	q := fmt.Sprintf(`
 		SELECT %s FROM feedback_form_questions

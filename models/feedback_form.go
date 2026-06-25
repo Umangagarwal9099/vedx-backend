@@ -2,6 +2,29 @@ package models
 
 import "time"
 
+// ── Feedback Form Response ────────────────────────────────────────────────────
+
+type FeedbackFormResponse struct {
+	ID          string    `json:"id"`
+	ShortID     string    `json:"short_id"`
+	FormID      string    `json:"form_id"`
+	SubmittedBy string    `json:"submitted_by"`
+	SubmittedAt time.Time `json:"submitted_at"`
+}
+
+// AnswerInput is one question's answer inside a submission payload.
+// Exactly one of Text, Number, or Array should be non-nil depending on question_type.
+type AnswerInput struct {
+	QuestionShortID string    `json:"question_short_id" binding:"required"`
+	Text            *string   `json:"text"`
+	Number          *float64  `json:"number"`
+	Array           []string  `json:"array"`
+}
+
+type SubmitFeedbackFormInput struct {
+	Answers []AnswerInput `json:"answers" binding:"required,min=1"`
+}
+
 // ── Feedback Form ─────────────────────────────────────────────────────────────
 
 type FeedbackForm struct {
