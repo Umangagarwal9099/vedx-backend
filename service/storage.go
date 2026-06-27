@@ -232,6 +232,164 @@ func (s *StorageService) UploadMaterial(fh *multipart.FileHeader) (string, error
 	return publicURL, nil
 }
 
+// UploadBlogImage validates and uploads a blog featured image to Supabase Storage.
+// Files are stored under the blogs/ prefix. Returns the public URL.
+func (s *StorageService) UploadBlogImage(fh *multipart.FileHeader) (string, error) {
+	if fh.Size > maxUploadSize {
+		return "", fmt.Errorf("file too large: maximum size is 10 MB")
+	}
+
+	f, err := fh.Open()
+	if err != nil {
+		return "", fmt.Errorf("cannot open file: %w", err)
+	}
+	defer f.Close()
+
+	buf := make([]byte, 512)
+	if _, err := f.Read(buf); err != nil {
+		return "", fmt.Errorf("cannot read file: %w", err)
+	}
+	if _, err := f.(io.Seeker).Seek(0, io.SeekStart); err != nil {
+		return "", fmt.Errorf("cannot seek file: %w", err)
+	}
+
+	mimeType := strings.TrimSpace(strings.Split(http.DetectContentType(buf), ";")[0])
+
+	ext, ok := allowedEventMIME[mimeType]
+	if !ok {
+		orig := strings.ToLower(filepath.Ext(fh.Filename))
+		for _, v := range allowedEventMIME {
+			if v == orig {
+				ext = orig
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			return "", fmt.Errorf("unsupported file type: only JPEG, PNG, WebP and GIF are allowed")
+		}
+		for k, v := range allowedEventMIME {
+			if v == ext {
+				mimeType = k
+				break
+			}
+		}
+	}
+
+	filename := fmt.Sprintf("blogs/%s%s", randomHex(), ext)
+	uploadURL := fmt.Sprintf("%s/storage/v1/object/%s/%s",
+		strings.TrimRight(s.cfg.ProjectURL, "/"),
+		s.cfg.Bucket,
+		filename,
+	)
+
+	req, err := http.NewRequest(http.MethodPost, uploadURL, f)
+	if err != nil {
+		return "", fmt.Errorf("build upload request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+s.cfg.ServiceRoleKey)
+	req.Header.Set("Content-Type", mimeType)
+	req.Header.Set("x-upsert", "true")
+	req.ContentLength = fh.Size
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("upload to storage: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("storage upload failed (%d): %s", resp.StatusCode, string(body))
+	}
+
+	publicURL := fmt.Sprintf("%s/storage/v1/object/public/%s/%s",
+		strings.TrimRight(s.cfg.ProjectURL, "/"),
+		s.cfg.Bucket,
+		filename,
+	)
+	return publicURL, nil
+}
+
+// UploadBannerImage validates and uploads a banner thumbnail to Supabase Storage.
+// Files are stored under the banners/ prefix. Returns the public URL.
+func (s *StorageService) UploadBannerImage(fh *multipart.FileHeader) (string, error) {
+	if fh.Size > maxUploadSize {
+		return "", fmt.Errorf("file too large: maximum size is 10 MB")
+	}
+
+	f, err := fh.Open()
+	if err != nil {
+		return "", fmt.Errorf("cannot open file: %w", err)
+	}
+	defer f.Close()
+
+	buf := make([]byte, 512)
+	if _, err := f.Read(buf); err != nil {
+		return "", fmt.Errorf("cannot read file: %w", err)
+	}
+	if _, err := f.(io.Seeker).Seek(0, io.SeekStart); err != nil {
+		return "", fmt.Errorf("cannot seek file: %w", err)
+	}
+
+	mimeType := strings.TrimSpace(strings.Split(http.DetectContentType(buf), ";")[0])
+
+	ext, ok := allowedEventMIME[mimeType]
+	if !ok {
+		orig := strings.ToLower(filepath.Ext(fh.Filename))
+		for _, v := range allowedEventMIME {
+			if v == orig {
+				ext = orig
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			return "", fmt.Errorf("unsupported file type: only JPEG, PNG, WebP and GIF are allowed")
+		}
+		for k, v := range allowedEventMIME {
+			if v == ext {
+				mimeType = k
+				break
+			}
+		}
+	}
+
+	filename := fmt.Sprintf("banners/%s%s", randomHex(), ext)
+	uploadURL := fmt.Sprintf("%s/storage/v1/object/%s/%s",
+		strings.TrimRight(s.cfg.ProjectURL, "/"),
+		s.cfg.Bucket,
+		filename,
+	)
+
+	req, err := http.NewRequest(http.MethodPost, uploadURL, f)
+	if err != nil {
+		return "", fmt.Errorf("build upload request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+s.cfg.ServiceRoleKey)
+	req.Header.Set("Content-Type", mimeType)
+	req.Header.Set("x-upsert", "true")
+	req.ContentLength = fh.Size
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("upload to storage: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("storage upload failed (%d): %s", resp.StatusCode, string(body))
+	}
+
+	publicURL := fmt.Sprintf("%s/storage/v1/object/public/%s/%s",
+		strings.TrimRight(s.cfg.ProjectURL, "/"),
+		s.cfg.Bucket,
+		filename,
+	)
+	return publicURL, nil
+}
+
 func randomHex() string {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {

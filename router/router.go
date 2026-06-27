@@ -27,6 +27,8 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	batchRepo            := repository.NewBatchRepository(pool)
 	eventRepo            := repository.NewEventRepository(pool)
 	announcementRepo     := repository.NewAnnouncementRepository(pool)
+	blogRepo             := repository.NewBlogRepository(pool)
+	bannerRepo           := repository.NewBannerRepository(pool)
 	codingQuestionRepo   := repository.NewCodingQuestionRepository(pool)
 	submissionRepo       := repository.NewSubmissionRepository(pool)
 	feedbackFormRepo     := repository.NewFeedbackFormRepository(pool)
@@ -47,6 +49,8 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	submissionCtrl       := controller.NewSubmissionController(submissionRepo)
 	feedbackFormCtrl     := controller.NewFeedbackFormController(feedbackFormRepo)
 	moduleCtrl           := controller.NewModuleController(moduleRepo)
+	blogCtrl             := controller.NewBlogController(blogRepo)
+	bannerCtrl           := controller.NewBannerController(bannerRepo)
 
 	v1 := r.Group("/api/v1")
 	{
@@ -177,9 +181,29 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				ff.POST("/:short_id/responses", feedbackFormCtrl.SubmitResponse)
 			}
 
+			// Blogs — only super_admin / team_lead may create, edit, or delete
+			blogs := protected.Group("/blogs")
+			{
+				blogs.POST("",             adminOrAbove, blogCtrl.Create)
+				blogs.GET("",              blogCtrl.GetAll)
+				blogs.PATCH("/:short_id",  adminOrAbove, blogCtrl.Update)
+				blogs.DELETE("/:short_id", adminOrAbove, blogCtrl.Delete)
+			}
+
+			// Banners — only super_admin / team_lead may create, edit, or delete
+			banners := protected.Group("/banners")
+			{
+				banners.POST("",             adminOrAbove, bannerCtrl.Create)
+				banners.GET("",              bannerCtrl.GetAll)
+				banners.PATCH("/:short_id",  adminOrAbove, bannerCtrl.Update)
+				banners.DELETE("/:short_id", adminOrAbove, bannerCtrl.Delete)
+			}
+
 			// Upload
-			protected.POST("/upload/image",    uploadCtrl.UploadEventImage)
-			protected.POST("/upload/material", uploadCtrl.UploadMaterial)
+			protected.POST("/upload/image",        uploadCtrl.UploadEventImage)
+			protected.POST("/upload/blog-image",   uploadCtrl.UploadBlogImage)
+			protected.POST("/upload/banner-image", uploadCtrl.UploadBannerImage)
+			protected.POST("/upload/material",     uploadCtrl.UploadMaterial)
 		}
 	}
 

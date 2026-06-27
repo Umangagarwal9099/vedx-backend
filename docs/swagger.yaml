@@ -128,6 +128,35 @@ definitions:
     required:
     - question_short_id
     type: object
+  models.Banner:
+    properties:
+      branches:
+        items:
+          type: string
+        type: array
+      category:
+        type: string
+      created_at:
+        type: string
+      created_by:
+        type: string
+      cta_url:
+        type: string
+      deleted_at:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      name:
+        type: string
+      short_id:
+        type: string
+      thumbnail:
+        type: string
+      updated_at:
+        type: string
+    type: object
   models.Batch:
     properties:
       additional_manager_id:
@@ -163,6 +192,41 @@ definitions:
       short_id:
         type: string
       start_date:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.Blog:
+    properties:
+      author:
+        type: string
+      content:
+        type: string
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      excerpt:
+        type: string
+      featured_image:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      is_featured:
+        type: boolean
+      publish_at:
+        type: string
+      short_id:
+        type: string
+      show_in_recent_updates:
+        type: boolean
+      status:
+        type: string
+      title:
         type: string
       updated_at:
         type: string
@@ -282,6 +346,34 @@ definitions:
     - urgency
     - visibility
     type: object
+  models.CreateBannerInput:
+    properties:
+      branches:
+        example:
+        - '["engineering"'
+        - '"design"]'
+        items:
+          type: string
+        type: array
+      category:
+        example: promotion
+        type: string
+      cta_url:
+        example: https://example.com/sale
+        type: string
+      is_active:
+        example: true
+        type: boolean
+      name:
+        example: Summer Sale
+        type: string
+      thumbnail:
+        example: https://cdn.example.com/banner.jpg
+        type: string
+    required:
+    - branches
+    - name
+    type: object
   models.CreateBatchInput:
     properties:
       additional_manager_id:
@@ -311,6 +403,45 @@ definitions:
     - course_short_id
     - end_date
     - start_date
+    type: object
+  models.CreateBlogInput:
+    properties:
+      author:
+        example: John Doe
+        type: string
+      content:
+        example: <p>Go is a statically typed language...</p>
+        type: string
+      excerpt:
+        example: A brief introduction to the Go programming language.
+        type: string
+      featured_image:
+        example: https://cdn.example.com/blog.jpg
+        type: string
+      is_featured:
+        example: false
+        type: boolean
+      publish_at:
+        example: "2025-09-15T10:00:00Z"
+        type: string
+      show_in_recent_updates:
+        example: false
+        type: boolean
+      status:
+        enum:
+        - published
+        - draft
+        - scheduled
+        example: draft
+        type: string
+      title:
+        example: Introduction to Go
+        type: string
+    required:
+    - author
+    - content
+    - status
+    - title
     type: object
   models.CreateCodingQuestionInput:
     properties:
@@ -974,6 +1105,31 @@ definitions:
         example: existing_and_new
         type: string
     type: object
+  models.UpdateBannerInput:
+    properties:
+      branches:
+        example:
+        - '["design"'
+        - '"marketing"]'
+        items:
+          type: string
+        type: array
+      category:
+        example: event
+        type: string
+      cta_url:
+        example: https://example.com/new-sale
+        type: string
+      is_active:
+        example: false
+        type: boolean
+      name:
+        example: Updated Banner Name
+        type: string
+      thumbnail:
+        example: https://cdn.example.com/new-banner.jpg
+        type: string
+    type: object
   models.UpdateBatchInput:
     properties:
       additional_manager_id:
@@ -999,6 +1155,39 @@ definitions:
         type: string
       start_date:
         example: "2024-02-01"
+        type: string
+    type: object
+  models.UpdateBlogInput:
+    properties:
+      author:
+        example: Jane Doe
+        type: string
+      content:
+        example: <p>Updated content...</p>
+        type: string
+      excerpt:
+        example: Updated excerpt
+        type: string
+      featured_image:
+        example: https://cdn.example.com/new-blog.jpg
+        type: string
+      is_active:
+        example: false
+        type: boolean
+      is_featured:
+        example: true
+        type: boolean
+      publish_at:
+        example: "2025-10-01T09:00:00Z"
+        type: string
+      show_in_recent_updates:
+        example: true
+        type: boolean
+      status:
+        example: published
+        type: string
+      title:
+        example: Updated Blog Title
         type: string
     type: object
   models.UpdateCodingQuestionInput:
@@ -1484,6 +1673,157 @@ paths:
       summary: Register
       tags:
       - auth
+  /banners:
+    get:
+      description: Returns all non-deleted banners ordered newest first. Filter by
+        name (ILIKE, partial match) or exact category.
+      parameters:
+      - description: Filter by name (case-insensitive, partial match)
+        in: query
+        name: name
+        type: string
+      - description: Filter by exact category
+        in: query
+        name: category
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Banner'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List banners
+      tags:
+      - banners
+    post:
+      consumes:
+      - application/json
+      description: Create a new banner. Upload the thumbnail image via POST /upload/banner-image
+        first and pass the returned URL in the thumbnail field. branches must be a
+        non-empty array of branch names.
+      parameters:
+      - description: Banner details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateBannerInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Banner'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create banner
+      tags:
+      - banners
+  /banners/{short_id}:
+    delete:
+      description: Soft-delete a banner by its short_id (sets deleted_at; the row
+        is retained in the database).
+      parameters:
+      - description: Banner short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Banner not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete banner
+      tags:
+      - banners
+    patch:
+      consumes:
+      - application/json
+      description: Partially update a banner by its short_id. Send only the fields
+        you want to change. Use is_active to toggle the banner without deleting it.
+        To replace the thumbnail, upload a new image via POST /upload/banner-image
+        and pass the returned URL.
+      parameters:
+      - description: Banner short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Fields to update (all optional)
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateBannerInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Banner'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Banner not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update banner
+      tags:
+      - banners
   /batches:
     get:
       description: Returns all non-deleted batches with full course and manager details.
@@ -1681,6 +2021,161 @@ paths:
       summary: Filter batches
       tags:
       - batches
+  /blogs:
+    get:
+      description: Returns all non-deleted blogs ordered newest first. Filter by title
+        (ILIKE), status, or date (YYYY-MM-DD based on created_at).
+      parameters:
+      - description: Filter by title (case-insensitive, partial match)
+        in: query
+        name: title
+        type: string
+      - description: 'Filter by status: published | draft | scheduled'
+        in: query
+        name: status
+        type: string
+      - description: Filter by creation date (YYYY-MM-DD)
+        in: query
+        name: date
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Blog'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List blogs
+      tags:
+      - blogs
+    post:
+      consumes:
+      - application/json
+      description: 'Create a new blog post. Upload featured_image via POST /upload/blog-image
+        first and pass the returned URL here. status must be one of: published | draft
+        | scheduled. When status is "scheduled", publish_at (RFC3339) is required.
+        When status is "published" and publish_at is omitted, it defaults to now.'
+      parameters:
+      - description: Blog details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateBlogInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Blog'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create blog
+      tags:
+      - blogs
+  /blogs/{short_id}:
+    delete:
+      description: Soft-delete a blog by its short_id (sets deleted_at; the row is
+        retained in the database).
+      parameters:
+      - description: Blog short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Blog not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete blog
+      tags:
+      - blogs
+    patch:
+      consumes:
+      - application/json
+      description: Partially update a blog by its short_id. Send only the fields you
+        want to change. Use is_active to toggle the blog active/inactive without deleting
+        it.
+      parameters:
+      - description: Blog short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Fields to update (all optional)
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateBlogInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Blog'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Blog not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update blog
+      tags:
+      - blogs
   /coding-questions:
     get:
       description: Returns all active, non-deleted coding questions ordered by creation
@@ -3385,6 +3880,84 @@ paths:
       summary: List submissions for a specific user (admin/mentor)
       tags:
       - submissions
+  /upload/banner-image:
+    post:
+      consumes:
+      - multipart/form-data
+      description: 'Upload a thumbnail image for a banner. Returns the public URL
+        to use in the thumbnail field when creating or updating a banner. Max size
+        10 MB. Allowed types: JPEG, PNG, WebP, GIF.'
+      parameters:
+      - description: Image file
+        in: formData
+        name: image
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'url: public URL of the uploaded image'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Upload failed
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Upload banner thumbnail
+      tags:
+      - upload
+  /upload/blog-image:
+    post:
+      consumes:
+      - multipart/form-data
+      description: 'Upload an image for a blog post. Returns the public URL to use
+        in the featured_image field when creating or updating a blog. Max size 10
+        MB. Allowed types: JPEG, PNG, WebP, GIF.'
+      parameters:
+      - description: Image file
+        in: formData
+        name: image
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'url: public URL of the uploaded image'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Upload failed
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Upload blog featured image
+      tags:
+      - upload
   /upload/image:
     post:
       consumes:
