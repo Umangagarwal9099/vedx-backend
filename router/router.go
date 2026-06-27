@@ -27,8 +27,12 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	batchRepo            := repository.NewBatchRepository(pool)
 	eventRepo            := repository.NewEventRepository(pool)
 	announcementRepo     := repository.NewAnnouncementRepository(pool)
+	blogRepo             := repository.NewBlogRepository(pool)
+	bannerRepo           := repository.NewBannerRepository(pool)
 	codingQuestionRepo   := repository.NewCodingQuestionRepository(pool)
 	submissionRepo       := repository.NewSubmissionRepository(pool)
+	feedbackFormRepo     := repository.NewFeedbackFormRepository(pool)
+	moduleRepo           := repository.NewModuleRepository(pool)
 
 	// Services
 	storageSvc := service.NewStorageService(cfg.Storage)
@@ -43,6 +47,10 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	uploadCtrl           := controller.NewUploadController(storageSvc)
 	codingQuestionCtrl   := controller.NewCodingQuestionController(codingQuestionRepo)
 	submissionCtrl       := controller.NewSubmissionController(submissionRepo)
+	feedbackFormCtrl     := controller.NewFeedbackFormController(feedbackFormRepo)
+	moduleCtrl           := controller.NewModuleController(moduleRepo)
+	blogCtrl             := controller.NewBlogController(blogRepo)
+	bannerCtrl           := controller.NewBannerController(bannerRepo)
 
 	v1 := r.Group("/api/v1")
 	{
@@ -70,53 +78,61 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			// Mentors list — for batch manager dropdown
 			protected.GET("/mentors", userCtrl.GetMentors)
 
-			// Courses — static paths registered before /:short_id
+			// Role sets used across multiple route groups
+			adminOrAbove   := middleware.RequireRole(models.RoleSuperAdmin, models.RoleTeamLead)
+			staffOrAbove   := middleware.RequireRole(models.RoleSuperAdmin, models.RoleTeamLead, models.RoleMentor)
+
+			// Courses — only super_admin / team_lead may create, edit, or delete
 			courses := protected.Group("/courses")
 			{
-				courses.POST("",                middleware.RequireRole(models.RoleSuperAdmin), courseCtrl.Create)
-				courses.GET("",                 courseCtrl.GetAll)
-				courses.GET("/search",          courseCtrl.Search)
-				courses.PATCH("/:short_id",     courseCtrl.Update)
-				courses.DELETE("/:short_id",    courseCtrl.Delete)
+				courses.POST("",                                        adminOrAbove, courseCtrl.Create)
+				courses.GET("",                                         courseCtrl.GetAll)
+				courses.GET("/search",                                  courseCtrl.Search)
+				courses.PATCH("/:short_id",                             adminOrAbove, courseCtrl.Update)
+				courses.DELETE("/:short_id",                            adminOrAbove, courseCtrl.Delete)
+				// Curriculum — modules assigned to this course
+				courses.GET("/:short_id/curriculum",                    courseCtrl.GetCurriculum)
+				courses.POST("/:short_id/modules",                      adminOrAbove, courseCtrl.AssignModule)
+				courses.DELETE("/:short_id/modules/:module_short_id",   adminOrAbove, courseCtrl.UnassignModule)
 			}
 
-			// Batches — static paths registered before /:short_id
+			// Batches — only super_admin / team_lead may create, edit, or delete
 			batches := protected.Group("/batches")
 			{
-				batches.POST("",                middleware.RequireRole(models.RoleSuperAdmin), batchCtrl.Create)
-				batches.GET("",                 batchCtrl.GetAll)
-				batches.GET("/filter",          batchCtrl.Filter)
-				batches.PATCH("/:short_id",     batchCtrl.Update)
-				batches.DELETE("/:short_id",    batchCtrl.Delete)
+				batches.POST("",             adminOrAbove, batchCtrl.Create)
+				batches.GET("",              batchCtrl.GetAll)
+				batches.GET("/filter",       batchCtrl.Filter)
+				batches.PATCH("/:short_id",  adminOrAbove, batchCtrl.Update)
+				batches.DELETE("/:short_id", adminOrAbove, batchCtrl.Delete)
 			}
 
-			// Events
+			// Events — super_admin / team_lead / mentor may create, edit, or delete
 			events := protected.Group("/events")
 			{
-				events.POST("",              middleware.RequireRole(models.RoleSuperAdmin), eventCtrl.Create)
+				events.POST("",              staffOrAbove, eventCtrl.Create)
 				events.GET("",               eventCtrl.GetAll)
-				events.PATCH("/:short_id",   eventCtrl.Update)
-				events.DELETE("/:short_id",  eventCtrl.Delete)
+				events.PATCH("/:short_id",   staffOrAbove, eventCtrl.Update)
+				events.DELETE("/:short_id",  staffOrAbove, eventCtrl.Delete)
 			}
 
-			// Announcements
+			// Announcements — super_admin / team_lead / mentor may create, edit, or delete
 			announcements := protected.Group("/announcements")
 			{
-				announcements.POST("",             middleware.RequireRole(models.RoleSuperAdmin), announcementCtrl.Create)
+				announcements.POST("",             staffOrAbove, announcementCtrl.Create)
 				announcements.GET("",              announcementCtrl.GetAll)
-				announcements.PATCH("/:short_id",  announcementCtrl.Update)
-				announcements.DELETE("/:short_id", announcementCtrl.Delete)
+				announcements.PATCH("/:short_id",  staffOrAbove, announcementCtrl.Update)
+				announcements.DELETE("/:short_id", staffOrAbove, announcementCtrl.Delete)
 			}
 
-			// Coding Questions — static paths before /:short_id
+			// Coding Questions — super_admin / team_lead / mentor may create, edit, or delete
 			cq := protected.Group("/coding-questions")
 			{
-				cq.POST("",              middleware.RequireRole(models.RoleSuperAdmin), codingQuestionCtrl.Create)
+				cq.POST("",              staffOrAbove, codingQuestionCtrl.Create)
 				cq.GET("",               codingQuestionCtrl.GetAll)
 				cq.GET("/admin",         codingQuestionCtrl.GetAllAdmin)
 				cq.GET("/:short_id",     codingQuestionCtrl.GetByShortID)
-				cq.PATCH("/:short_id",   codingQuestionCtrl.Update)
-				cq.DELETE("/:short_id",  codingQuestionCtrl.Delete)
+				cq.PATCH("/:short_id",   staffOrAbove, codingQuestionCtrl.Update)
+				cq.DELETE("/:short_id",  staffOrAbove, codingQuestionCtrl.Delete)
 			}
 
 			// Submissions
@@ -130,8 +146,68 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				subs.GET("/user/:user_id",        submissionCtrl.GetByUserAdmin)
 			}
 
+			// Modules — only super_admin / team_lead may create, edit, or delete
+			modules := protected.Group("/modules")
+			{
+				modules.POST("",             adminOrAbove, moduleCtrl.Create)
+				modules.GET("",              moduleCtrl.GetAll)
+				modules.GET("/filter",       moduleCtrl.Filter)
+				modules.PATCH("/:short_id",  adminOrAbove, moduleCtrl.Update)
+				modules.DELETE("/:short_id", adminOrAbove, moduleCtrl.Delete)
+
+				// Sections — nested under a module
+				modules.POST("/:short_id/sections",                          adminOrAbove, moduleCtrl.AddSection)
+				modules.GET("/:short_id/sections",                           moduleCtrl.GetSections)
+				modules.PATCH("/:short_id/sections/:section_short_id",       adminOrAbove, moduleCtrl.UpdateSection)
+				modules.DELETE("/:short_id/sections/:section_short_id",      adminOrAbove, moduleCtrl.DeleteSection)
+
+				// Materials — nested under a section
+				modules.POST("/:short_id/sections/:section_short_id/materials",                              adminOrAbove, moduleCtrl.AddMaterial)
+				modules.GET("/:short_id/sections/:section_short_id/materials",                               moduleCtrl.GetMaterials)
+				modules.PATCH("/:short_id/sections/:section_short_id/materials/:material_short_id",          adminOrAbove, moduleCtrl.UpdateMaterial)
+				modules.DELETE("/:short_id/sections/:section_short_id/materials/:material_short_id",         adminOrAbove, moduleCtrl.DeleteMaterial)
+			}
+
+			// Feedback Forms
+			ffAuth := middleware.RequireRole(models.RoleSuperAdmin, models.RoleMentor, models.RoleTeamLead)
+			ff := protected.Group("/feedback-forms")
+			{
+				ff.POST("",              ffAuth, feedbackFormCtrl.Create)
+				ff.GET("",              feedbackFormCtrl.GetAll)
+				ff.GET("/:short_id",   feedbackFormCtrl.GetByShortID)
+				ff.PATCH("/:short_id", ffAuth, feedbackFormCtrl.Update)
+				ff.DELETE("/:short_id",ffAuth, feedbackFormCtrl.Delete)
+
+				ff.POST("/:short_id/questions",                ffAuth, feedbackFormCtrl.AddQuestion)
+				ff.PATCH("/:short_id/questions/:q_short_id",  ffAuth, feedbackFormCtrl.UpdateQuestion)
+				ff.DELETE("/:short_id/questions/:q_short_id", ffAuth, feedbackFormCtrl.DeleteQuestion)
+
+				ff.POST("/:short_id/responses", feedbackFormCtrl.SubmitResponse)
+			}
+
+			// Blogs — only super_admin / team_lead may create, edit, or delete
+			blogs := protected.Group("/blogs")
+			{
+				blogs.POST("",             adminOrAbove, blogCtrl.Create)
+				blogs.GET("",              blogCtrl.GetAll)
+				blogs.PATCH("/:short_id",  adminOrAbove, blogCtrl.Update)
+				blogs.DELETE("/:short_id", adminOrAbove, blogCtrl.Delete)
+			}
+
+			// Banners — only super_admin / team_lead may create, edit, or delete
+			banners := protected.Group("/banners")
+			{
+				banners.POST("",             adminOrAbove, bannerCtrl.Create)
+				banners.GET("",              bannerCtrl.GetAll)
+				banners.PATCH("/:short_id",  adminOrAbove, bannerCtrl.Update)
+				banners.DELETE("/:short_id", adminOrAbove, bannerCtrl.Delete)
+			}
+
 			// Upload
-			protected.POST("/upload/image", uploadCtrl.UploadEventImage)
+			protected.POST("/upload/image",        uploadCtrl.UploadEventImage)
+			protected.POST("/upload/blog-image",   uploadCtrl.UploadBlogImage)
+			protected.POST("/upload/banner-image", uploadCtrl.UploadBannerImage)
+			protected.POST("/upload/material",     uploadCtrl.UploadMaterial)
 		}
 	}
 

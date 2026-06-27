@@ -372,6 +372,232 @@ const docTemplate = `{
                 }
             }
         },
+        "/banners": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns all non-deleted banners ordered newest first. Filter by name (ILIKE, partial match) or exact category.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "banners"
+                ],
+                "summary": "List banners",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by name (case-insensitive, partial match)",
+                        "name": "name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by exact category",
+                        "name": "category",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.Banner"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create a new banner. Upload the thumbnail image via POST /upload/banner-image first and pass the returned URL in the thumbnail field. branches must be a non-empty array of branch names.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "banners"
+                ],
+                "summary": "Create banner",
+                "parameters": [
+                    {
+                        "description": "Banner details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateBannerInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.Banner"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/banners/{short_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Soft-delete a banner by its short_id (sets deleted_at; the row is retained in the database).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "banners"
+                ],
+                "summary": "Delete banner",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Banner short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Banner not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Partially update a banner by its short_id. Send only the fields you want to change. Use is_active to toggle the banner without deleting it. To replace the thumbnail, upload a new image via POST /upload/banner-image and pass the returned URL.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "banners"
+                ],
+                "summary": "Update banner",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Banner short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to update (all optional)",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateBannerInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Banner"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Banner not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/batches": {
             "get": {
                 "security": [
@@ -655,6 +881,238 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Batch not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/blogs": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns all non-deleted blogs ordered newest first. Filter by title (ILIKE), status, or date (YYYY-MM-DD based on created_at).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "blogs"
+                ],
+                "summary": "List blogs",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by title (case-insensitive, partial match)",
+                        "name": "title",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by status: published | draft | scheduled",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by creation date (YYYY-MM-DD)",
+                        "name": "date",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.Blog"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create a new blog post. Upload featured_image via POST /upload/blog-image first and pass the returned URL here. status must be one of: published | draft | scheduled. When status is \"scheduled\", publish_at (RFC3339) is required. When status is \"published\" and publish_at is omitted, it defaults to now.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "blogs"
+                ],
+                "summary": "Create blog",
+                "parameters": [
+                    {
+                        "description": "Blog details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateBlogInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.Blog"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/blogs/{short_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Soft-delete a blog by its short_id (sets deleted_at; the row is retained in the database).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "blogs"
+                ],
+                "summary": "Delete blog",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Blog short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Blog not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Partially update a blog by its short_id. Send only the fields you want to change. Use is_active to toggle the blog active/inactive without deleting it.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "blogs"
+                ],
+                "summary": "Update blog",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Blog short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to update (all optional)",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateBlogInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Blog"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Blog not found",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -1484,6 +1942,602 @@ const docTemplate = `{
                 }
             }
         },
+        "/feedback-forms": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns all non-deleted feedback forms ordered newest first.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "feedback-forms"
+                ],
+                "summary": "List feedback forms",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.FeedbackForm"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Step 1 + 2: pick a form_type and a template. No title or description needed — the title is auto-generated from the template. Valid combos: session_feedback → blank_form | trainer_performance | course_content | overall_satisfaction; link_to_course → blank_form | content_rating | csat | course_rating; general_survey → blank_form only. Restricted to super_admin, mentor, and team_lead.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "feedback-forms"
+                ],
+                "summary": "Create feedback form",
+                "parameters": [
+                    {
+                        "description": "form_type + template only",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateFeedbackFormInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.FeedbackForm"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error or invalid form_type/template combo",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/feedback-forms/{short_id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns a single non-deleted feedback form along with all its questions ordered by order_index.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "feedback-forms"
+                ],
+                "summary": "Get feedback form with questions",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Form short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.FeedbackFormWithQuestions"
+                        }
+                    },
+                    "404": {
+                        "description": "Form not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Soft-delete a feedback form by its short_id (sets deleted_at; the row is retained). Restricted to super_admin, mentor, and team_lead.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "feedback-forms"
+                ],
+                "summary": "Delete feedback form",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Form short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Form not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Partially update a feedback form by its short_id. Send only the fields you want to change. Use is_active: false to disable the form and is_active: true to re-enable it. Restricted to super_admin, mentor, and team_lead.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "feedback-forms"
+                ],
+                "summary": "Update feedback form",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Form short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to update (all optional)",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateFeedbackFormInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.FeedbackForm"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Form not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/feedback-forms/{short_id}/questions": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Add a new question to an existing feedback form. Supported types: session_rating, trainer_rating, single_choice, multiple_choice, star_rating, linear_scale, date, number, short_answer, long_answer. For scale types supply scale_min/scale_max and optional start_label/end_label. For choice types supply options[]. Restricted to super_admin, mentor, and team_lead.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "feedback-forms"
+                ],
+                "summary": "Add question to form",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Form short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Question details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateFeedbackFormQuestionInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.FeedbackFormQuestion"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Form not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/feedback-forms/{short_id}/questions/{q_short_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Permanently remove a question from a feedback form. Restricted to super_admin, mentor, and team_lead.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "feedback-forms"
+                ],
+                "summary": "Delete a question",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Form short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Question short ID",
+                        "name": "q_short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Form or question not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Partially update a question in a feedback form. Send only the fields you want to change. To clear the options array send \"options\": []. To clear scale labels send \"start_label\": \"\" or \"end_label\": \"\". Restricted to super_admin, mentor, and team_lead.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "feedback-forms"
+                ],
+                "summary": "Update a question",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Form short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Question short ID",
+                        "name": "q_short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to update (all optional)",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateFeedbackFormQuestionInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.FeedbackFormQuestion"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Form or question not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/feedback-forms/{short_id}/responses": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Student submits answers to an active feedback form. Each answer must reference a question_short_id belonging to this form. For text questions supply \"text\", for numeric (star/scale/number) supply \"number\", for choice questions supply \"array\".",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "feedback-forms"
+                ],
+                "summary": "Submit feedback form response",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Form short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Answers array",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.SubmitFeedbackFormInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.FeedbackFormResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error or question not found in form",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Form not found or not active",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/health": {
             "get": {
                 "description": "Returns server health status",
@@ -1526,6 +2580,901 @@ const docTemplate = `{
                             "type": "array",
                             "items": {
                                 "$ref": "#/definitions/models.User"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/modules": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns all non-deleted modules ordered newest first.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "modules"
+                ],
+                "summary": "List modules",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.Module"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create a new module. Set max_view_duration to \"unlimited\" or \"restricted\". When \"restricted\", watch_time_minutes is required and defines the maximum minutes a student may view content. watch_time_minutes is ignored when max_view_duration is \"unlimited\".",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "modules"
+                ],
+                "summary": "Create module",
+                "parameters": [
+                    {
+                        "description": "Module details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateModuleInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.Module"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/modules/filter": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Filter non-deleted modules by any combination of fields. All query params are optional.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "modules"
+                ],
+                "summary": "Filter modules",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Partial module name",
+                        "name": "module_name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Partial branch name",
+                        "name": "module_branch",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "unlimited or restricted",
+                        "name": "max_view_duration",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "true or false",
+                        "name": "is_active",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.Module"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/modules/{short_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Soft-delete a module by its short_id.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "modules"
+                ],
+                "summary": "Delete module",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Module short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Module not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Partially update a module by its short_id. Send only the fields you want to change. Switching max_view_duration to \"unlimited\" automatically clears watch_time_minutes.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "modules"
+                ],
+                "summary": "Update module",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Module short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to update (all optional)",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateModuleInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Module"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Module not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/modules/{short_id}/sections": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns all non-deleted sections for the given module ordered by creation time.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "modules"
+                ],
+                "summary": "Get sections of a module",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Module short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.ModuleSection"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Module not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Add a new section to an existing module. Set is_prerequisite to true if students must complete this section before accessing the rest of the module.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "modules"
+                ],
+                "summary": "Add section to module",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Module short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Section details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateModuleSectionInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.ModuleSection"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Module not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/modules/{short_id}/sections/{section_short_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Soft-delete a section from a module.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "modules"
+                ],
+                "summary": "Delete a section",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Module short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Section short ID",
+                        "name": "section_short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Module or section not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Partially update a section within a module. Send only the fields you want to change.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "modules"
+                ],
+                "summary": "Update a section",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Module short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Section short ID",
+                        "name": "section_short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to update (all optional)",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateModuleSectionInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.ModuleSection"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Module or section not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/modules/{short_id}/sections/{section_short_id}/materials": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns all active materials for the given section, ordered by creation date.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "modules"
+                ],
+                "summary": "List materials in a section",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Module short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Section short ID",
+                        "name": "section_short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.SectionMaterial"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Section not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create a new material inside a section. For file-based materials (video, pdf, image, etc.), first upload the file via POST /upload/material to get a URL, then pass it as file_url. For link type, pass the external URL directly as file_url. max_views must be \"unlimited\" or \"limited\"; if \"limited\", max_views_count is required. allow_access_on must be \"both\" or \"app\".",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "modules"
+                ],
+                "summary": "Add material to a section",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Module short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Section short ID",
+                        "name": "section_short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Material details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateMaterialInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.SectionMaterial"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Section not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/modules/{short_id}/sections/{section_short_id}/materials/{material_short_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Soft-delete a material from a section.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "modules"
+                ],
+                "summary": "Delete a material",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Module short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Section short ID",
+                        "name": "section_short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Material short ID",
+                        "name": "material_short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Section or material not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Partially update a material. Send only the fields you want to change.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "modules"
+                ],
+                "summary": "Update a material",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Module short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Section short ID",
+                        "name": "section_short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Material short ID",
+                        "name": "material_short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to update",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateMaterialInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.SectionMaterial"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Section or material not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
                             }
                         }
                     },
@@ -1764,6 +3713,122 @@ const docTemplate = `{
                 }
             }
         },
+        "/upload/banner-image": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Upload a thumbnail image for a banner. Returns the public URL to use in the thumbnail field when creating or updating a banner. Max size 10 MB. Allowed types: JPEG, PNG, WebP, GIF.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "upload"
+                ],
+                "summary": "Upload banner thumbnail",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "Image file",
+                        "name": "image",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "url: public URL of the uploaded image",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Upload failed",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/upload/blog-image": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Upload an image for a blog post. Returns the public URL to use in the featured_image field when creating or updating a blog. Max size 10 MB. Allowed types: JPEG, PNG, WebP, GIF.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "upload"
+                ],
+                "summary": "Upload blog featured image",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "Image file",
+                        "name": "image",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "url: public URL of the uploaded image",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Upload failed",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/upload/image": {
             "post": {
                 "security": [
@@ -1794,6 +3859,64 @@ const docTemplate = `{
                 "responses": {
                     "200": {
                         "description": "url: public URL of the uploaded image",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Upload failed",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/upload/material": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Upload any supported material file (image, video, audio, PDF, doc, sheet, slide, zip, etc.) to Supabase Storage. Returns the public URL to use when creating a section material. Max size 500 MB.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "upload"
+                ],
+                "summary": "Upload a material file",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "Material file",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "url: public URL of the uploaded file",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -2306,6 +4429,73 @@ const docTemplate = `{
                 }
             }
         },
+        "models.AnswerInput": {
+            "type": "object",
+            "required": [
+                "question_short_id"
+            ],
+            "properties": {
+                "array": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "number": {
+                    "type": "number"
+                },
+                "question_short_id": {
+                    "type": "string"
+                },
+                "text": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.Banner": {
+            "type": "object",
+            "properties": {
+                "branches": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "category": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "cta_url": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_active": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "thumbnail": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
         "models.Batch": {
             "type": "object",
             "properties": {
@@ -2358,6 +4548,59 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "start_date": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.Blog": {
+            "type": "object",
+            "properties": {
+                "author": {
+                    "type": "string"
+                },
+                "content": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "excerpt": {
+                    "type": "string"
+                },
+                "featured_image": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_active": {
+                    "type": "boolean"
+                },
+                "is_featured": {
+                    "type": "boolean"
+                },
+                "publish_at": {
+                    "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "show_in_recent_updates": {
+                    "type": "boolean"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "title": {
                     "type": "string"
                 },
                 "updated_at": {
@@ -2535,6 +4778,45 @@ const docTemplate = `{
                 }
             }
         },
+        "models.CreateBannerInput": {
+            "type": "object",
+            "required": [
+                "branches",
+                "name"
+            ],
+            "properties": {
+                "branches": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "[\"engineering\"",
+                        "\"design\"]"
+                    ]
+                },
+                "category": {
+                    "type": "string",
+                    "example": "promotion"
+                },
+                "cta_url": {
+                    "type": "string",
+                    "example": "https://example.com/sale"
+                },
+                "is_active": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "name": {
+                    "type": "string",
+                    "example": "Summer Sale"
+                },
+                "thumbnail": {
+                    "type": "string",
+                    "example": "https://cdn.example.com/banner.jpg"
+                }
+            }
+        },
         "models.CreateBatchInput": {
             "type": "object",
             "required": [
@@ -2572,6 +4854,58 @@ const docTemplate = `{
                 "start_date": {
                     "type": "string",
                     "example": "2024-01-15"
+                }
+            }
+        },
+        "models.CreateBlogInput": {
+            "type": "object",
+            "required": [
+                "author",
+                "content",
+                "status",
+                "title"
+            ],
+            "properties": {
+                "author": {
+                    "type": "string",
+                    "example": "John Doe"
+                },
+                "content": {
+                    "type": "string",
+                    "example": "\u003cp\u003eGo is a statically typed language...\u003c/p\u003e"
+                },
+                "excerpt": {
+                    "type": "string",
+                    "example": "A brief introduction to the Go programming language."
+                },
+                "featured_image": {
+                    "type": "string",
+                    "example": "https://cdn.example.com/blog.jpg"
+                },
+                "is_featured": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "publish_at": {
+                    "type": "string",
+                    "example": "2025-09-15T10:00:00Z"
+                },
+                "show_in_recent_updates": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "published",
+                        "draft",
+                        "scheduled"
+                    ],
+                    "example": "draft"
+                },
+                "title": {
+                    "type": "string",
+                    "example": "Introduction to Go"
                 }
             }
         },
@@ -2722,6 +5056,221 @@ const docTemplate = `{
                 }
             }
         },
+        "models.CreateFeedbackFormInput": {
+            "type": "object",
+            "required": [
+                "form_type",
+                "template"
+            ],
+            "properties": {
+                "form_type": {
+                    "type": "string",
+                    "enum": [
+                        "session_feedback",
+                        "link_to_course",
+                        "general_survey"
+                    ],
+                    "example": "session_feedback"
+                },
+                "template": {
+                    "type": "string",
+                    "enum": [
+                        "blank_form",
+                        "trainer_performance",
+                        "course_content",
+                        "overall_satisfaction",
+                        "content_rating",
+                        "csat",
+                        "course_rating"
+                    ],
+                    "example": "trainer_performance"
+                }
+            }
+        },
+        "models.CreateFeedbackFormQuestionInput": {
+            "type": "object",
+            "required": [
+                "question_text",
+                "question_type"
+            ],
+            "properties": {
+                "end_label": {
+                    "type": "string",
+                    "example": "Excellent"
+                },
+                "is_required": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "options": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "Option A",
+                        "Option B",
+                        "Option C"
+                    ]
+                },
+                "order_index": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "question_text": {
+                    "type": "string",
+                    "example": "Rate the trainer's performance"
+                },
+                "question_type": {
+                    "type": "string",
+                    "enum": [
+                        "session_rating",
+                        "trainer_rating",
+                        "single_choice",
+                        "multiple_choice",
+                        "star_rating",
+                        "linear_scale",
+                        "date",
+                        "number",
+                        "short_answer",
+                        "long_answer"
+                    ],
+                    "example": "star_rating"
+                },
+                "scale_max": {
+                    "type": "integer",
+                    "example": 5
+                },
+                "scale_min": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "start_label": {
+                    "type": "string",
+                    "example": "Poor"
+                }
+            }
+        },
+        "models.CreateMaterialInput": {
+            "type": "object",
+            "required": [
+                "allow_access_on",
+                "material_name",
+                "material_type",
+                "max_views"
+            ],
+            "properties": {
+                "allow_access_on": {
+                    "type": "string",
+                    "enum": [
+                        "both",
+                        "app"
+                    ],
+                    "example": "both"
+                },
+                "enable_downloads": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "file_url": {
+                    "type": "string",
+                    "example": "https://example.com/video.mp4"
+                },
+                "is_prerequisite": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "material_name": {
+                    "type": "string",
+                    "example": "Intro Video"
+                },
+                "material_type": {
+                    "enum": [
+                        "link",
+                        "image",
+                        "video",
+                        "pdf",
+                        "audio",
+                        "doc",
+                        "sheet",
+                        "file",
+                        "zip",
+                        "slide",
+                        "assignment",
+                        "form",
+                        "exercise"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.MaterialType"
+                        }
+                    ],
+                    "example": "video"
+                },
+                "max_views": {
+                    "type": "string",
+                    "enum": [
+                        "unlimited",
+                        "limited"
+                    ],
+                    "example": "unlimited"
+                },
+                "max_views_count": {
+                    "type": "integer",
+                    "example": 5
+                }
+            }
+        },
+        "models.CreateModuleInput": {
+            "type": "object",
+            "required": [
+                "max_view_duration",
+                "module_branch",
+                "module_name"
+            ],
+            "properties": {
+                "max_view_duration": {
+                    "type": "string",
+                    "enum": [
+                        "unlimited",
+                        "restricted"
+                    ],
+                    "example": "restricted"
+                },
+                "module_branch": {
+                    "type": "string",
+                    "example": "Computer Science"
+                },
+                "module_name": {
+                    "type": "string",
+                    "example": "Introduction to Go"
+                },
+                "watch_time_minutes": {
+                    "type": "integer",
+                    "example": 120
+                }
+            }
+        },
+        "models.CreateModuleSectionInput": {
+            "type": "object",
+            "required": [
+                "section_name"
+            ],
+            "properties": {
+                "is_prerequisite": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "section_name": {
+                    "type": "string",
+                    "example": "Introduction"
+                },
+                "short_description": {
+                    "type": "string",
+                    "example": "Overview of the section"
+                }
+            }
+        },
         "models.CreateSubmissionInput": {
             "type": "object",
             "required": [
@@ -2826,6 +5375,268 @@ const docTemplate = `{
                 }
             }
         },
+        "models.FeedbackForm": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "form_type": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_active": {
+                    "type": "boolean"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "template": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.FeedbackFormQuestion": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "end_label": {
+                    "type": "string"
+                },
+                "form_id": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_required": {
+                    "type": "boolean"
+                },
+                "options": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "order_index": {
+                    "type": "integer"
+                },
+                "question_text": {
+                    "type": "string"
+                },
+                "question_type": {
+                    "type": "string"
+                },
+                "scale_max": {
+                    "type": "integer"
+                },
+                "scale_min": {
+                    "type": "integer"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "start_label": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.FeedbackFormResponse": {
+            "type": "object",
+            "properties": {
+                "form_id": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "submitted_at": {
+                    "type": "string"
+                },
+                "submitted_by": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.FeedbackFormWithQuestions": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "form_type": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_active": {
+                    "type": "boolean"
+                },
+                "questions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.FeedbackFormQuestion"
+                    }
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "template": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.MaterialType": {
+            "type": "string",
+            "enum": [
+                "link",
+                "image",
+                "video",
+                "pdf",
+                "audio",
+                "doc",
+                "sheet",
+                "file",
+                "zip",
+                "slide",
+                "assignment",
+                "form",
+                "exercise"
+            ],
+            "x-enum-varnames": [
+                "MaterialTypeLink",
+                "MaterialTypeImage",
+                "MaterialTypeVideo",
+                "MaterialTypePDF",
+                "MaterialTypeAudio",
+                "MaterialTypeDoc",
+                "MaterialTypeSheet",
+                "MaterialTypeFile",
+                "MaterialTypeZip",
+                "MaterialTypeSlide",
+                "MaterialTypeAssignment",
+                "MaterialTypeForm",
+                "MaterialTypeExercise"
+            ]
+        },
+        "models.Module": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_active": {
+                    "type": "boolean"
+                },
+                "max_view_duration": {
+                    "description": "\"unlimited\" | \"restricted\"",
+                    "type": "string"
+                },
+                "module_branch": {
+                    "type": "string"
+                },
+                "module_name": {
+                    "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "watch_time_minutes": {
+                    "type": "integer"
+                }
+            }
+        },
+        "models.ModuleSection": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_active": {
+                    "type": "boolean"
+                },
+                "is_prerequisite": {
+                    "type": "boolean"
+                },
+                "module_id": {
+                    "type": "string"
+                },
+                "section_name": {
+                    "type": "string"
+                },
+                "short_description": {
+                    "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
         "models.Role": {
             "type": "string",
             "enum": [
@@ -2842,6 +5653,59 @@ const docTemplate = `{
                 "RoleTeamLead",
                 "RoleSuperAdmin"
             ]
+        },
+        "models.SectionMaterial": {
+            "type": "object",
+            "properties": {
+                "allow_access_on": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "enable_downloads": {
+                    "type": "boolean"
+                },
+                "file_url": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_active": {
+                    "type": "boolean"
+                },
+                "is_prerequisite": {
+                    "type": "boolean"
+                },
+                "material_name": {
+                    "type": "string"
+                },
+                "material_type": {
+                    "$ref": "#/definitions/models.MaterialType"
+                },
+                "max_views": {
+                    "type": "string"
+                },
+                "max_views_count": {
+                    "type": "integer"
+                },
+                "section_id": {
+                    "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
         },
         "models.StarterCode": {
             "type": "object",
@@ -2937,6 +5801,21 @@ const docTemplate = `{
                 }
             }
         },
+        "models.SubmitFeedbackFormInput": {
+            "type": "object",
+            "required": [
+                "answers"
+            ],
+            "properties": {
+                "answers": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/models.AnswerInput"
+                    }
+                }
+            }
+        },
         "models.UpdateAnnouncementInput": {
             "type": "object",
             "properties": {
@@ -2963,6 +5842,41 @@ const docTemplate = `{
                 "visibility": {
                     "type": "string",
                     "example": "existing_and_new"
+                }
+            }
+        },
+        "models.UpdateBannerInput": {
+            "type": "object",
+            "properties": {
+                "branches": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "[\"design\"",
+                        "\"marketing\"]"
+                    ]
+                },
+                "category": {
+                    "type": "string",
+                    "example": "event"
+                },
+                "cta_url": {
+                    "type": "string",
+                    "example": "https://example.com/new-sale"
+                },
+                "is_active": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "name": {
+                    "type": "string",
+                    "example": "Updated Banner Name"
+                },
+                "thumbnail": {
+                    "type": "string",
+                    "example": "https://cdn.example.com/new-banner.jpg"
                 }
             }
         },
@@ -3000,6 +5914,51 @@ const docTemplate = `{
                 "start_date": {
                     "type": "string",
                     "example": "2024-02-01"
+                }
+            }
+        },
+        "models.UpdateBlogInput": {
+            "type": "object",
+            "properties": {
+                "author": {
+                    "type": "string",
+                    "example": "Jane Doe"
+                },
+                "content": {
+                    "type": "string",
+                    "example": "\u003cp\u003eUpdated content...\u003c/p\u003e"
+                },
+                "excerpt": {
+                    "type": "string",
+                    "example": "Updated excerpt"
+                },
+                "featured_image": {
+                    "type": "string",
+                    "example": "https://cdn.example.com/new-blog.jpg"
+                },
+                "is_active": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "is_featured": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "publish_at": {
+                    "type": "string",
+                    "example": "2025-10-01T09:00:00Z"
+                },
+                "show_in_recent_updates": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "status": {
+                    "type": "string",
+                    "example": "published"
+                },
+                "title": {
+                    "type": "string",
+                    "example": "Updated Blog Title"
                 }
             }
         },
@@ -3130,6 +6089,158 @@ const docTemplate = `{
                 "status": {
                     "type": "string",
                     "example": "published"
+                }
+            }
+        },
+        "models.UpdateFeedbackFormInput": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "example": "Optional description"
+                },
+                "is_active": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "title": {
+                    "type": "string",
+                    "example": "Custom Form Title"
+                }
+            }
+        },
+        "models.UpdateFeedbackFormQuestionInput": {
+            "type": "object",
+            "properties": {
+                "end_label": {
+                    "type": "string",
+                    "example": "High"
+                },
+                "is_required": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "options": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "A",
+                        "B",
+                        "C"
+                    ]
+                },
+                "order_index": {
+                    "type": "integer",
+                    "example": 2
+                },
+                "question_text": {
+                    "type": "string",
+                    "example": "Updated question text"
+                },
+                "scale_max": {
+                    "type": "integer",
+                    "example": 10
+                },
+                "scale_min": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "start_label": {
+                    "type": "string",
+                    "example": "Low"
+                }
+            }
+        },
+        "models.UpdateMaterialInput": {
+            "type": "object",
+            "properties": {
+                "allow_access_on": {
+                    "type": "string",
+                    "example": "app"
+                },
+                "enable_downloads": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "file_url": {
+                    "type": "string",
+                    "example": "https://example.com/updated.pdf"
+                },
+                "is_active": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "is_prerequisite": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "material_name": {
+                    "type": "string",
+                    "example": "Updated Intro Video"
+                },
+                "material_type": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.MaterialType"
+                        }
+                    ],
+                    "example": "pdf"
+                },
+                "max_views": {
+                    "type": "string",
+                    "example": "limited"
+                },
+                "max_views_count": {
+                    "type": "integer",
+                    "example": 10
+                }
+            }
+        },
+        "models.UpdateModuleInput": {
+            "type": "object",
+            "properties": {
+                "is_active": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "max_view_duration": {
+                    "type": "string",
+                    "example": "unlimited"
+                },
+                "module_branch": {
+                    "type": "string",
+                    "example": "Software Engineering"
+                },
+                "module_name": {
+                    "type": "string",
+                    "example": "Advanced Go"
+                },
+                "watch_time_minutes": {
+                    "type": "integer",
+                    "example": 180
+                }
+            }
+        },
+        "models.UpdateModuleSectionInput": {
+            "type": "object",
+            "properties": {
+                "is_active": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "is_prerequisite": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "section_name": {
+                    "type": "string",
+                    "example": "Advanced Topics"
+                },
+                "short_description": {
+                    "type": "string",
+                    "example": "Deep dive into the topic"
                 }
             }
         },

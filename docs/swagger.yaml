@@ -113,6 +113,50 @@ definitions:
       visibility:
         type: string
     type: object
+  models.AnswerInput:
+    properties:
+      array:
+        items:
+          type: string
+        type: array
+      number:
+        type: number
+      question_short_id:
+        type: string
+      text:
+        type: string
+    required:
+    - question_short_id
+    type: object
+  models.Banner:
+    properties:
+      branches:
+        items:
+          type: string
+        type: array
+      category:
+        type: string
+      created_at:
+        type: string
+      created_by:
+        type: string
+      cta_url:
+        type: string
+      deleted_at:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      name:
+        type: string
+      short_id:
+        type: string
+      thumbnail:
+        type: string
+      updated_at:
+        type: string
+    type: object
   models.Batch:
     properties:
       additional_manager_id:
@@ -148,6 +192,41 @@ definitions:
       short_id:
         type: string
       start_date:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.Blog:
+    properties:
+      author:
+        type: string
+      content:
+        type: string
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      excerpt:
+        type: string
+      featured_image:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      is_featured:
+        type: boolean
+      publish_at:
+        type: string
+      short_id:
+        type: string
+      show_in_recent_updates:
+        type: boolean
+      status:
+        type: string
+      title:
         type: string
       updated_at:
         type: string
@@ -267,6 +346,34 @@ definitions:
     - urgency
     - visibility
     type: object
+  models.CreateBannerInput:
+    properties:
+      branches:
+        example:
+        - '["engineering"'
+        - '"design"]'
+        items:
+          type: string
+        type: array
+      category:
+        example: promotion
+        type: string
+      cta_url:
+        example: https://example.com/sale
+        type: string
+      is_active:
+        example: true
+        type: boolean
+      name:
+        example: Summer Sale
+        type: string
+      thumbnail:
+        example: https://cdn.example.com/banner.jpg
+        type: string
+    required:
+    - branches
+    - name
+    type: object
   models.CreateBatchInput:
     properties:
       additional_manager_id:
@@ -296,6 +403,45 @@ definitions:
     - course_short_id
     - end_date
     - start_date
+    type: object
+  models.CreateBlogInput:
+    properties:
+      author:
+        example: John Doe
+        type: string
+      content:
+        example: <p>Go is a statically typed language...</p>
+        type: string
+      excerpt:
+        example: A brief introduction to the Go programming language.
+        type: string
+      featured_image:
+        example: https://cdn.example.com/blog.jpg
+        type: string
+      is_featured:
+        example: false
+        type: boolean
+      publish_at:
+        example: "2025-09-15T10:00:00Z"
+        type: string
+      show_in_recent_updates:
+        example: false
+        type: boolean
+      status:
+        enum:
+        - published
+        - draft
+        - scheduled
+        example: draft
+        type: string
+      title:
+        example: Introduction to Go
+        type: string
+    required:
+    - author
+    - content
+    - status
+    - title
     type: object
   models.CreateCodingQuestionInput:
     properties:
@@ -403,6 +549,168 @@ definitions:
     - start_time
     - status
     type: object
+  models.CreateFeedbackFormInput:
+    properties:
+      form_type:
+        enum:
+        - session_feedback
+        - link_to_course
+        - general_survey
+        example: session_feedback
+        type: string
+      template:
+        enum:
+        - blank_form
+        - trainer_performance
+        - course_content
+        - overall_satisfaction
+        - content_rating
+        - csat
+        - course_rating
+        example: trainer_performance
+        type: string
+    required:
+    - form_type
+    - template
+    type: object
+  models.CreateFeedbackFormQuestionInput:
+    properties:
+      end_label:
+        example: Excellent
+        type: string
+      is_required:
+        example: true
+        type: boolean
+      options:
+        example:
+        - Option A
+        - Option B
+        - Option C
+        items:
+          type: string
+        type: array
+      order_index:
+        example: 1
+        type: integer
+      question_text:
+        example: Rate the trainer's performance
+        type: string
+      question_type:
+        enum:
+        - session_rating
+        - trainer_rating
+        - single_choice
+        - multiple_choice
+        - star_rating
+        - linear_scale
+        - date
+        - number
+        - short_answer
+        - long_answer
+        example: star_rating
+        type: string
+      scale_max:
+        example: 5
+        type: integer
+      scale_min:
+        example: 1
+        type: integer
+      start_label:
+        example: Poor
+        type: string
+    required:
+    - question_text
+    - question_type
+    type: object
+  models.CreateMaterialInput:
+    properties:
+      allow_access_on:
+        enum:
+        - both
+        - app
+        example: both
+        type: string
+      enable_downloads:
+        example: true
+        type: boolean
+      file_url:
+        example: https://example.com/video.mp4
+        type: string
+      is_prerequisite:
+        example: false
+        type: boolean
+      material_name:
+        example: Intro Video
+        type: string
+      material_type:
+        allOf:
+        - $ref: '#/definitions/models.MaterialType'
+        enum:
+        - link
+        - image
+        - video
+        - pdf
+        - audio
+        - doc
+        - sheet
+        - file
+        - zip
+        - slide
+        - assignment
+        - form
+        - exercise
+        example: video
+      max_views:
+        enum:
+        - unlimited
+        - limited
+        example: unlimited
+        type: string
+      max_views_count:
+        example: 5
+        type: integer
+    required:
+    - allow_access_on
+    - material_name
+    - material_type
+    - max_views
+    type: object
+  models.CreateModuleInput:
+    properties:
+      max_view_duration:
+        enum:
+        - unlimited
+        - restricted
+        example: restricted
+        type: string
+      module_branch:
+        example: Computer Science
+        type: string
+      module_name:
+        example: Introduction to Go
+        type: string
+      watch_time_minutes:
+        example: 120
+        type: integer
+    required:
+    - max_view_duration
+    - module_branch
+    - module_name
+    type: object
+  models.CreateModuleSectionInput:
+    properties:
+      is_prerequisite:
+        example: false
+        type: boolean
+      section_name:
+        example: Introduction
+        type: string
+      short_description:
+        example: Overview of the section
+        type: string
+    required:
+    - section_name
+    type: object
   models.CreateSubmissionInput:
     properties:
       code:
@@ -472,6 +780,187 @@ definitions:
       updated_at:
         type: string
     type: object
+  models.FeedbackForm:
+    properties:
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      description:
+        type: string
+      form_type:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      short_id:
+        type: string
+      template:
+        type: string
+      title:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.FeedbackFormQuestion:
+    properties:
+      created_at:
+        type: string
+      end_label:
+        type: string
+      form_id:
+        type: string
+      id:
+        type: string
+      is_required:
+        type: boolean
+      options:
+        items:
+          type: string
+        type: array
+      order_index:
+        type: integer
+      question_text:
+        type: string
+      question_type:
+        type: string
+      scale_max:
+        type: integer
+      scale_min:
+        type: integer
+      short_id:
+        type: string
+      start_label:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.FeedbackFormResponse:
+    properties:
+      form_id:
+        type: string
+      id:
+        type: string
+      short_id:
+        type: string
+      submitted_at:
+        type: string
+      submitted_by:
+        type: string
+    type: object
+  models.FeedbackFormWithQuestions:
+    properties:
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      description:
+        type: string
+      form_type:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      questions:
+        items:
+          $ref: '#/definitions/models.FeedbackFormQuestion'
+        type: array
+      short_id:
+        type: string
+      template:
+        type: string
+      title:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.MaterialType:
+    enum:
+    - link
+    - image
+    - video
+    - pdf
+    - audio
+    - doc
+    - sheet
+    - file
+    - zip
+    - slide
+    - assignment
+    - form
+    - exercise
+    type: string
+    x-enum-varnames:
+    - MaterialTypeLink
+    - MaterialTypeImage
+    - MaterialTypeVideo
+    - MaterialTypePDF
+    - MaterialTypeAudio
+    - MaterialTypeDoc
+    - MaterialTypeSheet
+    - MaterialTypeFile
+    - MaterialTypeZip
+    - MaterialTypeSlide
+    - MaterialTypeAssignment
+    - MaterialTypeForm
+    - MaterialTypeExercise
+  models.Module:
+    properties:
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      max_view_duration:
+        description: '"unlimited" | "restricted"'
+        type: string
+      module_branch:
+        type: string
+      module_name:
+        type: string
+      short_id:
+        type: string
+      updated_at:
+        type: string
+      watch_time_minutes:
+        type: integer
+    type: object
+  models.ModuleSection:
+    properties:
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      is_prerequisite:
+        type: boolean
+      module_id:
+        type: string
+      section_name:
+        type: string
+      short_description:
+        type: string
+      short_id:
+        type: string
+      updated_at:
+        type: string
+    type: object
   models.Role:
     enum:
     - student
@@ -486,6 +975,41 @@ definitions:
     - RoleEmployee
     - RoleTeamLead
     - RoleSuperAdmin
+  models.SectionMaterial:
+    properties:
+      allow_access_on:
+        type: string
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      enable_downloads:
+        type: boolean
+      file_url:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      is_prerequisite:
+        type: boolean
+      material_name:
+        type: string
+      material_type:
+        $ref: '#/definitions/models.MaterialType'
+      max_views:
+        type: string
+      max_views_count:
+        type: integer
+      section_id:
+        type: string
+      short_id:
+        type: string
+      updated_at:
+        type: string
+    type: object
   models.StarterCode:
     additionalProperties:
       type: string
@@ -550,6 +1074,16 @@ definitions:
       user_id:
         type: string
     type: object
+  models.SubmitFeedbackFormInput:
+    properties:
+      answers:
+        items:
+          $ref: '#/definitions/models.AnswerInput'
+        minItems: 1
+        type: array
+    required:
+    - answers
+    type: object
   models.UpdateAnnouncementInput:
     properties:
       description:
@@ -569,6 +1103,31 @@ definitions:
         type: string
       visibility:
         example: existing_and_new
+        type: string
+    type: object
+  models.UpdateBannerInput:
+    properties:
+      branches:
+        example:
+        - '["design"'
+        - '"marketing"]'
+        items:
+          type: string
+        type: array
+      category:
+        example: event
+        type: string
+      cta_url:
+        example: https://example.com/new-sale
+        type: string
+      is_active:
+        example: false
+        type: boolean
+      name:
+        example: Updated Banner Name
+        type: string
+      thumbnail:
+        example: https://cdn.example.com/new-banner.jpg
         type: string
     type: object
   models.UpdateBatchInput:
@@ -596,6 +1155,39 @@ definitions:
         type: string
       start_date:
         example: "2024-02-01"
+        type: string
+    type: object
+  models.UpdateBlogInput:
+    properties:
+      author:
+        example: Jane Doe
+        type: string
+      content:
+        example: <p>Updated content...</p>
+        type: string
+      excerpt:
+        example: Updated excerpt
+        type: string
+      featured_image:
+        example: https://cdn.example.com/new-blog.jpg
+        type: string
+      is_active:
+        example: false
+        type: boolean
+      is_featured:
+        example: true
+        type: boolean
+      publish_at:
+        example: "2025-10-01T09:00:00Z"
+        type: string
+      show_in_recent_updates:
+        example: true
+        type: boolean
+      status:
+        example: published
+        type: string
+      title:
+        example: Updated Blog Title
         type: string
     type: object
   models.UpdateCodingQuestionInput:
@@ -687,6 +1279,114 @@ definitions:
         type: string
       status:
         example: published
+        type: string
+    type: object
+  models.UpdateFeedbackFormInput:
+    properties:
+      description:
+        example: Optional description
+        type: string
+      is_active:
+        example: false
+        type: boolean
+      title:
+        example: Custom Form Title
+        type: string
+    type: object
+  models.UpdateFeedbackFormQuestionInput:
+    properties:
+      end_label:
+        example: High
+        type: string
+      is_required:
+        example: false
+        type: boolean
+      options:
+        example:
+        - A
+        - B
+        - C
+        items:
+          type: string
+        type: array
+      order_index:
+        example: 2
+        type: integer
+      question_text:
+        example: Updated question text
+        type: string
+      scale_max:
+        example: 10
+        type: integer
+      scale_min:
+        example: 1
+        type: integer
+      start_label:
+        example: Low
+        type: string
+    type: object
+  models.UpdateMaterialInput:
+    properties:
+      allow_access_on:
+        example: app
+        type: string
+      enable_downloads:
+        example: false
+        type: boolean
+      file_url:
+        example: https://example.com/updated.pdf
+        type: string
+      is_active:
+        example: false
+        type: boolean
+      is_prerequisite:
+        example: true
+        type: boolean
+      material_name:
+        example: Updated Intro Video
+        type: string
+      material_type:
+        allOf:
+        - $ref: '#/definitions/models.MaterialType'
+        example: pdf
+      max_views:
+        example: limited
+        type: string
+      max_views_count:
+        example: 10
+        type: integer
+    type: object
+  models.UpdateModuleInput:
+    properties:
+      is_active:
+        example: false
+        type: boolean
+      max_view_duration:
+        example: unlimited
+        type: string
+      module_branch:
+        example: Software Engineering
+        type: string
+      module_name:
+        example: Advanced Go
+        type: string
+      watch_time_minutes:
+        example: 180
+        type: integer
+    type: object
+  models.UpdateModuleSectionInput:
+    properties:
+      is_active:
+        example: false
+        type: boolean
+      is_prerequisite:
+        example: true
+        type: boolean
+      section_name:
+        example: Advanced Topics
+        type: string
+      short_description:
+        example: Deep dive into the topic
         type: string
     type: object
   models.UpdateUserInput:
@@ -973,6 +1673,157 @@ paths:
       summary: Register
       tags:
       - auth
+  /banners:
+    get:
+      description: Returns all non-deleted banners ordered newest first. Filter by
+        name (ILIKE, partial match) or exact category.
+      parameters:
+      - description: Filter by name (case-insensitive, partial match)
+        in: query
+        name: name
+        type: string
+      - description: Filter by exact category
+        in: query
+        name: category
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Banner'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List banners
+      tags:
+      - banners
+    post:
+      consumes:
+      - application/json
+      description: Create a new banner. Upload the thumbnail image via POST /upload/banner-image
+        first and pass the returned URL in the thumbnail field. branches must be a
+        non-empty array of branch names.
+      parameters:
+      - description: Banner details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateBannerInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Banner'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create banner
+      tags:
+      - banners
+  /banners/{short_id}:
+    delete:
+      description: Soft-delete a banner by its short_id (sets deleted_at; the row
+        is retained in the database).
+      parameters:
+      - description: Banner short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Banner not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete banner
+      tags:
+      - banners
+    patch:
+      consumes:
+      - application/json
+      description: Partially update a banner by its short_id. Send only the fields
+        you want to change. Use is_active to toggle the banner without deleting it.
+        To replace the thumbnail, upload a new image via POST /upload/banner-image
+        and pass the returned URL.
+      parameters:
+      - description: Banner short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Fields to update (all optional)
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateBannerInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Banner'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Banner not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update banner
+      tags:
+      - banners
   /batches:
     get:
       description: Returns all non-deleted batches with full course and manager details.
@@ -1170,6 +2021,161 @@ paths:
       summary: Filter batches
       tags:
       - batches
+  /blogs:
+    get:
+      description: Returns all non-deleted blogs ordered newest first. Filter by title
+        (ILIKE), status, or date (YYYY-MM-DD based on created_at).
+      parameters:
+      - description: Filter by title (case-insensitive, partial match)
+        in: query
+        name: title
+        type: string
+      - description: 'Filter by status: published | draft | scheduled'
+        in: query
+        name: status
+        type: string
+      - description: Filter by creation date (YYYY-MM-DD)
+        in: query
+        name: date
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Blog'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List blogs
+      tags:
+      - blogs
+    post:
+      consumes:
+      - application/json
+      description: 'Create a new blog post. Upload featured_image via POST /upload/blog-image
+        first and pass the returned URL here. status must be one of: published | draft
+        | scheduled. When status is "scheduled", publish_at (RFC3339) is required.
+        When status is "published" and publish_at is omitted, it defaults to now.'
+      parameters:
+      - description: Blog details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateBlogInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Blog'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create blog
+      tags:
+      - blogs
+  /blogs/{short_id}:
+    delete:
+      description: Soft-delete a blog by its short_id (sets deleted_at; the row is
+        retained in the database).
+      parameters:
+      - description: Blog short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Blog not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete blog
+      tags:
+      - blogs
+    patch:
+      consumes:
+      - application/json
+      description: Partially update a blog by its short_id. Send only the fields you
+        want to change. Use is_active to toggle the blog active/inactive without deleting
+        it.
+      parameters:
+      - description: Blog short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Fields to update (all optional)
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateBlogInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Blog'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Blog not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update blog
+      tags:
+      - blogs
   /coding-questions:
     get:
       description: Returns all active, non-deleted coding questions ordered by creation
@@ -1695,6 +2701,409 @@ paths:
       summary: Update event
       tags:
       - events
+  /feedback-forms:
+    get:
+      description: Returns all non-deleted feedback forms ordered newest first.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.FeedbackForm'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List feedback forms
+      tags:
+      - feedback-forms
+    post:
+      consumes:
+      - application/json
+      description: 'Step 1 + 2: pick a form_type and a template. No title or description
+        needed — the title is auto-generated from the template. Valid combos: session_feedback
+        → blank_form | trainer_performance | course_content | overall_satisfaction;
+        link_to_course → blank_form | content_rating | csat | course_rating; general_survey
+        → blank_form only. Restricted to super_admin, mentor, and team_lead.'
+      parameters:
+      - description: form_type + template only
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateFeedbackFormInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.FeedbackForm'
+        "400":
+          description: Validation error or invalid form_type/template combo
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create feedback form
+      tags:
+      - feedback-forms
+  /feedback-forms/{short_id}:
+    delete:
+      description: Soft-delete a feedback form by its short_id (sets deleted_at; the
+        row is retained). Restricted to super_admin, mentor, and team_lead.
+      parameters:
+      - description: Form short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Form not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete feedback form
+      tags:
+      - feedback-forms
+    get:
+      description: Returns a single non-deleted feedback form along with all its questions
+        ordered by order_index.
+      parameters:
+      - description: Form short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.FeedbackFormWithQuestions'
+        "404":
+          description: Form not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get feedback form with questions
+      tags:
+      - feedback-forms
+    patch:
+      consumes:
+      - application/json
+      description: 'Partially update a feedback form by its short_id. Send only the
+        fields you want to change. Use is_active: false to disable the form and is_active:
+        true to re-enable it. Restricted to super_admin, mentor, and team_lead.'
+      parameters:
+      - description: Form short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Fields to update (all optional)
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateFeedbackFormInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.FeedbackForm'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Form not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update feedback form
+      tags:
+      - feedback-forms
+  /feedback-forms/{short_id}/questions:
+    post:
+      consumes:
+      - application/json
+      description: 'Add a new question to an existing feedback form. Supported types:
+        session_rating, trainer_rating, single_choice, multiple_choice, star_rating,
+        linear_scale, date, number, short_answer, long_answer. For scale types supply
+        scale_min/scale_max and optional start_label/end_label. For choice types supply
+        options[]. Restricted to super_admin, mentor, and team_lead.'
+      parameters:
+      - description: Form short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Question details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateFeedbackFormQuestionInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.FeedbackFormQuestion'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Form not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Add question to form
+      tags:
+      - feedback-forms
+  /feedback-forms/{short_id}/questions/{q_short_id}:
+    delete:
+      description: Permanently remove a question from a feedback form. Restricted
+        to super_admin, mentor, and team_lead.
+      parameters:
+      - description: Form short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Question short ID
+        in: path
+        name: q_short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Form or question not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete a question
+      tags:
+      - feedback-forms
+    patch:
+      consumes:
+      - application/json
+      description: 'Partially update a question in a feedback form. Send only the
+        fields you want to change. To clear the options array send "options": [].
+        To clear scale labels send "start_label": "" or "end_label": "". Restricted
+        to super_admin, mentor, and team_lead.'
+      parameters:
+      - description: Form short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Question short ID
+        in: path
+        name: q_short_id
+        required: true
+        type: string
+      - description: Fields to update (all optional)
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateFeedbackFormQuestionInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.FeedbackFormQuestion'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Form or question not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update a question
+      tags:
+      - feedback-forms
+  /feedback-forms/{short_id}/responses:
+    post:
+      consumes:
+      - application/json
+      description: Student submits answers to an active feedback form. Each answer
+        must reference a question_short_id belonging to this form. For text questions
+        supply "text", for numeric (star/scale/number) supply "number", for choice
+        questions supply "array".
+      parameters:
+      - description: Form short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Answers array
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.SubmitFeedbackFormInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.FeedbackFormResponse'
+        "400":
+          description: Validation error or question not found in form
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Form not found or not active
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Submit feedback form response
+      tags:
+      - feedback-forms
   /health:
     get:
       description: Returns server health status
@@ -1732,6 +3141,600 @@ paths:
       summary: List mentors
       tags:
       - users
+  /modules:
+    get:
+      description: Returns all non-deleted modules ordered newest first.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Module'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List modules
+      tags:
+      - modules
+    post:
+      consumes:
+      - application/json
+      description: Create a new module. Set max_view_duration to "unlimited" or "restricted".
+        When "restricted", watch_time_minutes is required and defines the maximum
+        minutes a student may view content. watch_time_minutes is ignored when max_view_duration
+        is "unlimited".
+      parameters:
+      - description: Module details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateModuleInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Module'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create module
+      tags:
+      - modules
+  /modules/{short_id}:
+    delete:
+      description: Soft-delete a module by its short_id.
+      parameters:
+      - description: Module short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Module not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete module
+      tags:
+      - modules
+    patch:
+      consumes:
+      - application/json
+      description: Partially update a module by its short_id. Send only the fields
+        you want to change. Switching max_view_duration to "unlimited" automatically
+        clears watch_time_minutes.
+      parameters:
+      - description: Module short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Fields to update (all optional)
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateModuleInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Module'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Module not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update module
+      tags:
+      - modules
+  /modules/{short_id}/sections:
+    get:
+      description: Returns all non-deleted sections for the given module ordered by
+        creation time.
+      parameters:
+      - description: Module short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.ModuleSection'
+            type: array
+        "404":
+          description: Module not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get sections of a module
+      tags:
+      - modules
+    post:
+      consumes:
+      - application/json
+      description: Add a new section to an existing module. Set is_prerequisite to
+        true if students must complete this section before accessing the rest of the
+        module.
+      parameters:
+      - description: Module short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Section details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateModuleSectionInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.ModuleSection'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Module not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Add section to module
+      tags:
+      - modules
+  /modules/{short_id}/sections/{section_short_id}:
+    delete:
+      description: Soft-delete a section from a module.
+      parameters:
+      - description: Module short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Section short ID
+        in: path
+        name: section_short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Module or section not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete a section
+      tags:
+      - modules
+    patch:
+      consumes:
+      - application/json
+      description: Partially update a section within a module. Send only the fields
+        you want to change.
+      parameters:
+      - description: Module short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Section short ID
+        in: path
+        name: section_short_id
+        required: true
+        type: string
+      - description: Fields to update (all optional)
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateModuleSectionInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ModuleSection'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Module or section not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update a section
+      tags:
+      - modules
+  /modules/{short_id}/sections/{section_short_id}/materials:
+    get:
+      description: Returns all active materials for the given section, ordered by
+        creation date.
+      parameters:
+      - description: Module short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Section short ID
+        in: path
+        name: section_short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.SectionMaterial'
+            type: array
+        "404":
+          description: Section not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List materials in a section
+      tags:
+      - modules
+    post:
+      consumes:
+      - application/json
+      description: Create a new material inside a section. For file-based materials
+        (video, pdf, image, etc.), first upload the file via POST /upload/material
+        to get a URL, then pass it as file_url. For link type, pass the external URL
+        directly as file_url. max_views must be "unlimited" or "limited"; if "limited",
+        max_views_count is required. allow_access_on must be "both" or "app".
+      parameters:
+      - description: Module short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Section short ID
+        in: path
+        name: section_short_id
+        required: true
+        type: string
+      - description: Material details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateMaterialInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.SectionMaterial'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Section not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Add material to a section
+      tags:
+      - modules
+  /modules/{short_id}/sections/{section_short_id}/materials/{material_short_id}:
+    delete:
+      description: Soft-delete a material from a section.
+      parameters:
+      - description: Module short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Section short ID
+        in: path
+        name: section_short_id
+        required: true
+        type: string
+      - description: Material short ID
+        in: path
+        name: material_short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Section or material not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete a material
+      tags:
+      - modules
+    patch:
+      consumes:
+      - application/json
+      description: Partially update a material. Send only the fields you want to change.
+      parameters:
+      - description: Module short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Section short ID
+        in: path
+        name: section_short_id
+        required: true
+        type: string
+      - description: Material short ID
+        in: path
+        name: material_short_id
+        required: true
+        type: string
+      - description: Fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateMaterialInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.SectionMaterial'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Section or material not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update a material
+      tags:
+      - modules
+  /modules/filter:
+    get:
+      description: Filter non-deleted modules by any combination of fields. All query
+        params are optional.
+      parameters:
+      - description: Partial module name
+        in: query
+        name: module_name
+        type: string
+      - description: Partial branch name
+        in: query
+        name: module_branch
+        type: string
+      - description: unlimited or restricted
+        in: query
+        name: max_view_duration
+        type: string
+      - description: true or false
+        in: query
+        name: is_active
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Module'
+            type: array
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Filter modules
+      tags:
+      - modules
   /submissions:
     post:
       consumes:
@@ -1877,6 +3880,84 @@ paths:
       summary: List submissions for a specific user (admin/mentor)
       tags:
       - submissions
+  /upload/banner-image:
+    post:
+      consumes:
+      - multipart/form-data
+      description: 'Upload a thumbnail image for a banner. Returns the public URL
+        to use in the thumbnail field when creating or updating a banner. Max size
+        10 MB. Allowed types: JPEG, PNG, WebP, GIF.'
+      parameters:
+      - description: Image file
+        in: formData
+        name: image
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'url: public URL of the uploaded image'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Upload failed
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Upload banner thumbnail
+      tags:
+      - upload
+  /upload/blog-image:
+    post:
+      consumes:
+      - multipart/form-data
+      description: 'Upload an image for a blog post. Returns the public URL to use
+        in the featured_image field when creating or updating a blog. Max size 10
+        MB. Allowed types: JPEG, PNG, WebP, GIF.'
+      parameters:
+      - description: Image file
+        in: formData
+        name: image
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'url: public URL of the uploaded image'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Upload failed
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Upload blog featured image
+      tags:
+      - upload
   /upload/image:
     post:
       consumes:
@@ -1914,6 +3995,45 @@ paths:
       security:
       - BearerAuth: []
       summary: Upload event image
+      tags:
+      - upload
+  /upload/material:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Upload any supported material file (image, video, audio, PDF, doc,
+        sheet, slide, zip, etc.) to Supabase Storage. Returns the public URL to use
+        when creating a section material. Max size 500 MB.
+      parameters:
+      - description: Material file
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'url: public URL of the uploaded file'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Upload failed
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Upload a material file
       tags:
       - upload
   /users:

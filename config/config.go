@@ -18,6 +18,7 @@ type StorageConfig struct {
 	ProjectURL     string
 	ServiceRoleKey string
 	Bucket         string
+	MaterialBucket string
 }
 
 type AppConfig struct {
@@ -99,6 +100,7 @@ func Load() (*Config, error) {
 			ProjectURL:     require("SUPABASE_URL"),
 			ServiceRoleKey: require("SUPABASE_SERVICE_KEY"),
 			Bucket:         get("SUPABASE_STORAGE_BUCKET", "events"),
+			MaterialBucket: get("SUPABASE_MATERIAL_BUCKET", "materials"),
 		},
 	}
 
