@@ -2,6 +2,43 @@ package models
 
 import "time"
 
+// ── Curriculum (nested response for GET /courses/:id/curriculum) ──────────────
+
+type MaterialSummary struct {
+	ShortID         string  `json:"short_id"`
+	MaterialName    string  `json:"material_name"`
+	MaterialType    string  `json:"material_type"`
+	FileURL         *string `json:"file_url,omitempty"`
+	EnableDownloads bool    `json:"enable_downloads"`
+	IsPrerequisite  bool    `json:"is_prerequisite"`
+	IsActive        bool    `json:"is_active"`
+}
+
+type SectionSummary struct {
+	ShortID          string            `json:"short_id"`
+	SectionName      string            `json:"section_name"`
+	ShortDescription string            `json:"short_description"`
+	IsPrerequisite   bool              `json:"is_prerequisite"`
+	IsActive         bool              `json:"is_active"`
+	Materials        []MaterialSummary `json:"materials"`
+}
+
+type ModuleWithSections struct {
+	ShortID          string           `json:"short_id"`
+	ModuleName       string           `json:"module_name"`
+	ModuleBranch     string           `json:"module_branch"`
+	MaxViewDuration  string           `json:"max_view_duration"`
+	WatchTimeMinutes *int             `json:"watch_time_minutes,omitempty"`
+	IsActive         bool             `json:"is_active"`
+	OrderIndex       int              `json:"order_index"`
+	Sections         []SectionSummary `json:"sections"`
+}
+
+type AssignModuleInput struct {
+	ModuleShortID string `json:"module_short_id" binding:"required"`
+	OrderIndex    int    `json:"order_index"`
+}
+
 type Module struct {
 	ID               string     `json:"id"`
 	ShortID          string     `json:"short_id"`

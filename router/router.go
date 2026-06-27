@@ -85,11 +85,15 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			// Courses — only super_admin / team_lead may create, edit, or delete
 			courses := protected.Group("/courses")
 			{
-				courses.POST("",             adminOrAbove, courseCtrl.Create)
-				courses.GET("",              courseCtrl.GetAll)
-				courses.GET("/search",       courseCtrl.Search)
-				courses.PATCH("/:short_id",  adminOrAbove, courseCtrl.Update)
-				courses.DELETE("/:short_id", adminOrAbove, courseCtrl.Delete)
+				courses.POST("",                                        adminOrAbove, courseCtrl.Create)
+				courses.GET("",                                         courseCtrl.GetAll)
+				courses.GET("/search",                                  courseCtrl.Search)
+				courses.PATCH("/:short_id",                             adminOrAbove, courseCtrl.Update)
+				courses.DELETE("/:short_id",                            adminOrAbove, courseCtrl.Delete)
+				// Curriculum — modules assigned to this course
+				courses.GET("/:short_id/curriculum",                    courseCtrl.GetCurriculum)
+				courses.POST("/:short_id/modules",                      adminOrAbove, courseCtrl.AssignModule)
+				courses.DELETE("/:short_id/modules/:module_short_id",   adminOrAbove, courseCtrl.UnassignModule)
 			}
 
 			// Batches — only super_admin / team_lead may create, edit, or delete

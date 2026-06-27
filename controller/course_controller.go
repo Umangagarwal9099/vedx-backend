@@ -148,6 +148,50 @@ func (ctrl *CourseController) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, course)
 }
 
+// GetCurriculum returns all modules (with sections + materials) assigned to a course.
+func (ctrl *CourseController) GetCurriculum(c *gin.Context) {
+	shortID := c.Param("short_id")
+	curriculum, err := ctrl.courseRepo.GetCurriculum(c.Request.Context(), shortID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch curriculum"})
+		return
+	}
+	if curriculum == nil {
+		curriculum = []models.ModuleWithSections{}
+	}
+	c.JSON(http.StatusOK, curriculum)
+}
+
+// AssignModule assigns a module to a course.
+func (ctrl *CourseController) AssignModule(c *gin.Context) {
+	shortID := c.Param("short_id")
+	var input models.AssignModuleInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := ctrl.courseRepo.AssignModule(c.Request.Context(), shortID, input.ModuleShortID, input.OrderIndex); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not assign module: " + err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "module assigned"})
+}
+
+// UnassignModule removes a module from a course.
+func (ctrl *CourseController) UnassignModule(c *gin.Context) {
+	courseShortID := c.Param("short_id")
+	moduleShortID := c.Param("module_short_id")
+	if err := ctrl.courseRepo.UnassignModule(c.Request.Context(), courseShortID, moduleShortID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "assignment not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not unassign module"})
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
 // DeleteCourse godoc
 //
 //	@Summary		Delete course

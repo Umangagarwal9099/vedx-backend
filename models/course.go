@@ -3,28 +3,48 @@ package models
 import "time"
 
 type Course struct {
-	ID          string     `json:"id"`
-	ShortID     string     `json:"short_id"`
-	Name        string     `json:"name"`
-	Description string     `json:"description,omitempty"`
-	Thumbnail   string     `json:"thumbnail,omitempty"`
-	IsActive    bool       `json:"is_active"`
-	CreatedBy   string     `json:"created_by"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
-	DeletedAt   *time.Time `json:"deleted_at,omitempty"`
+	ID           string     `json:"id"`
+	ShortID      string     `json:"short_id"`
+	Name         string     `json:"name"`
+	Description  string     `json:"description,omitempty"`
+	Thumbnail    string     `json:"thumbnail,omitempty"`
+	Overview     string     `json:"overview,omitempty"`
+	Objectives   []string   `json:"objectives"`
+	Requirements []string   `json:"requirements"`
+	Instructor   string     `json:"instructor,omitempty"`
+	Duration     string     `json:"duration,omitempty"`
+	Level        string     `json:"level,omitempty"`
+	Category     string     `json:"category,omitempty"`
+	IsActive     bool       `json:"is_active"`
+	CreatedBy    string     `json:"created_by"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+	DeletedAt    *time.Time `json:"deleted_at,omitempty"`
 }
 
 type CreateCourseInput struct {
-	Name        string `json:"name"        binding:"required" example:"Go for Beginners"`
-	Description string `json:"description"                    example:"Learn Go from scratch"`
-	Thumbnail   string `json:"thumbnail"                      example:"https://cdn.example.com/thumb.jpg"`
+	Name         string   `json:"name"         binding:"required"`
+	Description  string   `json:"description"`
+	Thumbnail    string   `json:"thumbnail"`
+	Overview     string   `json:"overview"`
+	Objectives   []string `json:"objectives"`
+	Requirements []string `json:"requirements"`
+	Instructor   string   `json:"instructor"`
+	Duration     string   `json:"duration"`
+	Level        string   `json:"level"`
+	Category     string   `json:"category"`
 }
 
-// UpdateCourseInput — all fields optional; send only what you want to change.
 type UpdateCourseInput struct {
-	Name        *string `json:"name"        example:"Go Advanced"`
-	Description *string `json:"description" example:"Deep dive into Go internals"`
-	Thumbnail   *string `json:"thumbnail"   example:"https://cdn.example.com/new-thumb.jpg"`
-	IsActive    *bool   `json:"is_active"   example:"false"`
+	Name         *string  `json:"name"`
+	Description  *string  `json:"description"`
+	Thumbnail    *string  `json:"thumbnail"`
+	Overview     *string  `json:"overview"`
+	Objectives   []string `json:"objectives"`
+	Requirements []string `json:"requirements"`
+	Instructor   *string  `json:"instructor"`
+	Duration     *string  `json:"duration"`
+	Level        *string  `json:"level"`
+	Category     *string  `json:"category"`
+	IsActive     *bool    `json:"is_active"`
 }
