@@ -128,6 +128,43 @@ definitions:
     required:
     - question_short_id
     type: object
+  models.Assessment:
+    properties:
+      allow_attempts_after_passing:
+        type: boolean
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      description:
+        type: string
+      file_url:
+        type: string
+      general_instructions:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      name:
+        type: string
+      passing_percentage:
+        type: number
+      result_declaration:
+        type: string
+      result_display:
+        type: string
+      short_id:
+        type: string
+      thumbnail:
+        type: string
+      total_marks:
+        type: integer
+      updated_at:
+        type: string
+    type: object
   models.Banner:
     properties:
       branches:
@@ -296,6 +333,8 @@ definitions:
     type: object
   models.Course:
     properties:
+      category:
+        type: string
       created_at:
         type: string
       created_by:
@@ -304,12 +343,28 @@ definitions:
         type: string
       description:
         type: string
+      duration:
+        type: string
       id:
+        type: string
+      instructor:
         type: string
       is_active:
         type: boolean
+      level:
+        type: string
       name:
         type: string
+      objectives:
+        items:
+          type: string
+        type: array
+      overview:
+        type: string
+      requirements:
+        items:
+          type: string
+        type: array
       short_id:
         type: string
       thumbnail:
@@ -345,6 +400,54 @@ definitions:
     - name
     - urgency
     - visibility
+    type: object
+  models.CreateAssessmentInput:
+    properties:
+      allow_attempts_after_passing:
+        example: false
+        type: boolean
+      description:
+        example: Test your knowledge of Go basics.
+        type: string
+      file_url:
+        example: https://cdn.example.com/file.pdf
+        type: string
+      general_instructions:
+        example: Read all questions carefully before answering.
+        type: string
+      name:
+        example: Golang Fundamentals Quiz
+        type: string
+      passing_percentage:
+        example: 60
+        maximum: 100
+        minimum: 0
+        type: number
+      result_declaration:
+        enum:
+        - manual
+        - automatic
+        example: automatic
+        type: string
+      result_display:
+        enum:
+        - marks_and_status
+        - status_only
+        example: marks_and_status
+        type: string
+      thumbnail:
+        example: https://cdn.example.com/thumbnail.jpg
+        type: string
+      total_marks:
+        example: 100
+        minimum: 1
+        type: integer
+    required:
+    - name
+    - passing_percentage
+    - result_declaration
+    - result_display
+    - total_marks
     type: object
   models.CreateBannerInput:
     properties:
@@ -483,14 +586,29 @@ definitions:
     type: object
   models.CreateCourseInput:
     properties:
+      category:
+        type: string
       description:
-        example: Learn Go from scratch
+        type: string
+      duration:
+        type: string
+      instructor:
+        type: string
+      level:
         type: string
       name:
-        example: Go for Beginners
         type: string
+      objectives:
+        items:
+          type: string
+        type: array
+      overview:
+        type: string
+      requirements:
+        items:
+          type: string
+        type: array
       thumbnail:
-        example: https://cdn.example.com/thumb.jpg
         type: string
     required:
     - name
@@ -1105,6 +1223,42 @@ definitions:
         example: existing_and_new
         type: string
     type: object
+  models.UpdateAssessmentInput:
+    properties:
+      allow_attempts_after_passing:
+        example: true
+        type: boolean
+      description:
+        example: Updated description.
+        type: string
+      file_url:
+        example: https://cdn.example.com/new-file.pdf
+        type: string
+      general_instructions:
+        example: Updated instructions.
+        type: string
+      is_active:
+        example: false
+        type: boolean
+      name:
+        example: Updated Assessment Name
+        type: string
+      passing_percentage:
+        example: 70
+        type: number
+      result_declaration:
+        example: manual
+        type: string
+      result_display:
+        example: status_only
+        type: string
+      thumbnail:
+        example: https://cdn.example.com/new-thumb.jpg
+        type: string
+      total_marks:
+        example: 150
+        type: integer
+    type: object
   models.UpdateBannerInput:
     properties:
       branches:
@@ -1225,17 +1379,31 @@ definitions:
     type: object
   models.UpdateCourseInput:
     properties:
+      category:
+        type: string
       description:
-        example: Deep dive into Go internals
+        type: string
+      duration:
+        type: string
+      instructor:
         type: string
       is_active:
-        example: false
         type: boolean
-      name:
-        example: Go Advanced
+      level:
         type: string
+      name:
+        type: string
+      objectives:
+        items:
+          type: string
+        type: array
+      overview:
+        type: string
+      requirements:
+        items:
+          type: string
+        type: array
       thumbnail:
-        example: https://cdn.example.com/new-thumb.jpg
         type: string
     type: object
   models.UpdateEventInput:
@@ -1591,6 +1759,163 @@ paths:
       summary: Update announcement
       tags:
       - announcements
+  /assessments:
+    get:
+      description: Returns all active and inactive assessments. Supports optional
+        filtering by name (partial match), description (partial match), and is_active
+        (true|false).
+      parameters:
+      - description: Filter by name (partial match)
+        in: query
+        name: name
+        type: string
+      - description: Filter by description (partial match)
+        in: query
+        name: description
+        type: string
+      - description: 'Filter by active status: true or false'
+        in: query
+        name: is_active
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Assessment'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List assessments
+      tags:
+      - assessments
+    post:
+      consumes:
+      - application/json
+      description: 'Create a new assessment. Upload thumbnail via POST /upload/assessment-thumbnail
+        and files via POST /upload/assessment-file first, then pass the returned URLs
+        here. result_declaration must be one of: manual | automatic. result_display
+        must be one of: marks_and_status | status_only.'
+      parameters:
+      - description: Assessment details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateAssessmentInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Assessment'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create assessment
+      tags:
+      - assessments
+  /assessments/{short_id}:
+    delete:
+      description: Soft-deletes an assessment by its short ID. The record is retained
+        in the database with deleted_at set.
+      parameters:
+      - description: Assessment short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Assessment not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete assessment
+      tags:
+      - assessments
+    patch:
+      consumes:
+      - application/json
+      description: Partially update an assessment. All fields are optional — only
+        provided fields are updated. To replace files, upload new ones via POST /upload/assessment-file
+        and pass the full updated file_urls array. To replace the thumbnail, upload
+        via POST /upload/assessment-thumbnail.
+      parameters:
+      - description: Assessment short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateAssessmentInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Assessment'
+        "400":
+          description: Validation error or no fields provided
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Assessment not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update assessment
+      tags:
+      - assessments
   /auth/login:
     post:
       consumes:
@@ -3880,6 +4205,85 @@ paths:
       summary: List submissions for a specific user (admin/mentor)
       tags:
       - submissions
+  /upload/assessment-file:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Upload a file (PDF, Word, Excel, PowerPoint, image, video, audio,
+        zip, etc.) to attach to an assessment. Returns the public URL to include in
+        the file_urls array when creating or updating an assessment. Max size 500
+        MB. Call this endpoint once per file and collect all returned URLs.
+      parameters:
+      - description: Assessment file
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'url: public URL of the uploaded file'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Upload failed
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Upload assessment file
+      tags:
+      - upload
+  /upload/assessment-thumbnail:
+    post:
+      consumes:
+      - multipart/form-data
+      description: 'Upload a thumbnail image for an assessment. Returns the public
+        URL to use in the thumbnail field when creating or updating an assessment.
+        Max size 10 MB. Allowed types: JPEG, PNG, WebP, GIF.'
+      parameters:
+      - description: Thumbnail image file
+        in: formData
+        name: image
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'url: public URL of the uploaded thumbnail'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Upload failed
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Upload assessment thumbnail
+      tags:
+      - upload
   /upload/banner-image:
     post:
       consumes:

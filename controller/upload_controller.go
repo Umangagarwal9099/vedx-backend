@@ -116,6 +116,74 @@ func (ctrl *UploadController) UploadBannerImage(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"url": url})
 }
 
+// UploadAssessmentThumbnail godoc
+//
+//	@Summary		Upload assessment thumbnail
+//	@Description	Upload a thumbnail image for an assessment. Returns the public URL to use in the thumbnail field when creating or updating an assessment. Max size 10 MB. Allowed types: JPEG, PNG, WebP, GIF.
+//	@Tags			upload
+//	@Accept			multipart/form-data
+//	@Produce		json
+//	@Param			image	formData	file	true	"Thumbnail image file"
+//	@Success		200		{object}	map[string]string	"url: public URL of the uploaded thumbnail"
+//	@Failure		400		{object}	map[string]string	"Validation error"
+//	@Failure		500		{object}	map[string]string	"Upload failed"
+//	@Security		BearerAuth
+//	@Router			/upload/assessment-thumbnail [post]
+func (ctrl *UploadController) UploadAssessmentThumbnail(c *gin.Context) {
+	fh, err := c.FormFile("image")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "field 'image' is required (multipart/form-data)"})
+		return
+	}
+
+	url, err := ctrl.storage.UploadAssessmentThumbnail(fh)
+	if err != nil {
+		status := http.StatusInternalServerError
+		msg := err.Error()
+		if len(msg) >= 4 && (msg[:4] == "file" || msg[:4] == "unsu" || msg[:4] == "cann") {
+			status = http.StatusBadRequest
+		}
+		c.JSON(status, gin.H{"error": msg})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"url": url})
+}
+
+// UploadAssessmentFile godoc
+//
+//	@Summary		Upload assessment file
+//	@Description	Upload a file (PDF, Word, Excel, PowerPoint, image, video, audio, zip, etc.) to attach to an assessment. Returns the public URL to include in the file_urls array when creating or updating an assessment. Max size 500 MB. Call this endpoint once per file and collect all returned URLs.
+//	@Tags			upload
+//	@Accept			multipart/form-data
+//	@Produce		json
+//	@Param			file	formData	file	true	"Assessment file"
+//	@Success		200		{object}	map[string]string	"url: public URL of the uploaded file"
+//	@Failure		400		{object}	map[string]string	"Validation error"
+//	@Failure		500		{object}	map[string]string	"Upload failed"
+//	@Security		BearerAuth
+//	@Router			/upload/assessment-file [post]
+func (ctrl *UploadController) UploadAssessmentFile(c *gin.Context) {
+	fh, err := c.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "field 'file' is required (multipart/form-data)"})
+		return
+	}
+
+	url, err := ctrl.storage.UploadAssessmentFile(fh)
+	if err != nil {
+		status := http.StatusInternalServerError
+		msg := err.Error()
+		if len(msg) >= 4 && (msg[:4] == "file" || msg[:4] == "unsu" || msg[:4] == "cann") {
+			status = http.StatusBadRequest
+		}
+		c.JSON(status, gin.H{"error": msg})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"url": url})
+}
+
 // UploadMaterial godoc
 //
 //	@Summary		Upload a material file

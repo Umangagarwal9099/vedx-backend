@@ -248,6 +248,238 @@
                 }
             }
         },
+        "/assessments": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns all active and inactive assessments. Supports optional filtering by name (partial match), description (partial match), and is_active (true|false).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "assessments"
+                ],
+                "summary": "List assessments",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by name (partial match)",
+                        "name": "name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by description (partial match)",
+                        "name": "description",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by active status: true or false",
+                        "name": "is_active",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.Assessment"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create a new assessment. Upload thumbnail via POST /upload/assessment-thumbnail and files via POST /upload/assessment-file first, then pass the returned URLs here. result_declaration must be one of: manual | automatic. result_display must be one of: marks_and_status | status_only.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "assessments"
+                ],
+                "summary": "Create assessment",
+                "parameters": [
+                    {
+                        "description": "Assessment details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateAssessmentInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.Assessment"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/assessments/{short_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Soft-deletes an assessment by its short ID. The record is retained in the database with deleted_at set.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "assessments"
+                ],
+                "summary": "Delete assessment",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Assessment short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Assessment not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Partially update an assessment. All fields are optional — only provided fields are updated. To replace files, upload new ones via POST /upload/assessment-file and pass the full updated file_urls array. To replace the thumbnail, upload via POST /upload/assessment-thumbnail.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "assessments"
+                ],
+                "summary": "Update assessment",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Assessment short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to update",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateAssessmentInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Assessment"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error or no fields provided",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Assessment not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/auth/login": {
             "post": {
                 "description": "Single login endpoint for all roles. Returns a JWT — send it as `Authorization: Bearer \u003ctoken\u003e` on protected requests.",
@@ -3711,6 +3943,122 @@
                 }
             }
         },
+        "/upload/assessment-file": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Upload a file (PDF, Word, Excel, PowerPoint, image, video, audio, zip, etc.) to attach to an assessment. Returns the public URL to include in the file_urls array when creating or updating an assessment. Max size 500 MB. Call this endpoint once per file and collect all returned URLs.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "upload"
+                ],
+                "summary": "Upload assessment file",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "Assessment file",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "url: public URL of the uploaded file",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Upload failed",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/upload/assessment-thumbnail": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Upload a thumbnail image for an assessment. Returns the public URL to use in the thumbnail field when creating or updating an assessment. Max size 10 MB. Allowed types: JPEG, PNG, WebP, GIF.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "upload"
+                ],
+                "summary": "Upload assessment thumbnail",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "Thumbnail image file",
+                        "name": "image",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "url: public URL of the uploaded thumbnail",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Upload failed",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/upload/banner-image": {
             "post": {
                 "security": [
@@ -4450,6 +4798,62 @@
                 }
             }
         },
+        "models.Assessment": {
+            "type": "object",
+            "properties": {
+                "allow_attempts_after_passing": {
+                    "type": "boolean"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "file_url": {
+                    "type": "string"
+                },
+                "general_instructions": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_active": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "passing_percentage": {
+                    "type": "number"
+                },
+                "result_declaration": {
+                    "type": "string"
+                },
+                "result_display": {
+                    "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "thumbnail": {
+                    "type": "string"
+                },
+                "total_marks": {
+                    "type": "integer"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
         "models.Banner": {
             "type": "object",
             "properties": {
@@ -4705,6 +5109,9 @@
         "models.Course": {
             "type": "object",
             "properties": {
+                "category": {
+                    "type": "string"
+                },
                 "created_at": {
                     "type": "string"
                 },
@@ -4717,14 +5124,38 @@
                 "description": {
                     "type": "string"
                 },
+                "duration": {
+                    "type": "string"
+                },
                 "id": {
+                    "type": "string"
+                },
+                "instructor": {
                     "type": "string"
                 },
                 "is_active": {
                     "type": "boolean"
                 },
+                "level": {
+                    "type": "string"
+                },
                 "name": {
                     "type": "string"
+                },
+                "objectives": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "overview": {
+                    "type": "string"
+                },
+                "requirements": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "short_id": {
                     "type": "string"
@@ -4773,6 +5204,69 @@
                         "existing_and_new"
                     ],
                     "example": "existing_only"
+                }
+            }
+        },
+        "models.CreateAssessmentInput": {
+            "type": "object",
+            "required": [
+                "name",
+                "passing_percentage",
+                "result_declaration",
+                "result_display",
+                "total_marks"
+            ],
+            "properties": {
+                "allow_attempts_after_passing": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "description": {
+                    "type": "string",
+                    "example": "Test your knowledge of Go basics."
+                },
+                "file_url": {
+                    "type": "string",
+                    "example": "https://cdn.example.com/file.pdf"
+                },
+                "general_instructions": {
+                    "type": "string",
+                    "example": "Read all questions carefully before answering."
+                },
+                "name": {
+                    "type": "string",
+                    "example": "Golang Fundamentals Quiz"
+                },
+                "passing_percentage": {
+                    "type": "number",
+                    "maximum": 100,
+                    "minimum": 0,
+                    "example": 60
+                },
+                "result_declaration": {
+                    "type": "string",
+                    "enum": [
+                        "manual",
+                        "automatic"
+                    ],
+                    "example": "automatic"
+                },
+                "result_display": {
+                    "type": "string",
+                    "enum": [
+                        "marks_and_status",
+                        "status_only"
+                    ],
+                    "example": "marks_and_status"
+                },
+                "thumbnail": {
+                    "type": "string",
+                    "example": "https://cdn.example.com/thumbnail.jpg"
+                },
+                "total_marks": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "example": 100
                 }
             }
         },
@@ -4968,17 +5462,41 @@
                 "name"
             ],
             "properties": {
+                "category": {
+                    "type": "string"
+                },
                 "description": {
-                    "type": "string",
-                    "example": "Learn Go from scratch"
+                    "type": "string"
+                },
+                "duration": {
+                    "type": "string"
+                },
+                "instructor": {
+                    "type": "string"
+                },
+                "level": {
+                    "type": "string"
                 },
                 "name": {
-                    "type": "string",
-                    "example": "Go for Beginners"
+                    "type": "string"
+                },
+                "objectives": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "overview": {
+                    "type": "string"
+                },
+                "requirements": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "thumbnail": {
-                    "type": "string",
-                    "example": "https://cdn.example.com/thumb.jpg"
+                    "type": "string"
                 }
             }
         },
@@ -5843,6 +6361,55 @@
                 }
             }
         },
+        "models.UpdateAssessmentInput": {
+            "type": "object",
+            "properties": {
+                "allow_attempts_after_passing": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "description": {
+                    "type": "string",
+                    "example": "Updated description."
+                },
+                "file_url": {
+                    "type": "string",
+                    "example": "https://cdn.example.com/new-file.pdf"
+                },
+                "general_instructions": {
+                    "type": "string",
+                    "example": "Updated instructions."
+                },
+                "is_active": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "name": {
+                    "type": "string",
+                    "example": "Updated Assessment Name"
+                },
+                "passing_percentage": {
+                    "type": "number",
+                    "example": 70
+                },
+                "result_declaration": {
+                    "type": "string",
+                    "example": "manual"
+                },
+                "result_display": {
+                    "type": "string",
+                    "example": "status_only"
+                },
+                "thumbnail": {
+                    "type": "string",
+                    "example": "https://cdn.example.com/new-thumb.jpg"
+                },
+                "total_marks": {
+                    "type": "integer",
+                    "example": 150
+                }
+            }
+        },
         "models.UpdateBannerInput": {
             "type": "object",
             "properties": {
@@ -6013,21 +6580,44 @@
         "models.UpdateCourseInput": {
             "type": "object",
             "properties": {
+                "category": {
+                    "type": "string"
+                },
                 "description": {
-                    "type": "string",
-                    "example": "Deep dive into Go internals"
+                    "type": "string"
+                },
+                "duration": {
+                    "type": "string"
+                },
+                "instructor": {
+                    "type": "string"
                 },
                 "is_active": {
-                    "type": "boolean",
-                    "example": false
+                    "type": "boolean"
+                },
+                "level": {
+                    "type": "string"
                 },
                 "name": {
-                    "type": "string",
-                    "example": "Go Advanced"
+                    "type": "string"
+                },
+                "objectives": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "overview": {
+                    "type": "string"
+                },
+                "requirements": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "thumbnail": {
-                    "type": "string",
-                    "example": "https://cdn.example.com/new-thumb.jpg"
+                    "type": "string"
                 }
             }
         },

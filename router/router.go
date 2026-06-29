@@ -33,6 +33,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	submissionRepo       := repository.NewSubmissionRepository(pool)
 	feedbackFormRepo     := repository.NewFeedbackFormRepository(pool)
 	moduleRepo           := repository.NewModuleRepository(pool)
+	assessmentRepo       := repository.NewAssessmentRepository(pool)
 
 	// Services
 	storageSvc := service.NewStorageService(cfg.Storage)
@@ -51,6 +52,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	moduleCtrl           := controller.NewModuleController(moduleRepo)
 	blogCtrl             := controller.NewBlogController(blogRepo)
 	bannerCtrl           := controller.NewBannerController(bannerRepo)
+	assessmentCtrl       := controller.NewAssessmentController(assessmentRepo)
 
 	v1 := r.Group("/api/v1")
 	{
@@ -203,11 +205,22 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				banners.DELETE("/:short_id", adminOrAbove, bannerCtrl.Delete)
 			}
 
+			// Assessments — only super_admin / team_lead may create, edit, or delete
+			assessments := protected.Group("/assessments")
+			{
+				assessments.POST("",             adminOrAbove, assessmentCtrl.Create)
+				assessments.GET("",              assessmentCtrl.GetAll)
+				assessments.PATCH("/:short_id",  adminOrAbove, assessmentCtrl.Update)
+				assessments.DELETE("/:short_id", adminOrAbove, assessmentCtrl.Delete)
+			}
+
 			// Upload
-			protected.POST("/upload/image",        uploadCtrl.UploadEventImage)
-			protected.POST("/upload/blog-image",   uploadCtrl.UploadBlogImage)
-			protected.POST("/upload/banner-image", uploadCtrl.UploadBannerImage)
-			protected.POST("/upload/material",     uploadCtrl.UploadMaterial)
+			protected.POST("/upload/image",                uploadCtrl.UploadEventImage)
+			protected.POST("/upload/blog-image",           uploadCtrl.UploadBlogImage)
+			protected.POST("/upload/banner-image",         uploadCtrl.UploadBannerImage)
+			protected.POST("/upload/material",             uploadCtrl.UploadMaterial)
+			protected.POST("/upload/assessment-thumbnail", uploadCtrl.UploadAssessmentThumbnail)
+			protected.POST("/upload/assessment-file",      uploadCtrl.UploadAssessmentFile)
 		}
 	}
 
