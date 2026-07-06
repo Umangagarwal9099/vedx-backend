@@ -34,6 +34,8 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	feedbackFormRepo     := repository.NewFeedbackFormRepository(pool)
 	moduleRepo           := repository.NewModuleRepository(pool)
 	assessmentRepo       := repository.NewAssessmentRepository(pool)
+	communityRepo        := repository.NewCommunityRepository(pool)
+	notificationRepo     := repository.NewNotificationRepository(pool)
 
 	// Services
 	storageSvc := service.NewStorageService(cfg.Storage)
@@ -41,18 +43,20 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	// Controllers
 	authCtrl             := controller.NewAuthController(userRepo, cfg.JWT.Secret)
 	userCtrl             := controller.NewUserController(userRepo)
-	courseCtrl           := controller.NewCourseController(courseRepo)
-	batchCtrl            := controller.NewBatchController(batchRepo)
-	eventCtrl            := controller.NewEventController(eventRepo)
-	announcementCtrl     := controller.NewAnnouncementController(announcementRepo)
+	courseCtrl           := controller.NewCourseController(courseRepo, notificationRepo)
+	batchCtrl            := controller.NewBatchController(batchRepo, notificationRepo)
+	eventCtrl            := controller.NewEventController(eventRepo, notificationRepo)
+	announcementCtrl     := controller.NewAnnouncementController(announcementRepo, notificationRepo)
 	uploadCtrl           := controller.NewUploadController(storageSvc)
-	codingQuestionCtrl   := controller.NewCodingQuestionController(codingQuestionRepo)
+	codingQuestionCtrl   := controller.NewCodingQuestionController(codingQuestionRepo, notificationRepo)
 	submissionCtrl       := controller.NewSubmissionController(submissionRepo)
-	feedbackFormCtrl     := controller.NewFeedbackFormController(feedbackFormRepo)
-	moduleCtrl           := controller.NewModuleController(moduleRepo)
-	blogCtrl             := controller.NewBlogController(blogRepo)
-	bannerCtrl           := controller.NewBannerController(bannerRepo)
-	assessmentCtrl       := controller.NewAssessmentController(assessmentRepo)
+	feedbackFormCtrl     := controller.NewFeedbackFormController(feedbackFormRepo, notificationRepo)
+	moduleCtrl           := controller.NewModuleController(moduleRepo, notificationRepo)
+	blogCtrl             := controller.NewBlogController(blogRepo, notificationRepo)
+	bannerCtrl           := controller.NewBannerController(bannerRepo, notificationRepo)
+	assessmentCtrl       := controller.NewAssessmentController(assessmentRepo, notificationRepo)
+	communityCtrl        := controller.NewCommunityController(communityRepo, notificationRepo)
+	notificationCtrl     := controller.NewNotificationController(notificationRepo)
 
 	v1 := r.Group("/api/v1")
 	{
@@ -212,6 +216,32 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				assessments.GET("",              assessmentCtrl.GetAll)
 				assessments.PATCH("/:short_id",  adminOrAbove, assessmentCtrl.Update)
 				assessments.DELETE("/:short_id", adminOrAbove, assessmentCtrl.Delete)
+			}
+
+			// Communities — scoped to a batch. super_admin / team_lead / mentor manage them;
+			// any authenticated user can read.
+			communities := protected.Group("/communities")
+			{
+				communities.POST("",             staffOrAbove, communityCtrl.Create)
+				communities.GET("",              communityCtrl.GetAll)
+				communities.GET("/:short_id",    communityCtrl.GetByShortID)
+				communities.PATCH("/:short_id",  staffOrAbove, communityCtrl.Update)
+				communities.DELETE("/:short_id", staffOrAbove, communityCtrl.Delete)
+
+				// Members — nested under a community
+				communities.GET("/:short_id/members",             communityCtrl.GetMembers)
+				communities.POST("/:short_id/members",            staffOrAbove, communityCtrl.AddMembers)
+				communities.DELETE("/:short_id/members/:user_id", staffOrAbove, communityCtrl.RemoveMember)
+			}
+
+			// Notifications — GET/read are per-user (my inbox); manage-content is admin-only
+			notifications := protected.Group("/notifications")
+			{
+				notifications.POST("",                adminOrAbove, notificationCtrl.Create)
+				notifications.GET("",                 notificationCtrl.GetInbox)
+				notifications.PATCH("/:short_id",     adminOrAbove, notificationCtrl.Update)
+				notifications.PATCH("/:short_id/read", notificationCtrl.MarkRead)
+				notifications.DELETE("/:short_id",    adminOrAbove, notificationCtrl.Delete)
 			}
 
 			// Upload

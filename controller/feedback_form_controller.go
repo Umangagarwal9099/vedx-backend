@@ -2,6 +2,8 @@ package controller
 
 import (
 	"errors"
+	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -11,11 +13,12 @@ import (
 )
 
 type FeedbackFormController struct {
-	repo *repository.FeedbackFormRepository
+	repo             *repository.FeedbackFormRepository
+	notificationRepo *repository.NotificationRepository
 }
 
-func NewFeedbackFormController(repo *repository.FeedbackFormRepository) *FeedbackFormController {
-	return &FeedbackFormController{repo: repo}
+func NewFeedbackFormController(repo *repository.FeedbackFormRepository, notificationRepo *repository.NotificationRepository) *FeedbackFormController {
+	return &FeedbackFormController{repo: repo, notificationRepo: notificationRepo}
 }
 
 // CreateFeedbackForm godoc
@@ -50,6 +53,16 @@ func (ctrl *FeedbackFormController) Create(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create feedback form"})
 		return
 	}
+
+	if err := ctrl.notificationRepo.NotifyRoles(c.Request.Context(),
+		"New feedback form: "+form.Title,
+		fmt.Sprintf("A new feedback form %q has been created.", form.Title),
+		"feedback_form", "feedback_form", form.ShortID, createdBy,
+		[]string{"student", "mentor", "team_lead"},
+	); err != nil {
+		log.Printf("notify feedback form create: %v", err)
+	}
+
 	c.JSON(http.StatusCreated, form)
 }
 

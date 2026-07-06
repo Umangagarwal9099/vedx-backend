@@ -2,6 +2,8 @@ package controller
 
 import (
 	"errors"
+	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -11,11 +13,12 @@ import (
 )
 
 type AssessmentController struct {
-	assessmentRepo *repository.AssessmentRepository
+	assessmentRepo   *repository.AssessmentRepository
+	notificationRepo *repository.NotificationRepository
 }
 
-func NewAssessmentController(repo *repository.AssessmentRepository) *AssessmentController {
-	return &AssessmentController{assessmentRepo: repo}
+func NewAssessmentController(repo *repository.AssessmentRepository, notificationRepo *repository.NotificationRepository) *AssessmentController {
+	return &AssessmentController{assessmentRepo: repo, notificationRepo: notificationRepo}
 }
 
 // CreateAssessment godoc
@@ -44,6 +47,15 @@ func (ctrl *AssessmentController) Create(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create assessment"})
 		return
+	}
+
+	if err := ctrl.notificationRepo.NotifyRoles(c.Request.Context(),
+		"New assessment: "+assessment.Name,
+		fmt.Sprintf("A new assessment %q has been added.", assessment.Name),
+		"assessment", "assessment", assessment.ShortID, createdBy,
+		[]string{"student", "mentor", "team_lead"},
+	); err != nil {
+		log.Printf("notify assessment create: %v", err)
 	}
 
 	c.JSON(http.StatusCreated, assessment)

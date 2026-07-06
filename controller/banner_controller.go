@@ -2,6 +2,8 @@ package controller
 
 import (
 	"errors"
+	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -11,11 +13,12 @@ import (
 )
 
 type BannerController struct {
-	bannerRepo *repository.BannerRepository
+	bannerRepo       *repository.BannerRepository
+	notificationRepo *repository.NotificationRepository
 }
 
-func NewBannerController(bannerRepo *repository.BannerRepository) *BannerController {
-	return &BannerController{bannerRepo: bannerRepo}
+func NewBannerController(bannerRepo *repository.BannerRepository, notificationRepo *repository.NotificationRepository) *BannerController {
+	return &BannerController{bannerRepo: bannerRepo, notificationRepo: notificationRepo}
 }
 
 // CreateBanner godoc
@@ -44,6 +47,15 @@ func (ctrl *BannerController) Create(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create banner"})
 		return
+	}
+
+	if err := ctrl.notificationRepo.NotifyRoles(c.Request.Context(),
+		"New banner: "+banner.Name,
+		fmt.Sprintf("A new banner %q has been added.", banner.Name),
+		"banner", "banner", banner.ShortID, createdBy,
+		[]string{"student", "mentor", "team_lead"},
+	); err != nil {
+		log.Printf("notify banner create: %v", err)
 	}
 
 	c.JSON(http.StatusCreated, banner)

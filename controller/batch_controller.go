@@ -2,6 +2,8 @@ package controller
 
 import (
 	"errors"
+	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -11,11 +13,12 @@ import (
 )
 
 type BatchController struct {
-	batchRepo *repository.BatchRepository
+	batchRepo        *repository.BatchRepository
+	notificationRepo *repository.NotificationRepository
 }
 
-func NewBatchController(batchRepo *repository.BatchRepository) *BatchController {
-	return &BatchController{batchRepo: batchRepo}
+func NewBatchController(batchRepo *repository.BatchRepository, notificationRepo *repository.NotificationRepository) *BatchController {
+	return &BatchController{batchRepo: batchRepo, notificationRepo: notificationRepo}
 }
 
 // CreateBatch godoc
@@ -39,10 +42,21 @@ func (ctrl *BatchController) Create(c *gin.Context) {
 		return
 	}
 
-	batch, err := ctrl.batchRepo.Create(c.Request.Context(), input, c.GetString("user_id"))
+	createdBy := c.GetString("user_id")
+
+	batch, err := ctrl.batchRepo.Create(c.Request.Context(), input, createdBy)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create batch: " + err.Error()})
 		return
+	}
+
+	if err := ctrl.notificationRepo.NotifyRoles(c.Request.Context(),
+		"New batch: "+batch.BatchNumber,
+		fmt.Sprintf("A new batch %q has been created.", batch.BatchNumber),
+		"batch", "batch", batch.ShortID, createdBy,
+		[]string{"mentor", "team_lead"},
+	); err != nil {
+		log.Printf("notify batch create: %v", err)
 	}
 
 	c.JSON(http.StatusCreated, batch)

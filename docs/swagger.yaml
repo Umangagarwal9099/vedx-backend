@@ -86,6 +86,18 @@ definitions:
         example: 550e8400-e29b-41d4-a716-446655440000
         type: string
     type: object
+  models.AddCommunityMembersInput:
+    properties:
+      user_ids:
+        example:
+        - '["11111111-1111-1111-1111-111111111111"]'
+        items:
+          type: string
+        minItems: 1
+        type: array
+    required:
+    - user_ids
+    type: object
   models.Announcement:
     properties:
       created_at:
@@ -330,6 +342,37 @@ definitions:
         type: string
       is_hidden:
         type: boolean
+    type: object
+  models.Community:
+    properties:
+      batch_id:
+        type: string
+      batch_number:
+        type: string
+      batch_short_id:
+        type: string
+      created_at:
+        type: string
+      created_by:
+        type: string
+      created_by_name:
+        type: string
+      deleted_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      member_count:
+        type: integer
+      name:
+        type: string
+      short_id:
+        type: string
+      updated_at:
+        type: string
     type: object
   models.Course:
     properties:
@@ -584,6 +627,21 @@ definitions:
     - test_cases
     - title
     type: object
+  models.CreateCommunityInput:
+    properties:
+      batch_short_id:
+        example: A3F72C1D
+        type: string
+      description:
+        example: Community space for Batch 2024 students and mentors
+        type: string
+      name:
+        example: Batch 2024 Community
+        type: string
+    required:
+    - batch_short_id
+    - name
+    type: object
   models.CreateCourseInput:
     properties:
       category:
@@ -829,6 +887,30 @@ definitions:
     required:
     - section_name
     type: object
+  models.CreateNotificationInput:
+    properties:
+      message:
+        example: We'll be down for maintenance from 11 PM to 1 AM.
+        type: string
+      roles:
+        example:
+        - '["student"'
+        - '"mentor"]'
+        items:
+          type: string
+        minItems: 1
+        type: array
+      title:
+        example: Platform maintenance tonight
+        type: string
+      type:
+        example: general
+        type: string
+    required:
+    - message
+    - roles
+    - title
+    type: object
   models.CreateSubmissionInput:
     properties:
       code:
@@ -998,6 +1080,12 @@ definitions:
       updated_at:
         type: string
     type: object
+  models.MarkReadInput:
+    properties:
+      is_read:
+        example: true
+        type: boolean
+    type: object
   models.MaterialType:
     enum:
     - link
@@ -1077,6 +1165,50 @@ definitions:
       short_id:
         type: string
       updated_at:
+        type: string
+    type: object
+  models.Notification:
+    properties:
+      created_at:
+        type: string
+      created_by:
+        type: string
+      id:
+        type: string
+      message:
+        type: string
+      ref_short_id:
+        type: string
+      ref_type:
+        type: string
+      short_id:
+        type: string
+      title:
+        type: string
+      type:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.NotificationView:
+    properties:
+      created_at:
+        type: string
+      is_read:
+        type: boolean
+      message:
+        type: string
+      read_at:
+        type: string
+      ref_short_id:
+        type: string
+      ref_type:
+        type: string
+      short_id:
+        type: string
+      title:
+        type: string
+      type:
         type: string
     type: object
   models.Role:
@@ -1377,6 +1509,21 @@ definitions:
           type: string
         type: array
     type: object
+  models.UpdateCommunityInput:
+    properties:
+      batch_short_id:
+        example: B4G83D2E
+        type: string
+      description:
+        example: Updated description
+        type: string
+      is_active:
+        example: false
+        type: boolean
+      name:
+        example: Batch 2024 Community
+        type: string
+    type: object
   models.UpdateCourseInput:
     properties:
       category:
@@ -1555,6 +1702,15 @@ definitions:
         type: string
       short_description:
         example: Deep dive into the topic
+        type: string
+    type: object
+  models.UpdateNotificationInput:
+    properties:
+      message:
+        example: Updated message
+        type: string
+      title:
+        example: Updated title
         type: string
     type: object
   models.UpdateUserInput:
@@ -2698,6 +2854,291 @@ paths:
       summary: List all coding questions (admin view)
       tags:
       - coding-questions
+  /communities:
+    get:
+      description: Returns all non-deleted communities with batch details and a live
+        member count.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Community'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List communities
+      tags:
+      - communities
+    post:
+      consumes:
+      - application/json
+      description: Create a new community scoped to a batch. Restricted to super_admin
+        / team_lead / mentor. A short unique ID is generated automatically.
+      parameters:
+      - description: Community details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateCommunityInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Community'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create community
+      tags:
+      - communities
+  /communities/{short_id}:
+    delete:
+      description: Soft-delete a community by its short_id.
+      parameters:
+      - description: Community short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Community not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete community
+      tags:
+      - communities
+    get:
+      description: Returns a single non-deleted community by its short_id, with a
+        live member count.
+      parameters:
+      - description: Community short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Community'
+        "404":
+          description: Community not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get community
+      tags:
+      - communities
+    patch:
+      consumes:
+      - application/json
+      description: Partially update a community by its short_id. Send only the fields
+        you want to change.
+      parameters:
+      - description: Community short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Fields to update (all optional)
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateCommunityInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Community'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Community not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update community
+      tags:
+      - communities
+  /communities/{short_id}/members:
+    get:
+      description: Returns every member of a community along with the total member
+        count.
+      parameters:
+      - description: Community short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: total_members and members[]
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List community members
+      tags:
+      - communities
+    post:
+      consumes:
+      - application/json
+      description: Add one or more users (students, mentors, admins, etc.) to a community
+        by user ID. Users already in the community are left unchanged.
+      parameters:
+      - description: Community short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: User IDs to add
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.AddCommunityMembersInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Number of members added
+          schema:
+            additionalProperties:
+              type: integer
+            type: object
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Add community members
+      tags:
+      - communities
+  /communities/{short_id}/members/{user_id}:
+    delete:
+      description: Removes a single user from a community by user ID.
+      parameters:
+      - description: Community short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: User ID (UUID)
+        in: path
+        name: user_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Member not found in community
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Remove community member
+      tags:
+      - communities
   /courses:
     get:
       description: Returns all active and inactive non-deleted courses.
@@ -4060,6 +4501,190 @@ paths:
       summary: Filter modules
       tags:
       - modules
+  /notifications:
+    get:
+      description: Returns every notification addressed to the logged-in user, newest
+        first, each with an is_read flag.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.NotificationView'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List my notifications
+      tags:
+      - notifications
+    post:
+      consumes:
+      - application/json
+      description: Manually broadcast a notification to one or more roles. Use role
+        "all" to target every active user (the caller is never notified about their
+        own action). Restricted to super_admin / team_lead.
+      parameters:
+      - description: Notification details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateNotificationInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Notification'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create notification
+      tags:
+      - notifications
+  /notifications/{short_id}:
+    delete:
+      description: Soft-delete a notification by its short_id. Removes it from every
+        recipient's inbox. Restricted to super_admin / team_lead.
+      parameters:
+      - description: Notification short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Notification not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete notification
+      tags:
+      - notifications
+    patch:
+      consumes:
+      - application/json
+      description: Edit the title/message of a notification by its short_id. This
+        changes the content seen by every recipient. Restricted to super_admin / team_lead.
+      parameters:
+      - description: Notification short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Fields to update (all optional)
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateNotificationInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Notification'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Notification not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update notification
+      tags:
+      - notifications
+  /notifications/{short_id}/read:
+    patch:
+      consumes:
+      - application/json
+      description: Marks a notification read (default) or unread for the logged-in
+        recipient only. Body is optional — omit it to mark read.
+      parameters:
+      - description: Notification short ID
+        in: path
+        name: short_id
+        type: string
+      - description: 'Optional — defaults to is_read: true'
+        in: body
+        name: body
+        schema:
+          $ref: '#/definitions/models.MarkReadInput'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Notification not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Mark notification read/unread
+      tags:
+      - notifications
   /submissions:
     post:
       consumes:

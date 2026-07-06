@@ -2,6 +2,8 @@ package controller
 
 import (
 	"errors"
+	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -11,11 +13,12 @@ import (
 )
 
 type ModuleController struct {
-	moduleRepo *repository.ModuleRepository
+	moduleRepo       *repository.ModuleRepository
+	notificationRepo *repository.NotificationRepository
 }
 
-func NewModuleController(moduleRepo *repository.ModuleRepository) *ModuleController {
-	return &ModuleController{moduleRepo: moduleRepo}
+func NewModuleController(moduleRepo *repository.ModuleRepository, notificationRepo *repository.NotificationRepository) *ModuleController {
+	return &ModuleController{moduleRepo: moduleRepo, notificationRepo: notificationRepo}
 }
 
 // CreateModule godoc
@@ -47,10 +50,21 @@ func (ctrl *ModuleController) Create(c *gin.Context) {
 		input.WatchTimeMinutes = nil
 	}
 
-	module, err := ctrl.moduleRepo.Create(c.Request.Context(), input, c.GetString("user_id"))
+	createdBy := c.GetString("user_id")
+
+	module, err := ctrl.moduleRepo.Create(c.Request.Context(), input, createdBy)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create module: " + err.Error()})
 		return
+	}
+
+	if err := ctrl.notificationRepo.NotifyRoles(c.Request.Context(),
+		"New module: "+module.ModuleName,
+		fmt.Sprintf("A new module %q has been added.", module.ModuleName),
+		"module", "module", module.ShortID, createdBy,
+		[]string{"student", "mentor", "team_lead"},
+	); err != nil {
+		log.Printf("notify module create: %v", err)
 	}
 
 	c.JSON(http.StatusCreated, module)

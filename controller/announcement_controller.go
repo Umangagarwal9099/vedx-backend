@@ -2,6 +2,8 @@ package controller
 
 import (
 	"errors"
+	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -12,10 +14,11 @@ import (
 
 type AnnouncementController struct {
 	announcementRepo *repository.AnnouncementRepository
+	notificationRepo *repository.NotificationRepository
 }
 
-func NewAnnouncementController(repo *repository.AnnouncementRepository) *AnnouncementController {
-	return &AnnouncementController{announcementRepo: repo}
+func NewAnnouncementController(repo *repository.AnnouncementRepository, notificationRepo *repository.NotificationRepository) *AnnouncementController {
+	return &AnnouncementController{announcementRepo: repo, notificationRepo: notificationRepo}
 }
 
 // CreateAnnouncement godoc
@@ -44,6 +47,15 @@ func (ctrl *AnnouncementController) Create(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create announcement"})
 		return
+	}
+
+	if err := ctrl.notificationRepo.NotifyRoles(c.Request.Context(),
+		"New announcement: "+announcement.Name,
+		fmt.Sprintf("A new announcement %q has been posted.", announcement.Name),
+		"announcement", "announcement", announcement.ShortID, createdBy,
+		[]string{"student", "mentor", "team_lead"},
+	); err != nil {
+		log.Printf("notify announcement create: %v", err)
 	}
 
 	c.JSON(http.StatusCreated, announcement)

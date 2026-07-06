@@ -2,6 +2,8 @@ package controller
 
 import (
 	"errors"
+	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -11,11 +13,12 @@ import (
 )
 
 type CourseController struct {
-	courseRepo *repository.CourseRepository
+	courseRepo       *repository.CourseRepository
+	notificationRepo *repository.NotificationRepository
 }
 
-func NewCourseController(courseRepo *repository.CourseRepository) *CourseController {
-	return &CourseController{courseRepo: courseRepo}
+func NewCourseController(courseRepo *repository.CourseRepository, notificationRepo *repository.NotificationRepository) *CourseController {
+	return &CourseController{courseRepo: courseRepo, notificationRepo: notificationRepo}
 }
 
 // CreateCourse godoc
@@ -45,6 +48,15 @@ func (ctrl *CourseController) Create(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create course"})
 		return
+	}
+
+	if err := ctrl.notificationRepo.NotifyRoles(c.Request.Context(),
+		"New course: "+course.Name,
+		fmt.Sprintf("A new course %q has been added.", course.Name),
+		"course", "course", course.ShortID, createdBy,
+		[]string{"student", "mentor", "team_lead"},
+	); err != nil {
+		log.Printf("notify course create: %v", err)
 	}
 
 	c.JSON(http.StatusCreated, course)
