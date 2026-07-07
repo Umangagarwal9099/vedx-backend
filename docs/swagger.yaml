@@ -86,6 +86,18 @@ definitions:
         example: 550e8400-e29b-41d4-a716-446655440000
         type: string
     type: object
+  models.AddBatchStudentsInput:
+    properties:
+      student_ids:
+        example:
+        - '["11111111-1111-1111-1111-111111111111"]'
+        items:
+          type: string
+        minItems: 1
+        type: array
+    required:
+    - student_ids
+    type: object
   models.AddCommunityMembersInput:
     properties:
       user_ids:
@@ -242,6 +254,8 @@ definitions:
         type: string
       start_date:
         type: string
+      student_count:
+        type: integer
       updated_at:
         type: string
     type: object
@@ -543,6 +557,12 @@ definitions:
       start_date:
         example: "2024-01-15"
         type: string
+      student_ids:
+        example:
+        - '["11111111-1111-1111-1111-111111111111"]'
+        items:
+          type: string
+        type: array
     required:
     - batch_manager_id
     - batch_number
@@ -911,6 +931,73 @@ definitions:
     - roles
     - title
     type: object
+  models.CreateSessionInput:
+    properties:
+      batch_short_id:
+        example: use GET /batches to pick a real short_id
+        type: string
+      end_time:
+        example: "11:30"
+        type: string
+      feedback_form_short_id:
+        example: A3F72C1D
+        type: string
+      generate_shareable_link:
+        example: true
+        type: boolean
+      meeting_platform:
+        enum:
+        - zoom
+        - google_meet
+        - teams
+        example: zoom
+        type: string
+      mentor_id:
+        example: use GET /mentors to pick a real ID
+        type: string
+      mode:
+        enum:
+        - online
+        - offline
+        example: online
+        type: string
+      name:
+        example: React Hooks Deep Dive
+        type: string
+      send_confirmation_email:
+        example: true
+        type: boolean
+      session_date:
+        example: "2025-09-15"
+        type: string
+      session_reminder_notifications:
+        example: true
+        type: boolean
+      session_type:
+        enum:
+        - batch
+        example: batch
+        type: string
+      start_time:
+        example: "10:00"
+        type: string
+      topics:
+        example:
+        - '[''hooks'''
+        - '''state management'']'
+        items:
+          type: string
+        type: array
+    required:
+    - batch_short_id
+    - end_time
+    - mentor_id
+    - mode
+    - name
+    - session_date
+    - session_type
+    - start_time
+    type: object
   models.CreateSubmissionInput:
     properties:
       code:
@@ -1257,6 +1344,65 @@ definitions:
         type: string
       short_id:
         type: string
+      updated_at:
+        type: string
+    type: object
+  models.Session:
+    properties:
+      batch_id:
+        type: string
+      batch_number:
+        type: string
+      batch_short_id:
+        type: string
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      end_time:
+        type: string
+      feedback_form_short_id:
+        type: string
+      feedback_form_title:
+        type: string
+      generate_shareable_link:
+        type: boolean
+      id:
+        type: string
+      is_active:
+        type: boolean
+      meeting_platform:
+        type: string
+      mentor_id:
+        type: string
+      mentor_name:
+        type: string
+      mode:
+        type: string
+      name:
+        type: string
+      send_confirmation_email:
+        type: boolean
+      session_date:
+        type: string
+      session_reminder_notifications:
+        type: boolean
+      session_type:
+        type: string
+      share_link:
+        type: string
+      share_token:
+        type: string
+      short_id:
+        type: string
+      start_time:
+        type: string
+      topics:
+        items:
+          type: string
+        type: array
       updated_at:
         type: string
     type: object
@@ -1712,6 +1858,54 @@ definitions:
       title:
         example: Updated title
         type: string
+    type: object
+  models.UpdateSessionInput:
+    properties:
+      batch_short_id:
+        example: use GET /batches to pick a real short_id
+        type: string
+      end_time:
+        example: "12:00"
+        type: string
+      feedback_form_short_id:
+        example: B4G83D2E
+        type: string
+      generate_shareable_link:
+        example: false
+        type: boolean
+      is_active:
+        example: false
+        type: boolean
+      meeting_platform:
+        example: google_meet
+        type: string
+      mentor_id:
+        example: use GET /mentors to pick a real ID
+        type: string
+      mode:
+        example: offline
+        type: string
+      name:
+        example: React Hooks Deep Dive — Part 2
+        type: string
+      send_confirmation_email:
+        example: false
+        type: boolean
+      session_date:
+        example: "2025-09-22"
+        type: string
+      session_reminder_notifications:
+        example: false
+        type: boolean
+      start_time:
+        example: "10:30"
+        type: string
+      topics:
+        example:
+        - '[''hooks'']'
+        items:
+          type: string
+        type: array
     type: object
   models.UpdateUserInput:
     properties:
@@ -2332,7 +2526,9 @@ paths:
       consumes:
       - application/json
       description: Create a new batch. Restricted to super_admin. A short unique ID
-        is generated automatically. Provide course_short_id to link to a course.
+        is generated automatically. Provide course_short_id to link to a course. Optionally
+        pass student_ids to enroll students immediately — students can also be added
+        later via POST /batches/{short_id}/students.
       parameters:
       - description: Batch details
         in: body
@@ -2447,6 +2643,116 @@ paths:
       security:
       - BearerAuth: []
       summary: Update batch
+      tags:
+      - batches
+  /batches/{short_id}/students:
+    get:
+      description: Returns every student enrolled in a batch along with the total
+        student count.
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: total_students and students[]
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List batch students
+      tags:
+      - batches
+    post:
+      consumes:
+      - application/json
+      description: Enroll one or more students into a batch by user ID. Only users
+        with role=student are matched; students already enrolled are left unchanged.
+        Restricted to super_admin / team_lead.
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Student user IDs to add
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.AddBatchStudentsInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Number of students added
+          schema:
+            additionalProperties:
+              type: integer
+            type: object
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Add students to batch
+      tags:
+      - batches
+  /batches/{short_id}/students/{user_id}:
+    delete:
+      description: Removes a single student from a batch by user ID. Restricted to
+        super_admin / team_lead.
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Student user ID (UUID)
+        in: path
+        name: user_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Student not enrolled in batch
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Remove student from batch
       tags:
       - batches
   /batches/filter:
@@ -4685,6 +4991,172 @@ paths:
       summary: Mark notification read/unread
       tags:
       - notifications
+  /sessions:
+    get:
+      description: Returns all non-deleted sessions ordered by session date/time (newest
+        first). Supports optional filtering by batch_short_id, mentor_id, date (YYYY-MM-DD),
+        and is_active.
+      parameters:
+      - description: Filter by batch short ID
+        in: query
+        name: batch_short_id
+        type: string
+      - description: Filter by mentor user ID
+        in: query
+        name: mentor_id
+        type: string
+      - description: Filter by session date (YYYY-MM-DD)
+        in: query
+        name: date
+        type: string
+      - description: 'Filter by active status: true or false'
+        in: query
+        name: is_active
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Session'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List sessions
+      tags:
+      - sessions
+    post:
+      consumes:
+      - application/json
+      description: Schedule a new session. mode must be online | offline; meeting_platform
+        (zoom | google_meet | teams) is required when mode is online. session_type
+        currently only supports "batch" — pass batch_short_id from GET /batches. Pick
+        mentor_id from GET /mentors. Set generate_shareable_link to true to receive
+        a public join link, and feedback_form_short_id (from GET /feedback-forms)
+        to attach a class feedback form. send_confirmation_email and session_reminder_notifications
+        are stored preferences; actual email/reminder dispatch is handled by a separate
+        notification worker. In-app notifications go only to students enrolled in
+        the target batch, the assigned mentor, and team_leads — not every student
+        in the system.
+      parameters:
+      - description: Session details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateSessionInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Session'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create session
+      tags:
+      - sessions
+  /sessions/{short_id}:
+    delete:
+      description: Soft-deletes a session by its short ID. The record is retained
+        in the database with deleted_at set.
+      parameters:
+      - description: Session short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Session not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete session
+      tags:
+      - sessions
+    patch:
+      consumes:
+      - application/json
+      description: Partially update a session — including mentor, date/time, and batch.
+        All fields are optional; only provided fields are updated. Set generate_shareable_link
+        to false to revoke the existing share link, or to true to (re)generate one.
+      parameters:
+      - description: Session short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateSessionInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Session'
+        "400":
+          description: Validation error or no fields provided
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Session not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update session
+      tags:
+      - sessions
   /submissions:
     post:
       consumes:

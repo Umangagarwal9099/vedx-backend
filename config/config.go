@@ -22,8 +22,9 @@ type StorageConfig struct {
 }
 
 type AppConfig struct {
-	Env  string
-	Port string
+	Env       string
+	Port      string
+	PublicURL string
 }
 
 type DatabaseConfig struct {
@@ -81,8 +82,9 @@ func Load() (*Config, error) {
 
 	cfg := &Config{
 		App: AppConfig{
-			Env:  get("APP_ENV", "development"),
-			Port: get("PORT", get("APP_PORT", "8080")), // PORT is set automatically by Render
+			Env:       get("APP_ENV", "development"),
+			Port:      get("PORT", get("APP_PORT", "8080")), // PORT is set automatically by Render
+			PublicURL: get("APP_PUBLIC_URL", ""),            // base URL used to build session share links, e.g. https://app.example.com
 		},
 		Database: DatabaseConfig{
 			Host:     require("DB_HOST"),

@@ -36,6 +36,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	assessmentRepo       := repository.NewAssessmentRepository(pool)
 	communityRepo        := repository.NewCommunityRepository(pool)
 	notificationRepo     := repository.NewNotificationRepository(pool)
+	sessionRepo          := repository.NewSessionRepository(pool)
 
 	// Services
 	storageSvc := service.NewStorageService(cfg.Storage)
@@ -57,6 +58,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	assessmentCtrl       := controller.NewAssessmentController(assessmentRepo, notificationRepo)
 	communityCtrl        := controller.NewCommunityController(communityRepo, notificationRepo)
 	notificationCtrl     := controller.NewNotificationController(notificationRepo)
+	sessionCtrl          := controller.NewSessionController(sessionRepo, batchRepo, notificationRepo, cfg.App.PublicURL)
 
 	v1 := r.Group("/api/v1")
 	{
@@ -110,6 +112,11 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				batches.GET("/filter",       batchCtrl.Filter)
 				batches.PATCH("/:short_id",  adminOrAbove, batchCtrl.Update)
 				batches.DELETE("/:short_id", adminOrAbove, batchCtrl.Delete)
+
+				// Students — enrolled members of a batch
+				batches.GET("/:short_id/students",             batchCtrl.GetStudents)
+				batches.POST("/:short_id/students",            adminOrAbove, batchCtrl.AddStudents)
+				batches.DELETE("/:short_id/students/:user_id", adminOrAbove, batchCtrl.RemoveStudent)
 			}
 
 			// Events — super_admin / team_lead / mentor may create, edit, or delete
@@ -232,6 +239,16 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				communities.GET("/:short_id/members",             communityCtrl.GetMembers)
 				communities.POST("/:short_id/members",            staffOrAbove, communityCtrl.AddMembers)
 				communities.DELETE("/:short_id/members/:user_id", staffOrAbove, communityCtrl.RemoveMember)
+			}
+
+			// Sessions — scoped to a batch. super_admin / team_lead / mentor manage them;
+			// any authenticated user can read.
+			sessions := protected.Group("/sessions")
+			{
+				sessions.POST("",             staffOrAbove, sessionCtrl.Create)
+				sessions.GET("",              sessionCtrl.GetAll)
+				sessions.PATCH("/:short_id",  staffOrAbove, sessionCtrl.Update)
+				sessions.DELETE("/:short_id", staffOrAbove, sessionCtrl.Delete)
 			}
 
 			// Notifications — GET/read are per-user (my inbox); manage-content is admin-only

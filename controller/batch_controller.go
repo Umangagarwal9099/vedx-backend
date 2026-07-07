@@ -24,7 +24,7 @@ func NewBatchController(batchRepo *repository.BatchRepository, notificationRepo 
 // CreateBatch godoc
 //
 //	@Summary		Create batch
-//	@Description	Create a new batch. Restricted to super_admin. A short unique ID is generated automatically. Provide course_short_id to link to a course.
+//	@Description	Create a new batch. Restricted to super_admin. A short unique ID is generated automatically. Provide course_short_id to link to a course. Optionally pass student_ids to enroll students immediately — students can also be added later via POST /batches/{short_id}/students.
 //	@Tags			batches
 //	@Accept			json
 //	@Produce		json
@@ -48,6 +48,24 @@ func (ctrl *BatchController) Create(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create batch: " + err.Error()})
 		return
+	}
+
+	if len(input.StudentIDs) > 0 {
+		added, err := ctrl.batchRepo.AddStudents(c.Request.Context(), batch.ShortID, input.StudentIDs, createdBy)
+		if err != nil {
+			log.Printf("add students on batch create: %v", err)
+		} else if len(added) > 0 {
+			if refreshed, err := ctrl.batchRepo.FindByShortID(c.Request.Context(), batch.ShortID); err == nil && refreshed != nil {
+				batch = refreshed
+			}
+			if err := ctrl.notificationRepo.NotifyUsers(c.Request.Context(),
+				"Added to batch: "+batch.BatchNumber,
+				fmt.Sprintf("You've been enrolled in batch %q.", batch.BatchNumber),
+				"batch", "batch", batch.ShortID, createdBy, added,
+			); err != nil {
+				log.Printf("notify batch add students: %v", err)
+			}
+		}
 	}
 
 	if err := ctrl.notificationRepo.NotifyRoles(c.Request.Context(),
@@ -163,6 +181,107 @@ func (ctrl *BatchController) Update(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, batch)
+}
+
+// AddBatchStudents godoc
+//
+//	@Summary		Add students to batch
+//	@Description	Enroll one or more students into a batch by user ID. Only users with role=student are matched; students already enrolled are left unchanged. Restricted to super_admin / team_lead.
+//	@Tags			batches
+//	@Accept			json
+//	@Produce		json
+//	@Param			short_id	path		string							true	"Batch short ID"
+//	@Param			body		body		models.AddBatchStudentsInput	true	"Student user IDs to add"
+//	@Success		200			{object}	map[string]int	"Number of students added"
+//	@Failure		400			{object}	map[string]string	"Validation error"
+//	@Failure		500			{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/batches/{short_id}/students [post]
+func (ctrl *BatchController) AddStudents(c *gin.Context) {
+	shortID := c.Param("short_id")
+
+	var input models.AddBatchStudentsInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	addedBy := c.GetString("user_id")
+
+	added, err := ctrl.batchRepo.AddStudents(c.Request.Context(), shortID, input.StudentIDs, addedBy)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not add students: " + err.Error()})
+		return
+	}
+
+	if len(added) > 0 {
+		batch, err := ctrl.batchRepo.FindByShortID(c.Request.Context(), shortID)
+		if err == nil && batch != nil {
+			if err := ctrl.notificationRepo.NotifyUsers(c.Request.Context(),
+				"Added to batch: "+batch.BatchNumber,
+				fmt.Sprintf("You've been enrolled in batch %q.", batch.BatchNumber),
+				"batch", "batch", shortID, addedBy, added,
+			); err != nil {
+				log.Printf("notify batch add students: %v", err)
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"added": len(added)})
+}
+
+// GetBatchStudents godoc
+//
+//	@Summary		List batch students
+//	@Description	Returns every student enrolled in a batch along with the total student count.
+//	@Tags			batches
+//	@Produce		json
+//	@Param			short_id	path	string	true	"Batch short ID"
+//	@Success		200			{object}	map[string]interface{}	"total_students and students[]"
+//	@Failure		500			{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/batches/{short_id}/students [get]
+func (ctrl *BatchController) GetStudents(c *gin.Context) {
+	shortID := c.Param("short_id")
+
+	students, err := ctrl.batchRepo.GetStudents(c.Request.Context(), shortID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch students"})
+		return
+	}
+	if students == nil {
+		students = []models.BatchStudent{}
+	}
+	c.JSON(http.StatusOK, gin.H{"total_students": len(students), "students": students})
+}
+
+// RemoveBatchStudent godoc
+//
+//	@Summary		Remove student from batch
+//	@Description	Removes a single student from a batch by user ID. Restricted to super_admin / team_lead.
+//	@Tags			batches
+//	@Produce		json
+//	@Param			short_id	path	string	true	"Batch short ID"
+//	@Param			user_id		path	string	true	"Student user ID (UUID)"
+//	@Success		204			"No Content"
+//	@Failure		404			{object}	map[string]string	"Student not enrolled in batch"
+//	@Failure		500			{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/batches/{short_id}/students/{user_id} [delete]
+func (ctrl *BatchController) RemoveStudent(c *gin.Context) {
+	shortID := c.Param("short_id")
+	userID := c.Param("user_id")
+
+	if err := ctrl.batchRepo.RemoveStudent(c.Request.Context(), shortID, userID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "student not enrolled in batch"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not remove student"})
+		return
+	}
+
+	c.Status(http.StatusNoContent)
 }
 
 // DeleteBatch godoc
