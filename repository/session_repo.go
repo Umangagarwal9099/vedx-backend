@@ -35,6 +35,9 @@ const sessionBaseSelect = `
 	       COALESCE(s.topics, '{}'),
 	       s.generate_shareable_link,
 	       COALESCE(s.share_token, ''),
+	       s.zoom_meeting_id,
+	       COALESCE(s.zoom_join_url, ''),
+	       COALESCE(s.zoom_start_url, ''),
 	       COALESCE(ff.short_id, ''),
 	       COALESCE(ff.title, ''),
 	       s.session_type::TEXT,
@@ -59,6 +62,9 @@ func scanSession(row pgx.Row) (*models.Session, error) {
 		&s.Topics,
 		&s.GenerateShareableLink,
 		&s.ShareToken,
+		&s.ZoomMeetingID,
+		&s.ZoomJoinURL,
+		&s.ZoomStartURL,
 		&s.FeedbackFormShortID,
 		&s.FeedbackFormTitle,
 		&s.SessionType,
@@ -74,10 +80,20 @@ func scanSession(row pgx.Row) (*models.Session, error) {
 }
 
 // Create inserts a new session, retrying up to 3 times on short_id/share_token collision.
-func (r *SessionRepository) Create(ctx context.Context, in models.CreateSessionInput, createdBy string) (*models.Session, error) {
+// zoom is optional — pass nil when no Zoom meeting was created (not configured, or
+// mode/platform doesn't call for one).
+func (r *SessionRepository) Create(ctx context.Context, in models.CreateSessionInput, createdBy string, zoom *models.ZoomMeetingInfo) (*models.Session, error) {
 	topics := in.Topics
 	if topics == nil {
 		topics = []string{}
+	}
+
+	var zoomMeetingID interface{}
+	var zoomJoinURL, zoomStartURL string
+	if zoom != nil {
+		zoomMeetingID = zoom.ID
+		zoomJoinURL = zoom.JoinURL
+		zoomStartURL = zoom.StartURL
 	}
 
 	const q = `
@@ -87,7 +103,8 @@ func (r *SessionRepository) Create(ctx context.Context, in models.CreateSessionI
 				mentor_id, mode, meeting_platform,
 				send_confirmation_email, session_reminder_notifications,
 				topics, generate_shareable_link, share_token,
-				feedback_form_id, session_type, batch_id, created_by
+				feedback_form_id, session_type, batch_id, created_by,
+				zoom_meeting_id, zoom_join_url, zoom_start_url
 			) VALUES (
 				$1, $2, $3::DATE, $4::TIME, $5::TIME,
 				$6::UUID, $7::session_mode, NULLIF($8,'')::session_meeting_platform,
@@ -96,7 +113,8 @@ func (r *SessionRepository) Create(ctx context.Context, in models.CreateSessionI
 				(SELECT id FROM feedback_forms WHERE short_id = NULLIF($14,'') AND deleted_at IS NULL),
 				$15::session_type,
 				(SELECT id FROM batches WHERE short_id = $16 AND deleted_at IS NULL),
-				$17
+				$17,
+				$18, NULLIF($19,''), NULLIF($20,'')
 			)
 			RETURNING *
 		)
@@ -112,6 +130,9 @@ func (r *SessionRepository) Create(ctx context.Context, in models.CreateSessionI
 		       COALESCE(ins.topics, '{}'),
 		       ins.generate_shareable_link,
 		       COALESCE(ins.share_token, ''),
+		       ins.zoom_meeting_id,
+		       COALESCE(ins.zoom_join_url, ''),
+		       COALESCE(ins.zoom_start_url, ''),
 		       COALESCE(ff.short_id, ''),
 		       COALESCE(ff.title, ''),
 		       ins.session_type::TEXT,
@@ -136,6 +157,7 @@ func (r *SessionRepository) Create(ctx context.Context, in models.CreateSessionI
 			in.SendConfirmationEmail, in.SessionReminderNotifications,
 			topics, in.GenerateShareableLink, shareToken,
 			in.FeedbackFormShortID, in.SessionType, in.BatchShortID, createdBy,
+			zoomMeetingID, zoomJoinURL, zoomStartURL,
 		))
 		if err == nil {
 			return s, nil
@@ -163,6 +185,39 @@ func (r *SessionRepository) FindByShortID(ctx context.Context, shortID string) (
 		return nil, nil
 	}
 	return s, err
+}
+
+// FindByShareToken returns a single non-deleted session by its public share token.
+// Used by the unauthenticated join-resolution endpoint.
+func (r *SessionRepository) FindByShareToken(ctx context.Context, token string) (*models.Session, error) {
+	q := sessionBaseSelect + ` WHERE s.share_token = $1 AND s.deleted_at IS NULL LIMIT 1`
+	s, err := scanSession(r.pool.QueryRow(ctx, q, token))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	return s, err
+}
+
+// FindDueForReminder returns active sessions whose scheduled start time falls within
+// [windowStart, windowEnd] and which haven't had a reminder notification sent yet.
+// windowStart/windowEnd are naive "YYYY-MM-DD HH:MM:SS" wall-clock timestamps in the
+// app's configured timezone (config.AppConfig.Timezone) — matching how session_date/
+// start_time are stored (no timezone), so they must NOT be pre-converted to UTC.
+func (r *SessionRepository) FindDueForReminder(ctx context.Context, windowStart, windowEnd string) ([]models.Session, error) {
+	q := sessionBaseSelect + `
+		WHERE s.deleted_at IS NULL
+		  AND s.is_active
+		  AND s.session_reminder_notifications
+		  AND s.reminder_sent_at IS NULL
+		  AND (s.session_date + s.start_time) BETWEEN $1::TIMESTAMP AND $2::TIMESTAMP`
+	return r.scanSessions(ctx, q, windowStart, windowEnd)
+}
+
+// MarkReminderSent records that the start-time reminder notification has been sent,
+// so the reminder worker doesn't send it again on the next poll.
+func (r *SessionRepository) MarkReminderSent(ctx context.Context, id string) error {
+	_, err := r.pool.Exec(ctx, `UPDATE sessions SET reminder_sent_at = NOW() WHERE id = $1::UUID`, id)
+	return err
 }
 
 // Filter returns non-deleted sessions matching the provided filter (batch, mentor, date).
@@ -310,6 +365,9 @@ func (r *SessionRepository) scanSessions(ctx context.Context, q string, args ...
 			&s.Topics,
 			&s.GenerateShareableLink,
 			&s.ShareToken,
+			&s.ZoomMeetingID,
+			&s.ZoomJoinURL,
+			&s.ZoomStartURL,
 			&s.FeedbackFormShortID,
 			&s.FeedbackFormTitle,
 			&s.SessionType,

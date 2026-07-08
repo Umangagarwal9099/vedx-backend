@@ -6,22 +6,33 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
 	"github.com/umangagarwal/vedx-backend/models"
 	"github.com/umangagarwal/vedx-backend/repository"
+	"github.com/umangagarwal/vedx-backend/service"
 )
 
 type SessionController struct {
 	sessionRepo      *repository.SessionRepository
 	batchRepo        *repository.BatchRepository
 	notificationRepo *repository.NotificationRepository
+	zoomSvc          *service.ZoomService
 	publicBaseURL    string
+	timezone         string
 }
 
-func NewSessionController(repo *repository.SessionRepository, batchRepo *repository.BatchRepository, notificationRepo *repository.NotificationRepository, publicBaseURL string) *SessionController {
-	return &SessionController{sessionRepo: repo, batchRepo: batchRepo, notificationRepo: notificationRepo, publicBaseURL: publicBaseURL}
+func NewSessionController(repo *repository.SessionRepository, batchRepo *repository.BatchRepository, notificationRepo *repository.NotificationRepository, zoomSvc *service.ZoomService, publicBaseURL, timezone string) *SessionController {
+	return &SessionController{
+		sessionRepo:      repo,
+		batchRepo:        batchRepo,
+		notificationRepo: notificationRepo,
+		zoomSvc:          zoomSvc,
+		publicBaseURL:    publicBaseURL,
+		timezone:         timezone,
+	}
 }
 
 // withShareLink fills in ShareLink from ShareToken for API responses.
@@ -31,6 +42,42 @@ func (ctrl *SessionController) withShareLink(s *models.Session) *models.Session 
 		s.ShareLink = base + "/sessions/join/" + s.ShareToken
 	}
 	return s
+}
+
+// sanitizeForRole strips fields the given role must never see. ZoomStartURL is a
+// host token — anyone holding it can start/control the meeting as host — so it's
+// only ever returned to staff (mentor/team_lead/super_admin), never students.
+func sanitizeForRole(s *models.Session, role string) *models.Session {
+	if s != nil && role == string(models.RoleStudent) {
+		s.ZoomStartURL = ""
+	}
+	return s
+}
+
+// sessionStartTime combines a session's date ("2025-09-15") and start time ("10:00")
+// into a time.Time in the app's configured timezone.
+func (ctrl *SessionController) sessionStartTime(sessionDate, startTime string) (time.Time, error) {
+	loc, err := time.LoadLocation(ctrl.timezone)
+	if err != nil {
+		loc = time.UTC
+	}
+	return time.ParseInLocation("2006-01-02 15:04", sessionDate+" "+startTime, loc)
+}
+
+// sessionDurationMinutes returns the gap between two "HH:MM" times, defaulting to
+// 60 minutes if either is unparseable or the range is non-positive.
+func sessionDurationMinutes(startTime, endTime string) int {
+	const layout = "15:04"
+	st, err1 := time.Parse(layout, startTime)
+	et, err2 := time.Parse(layout, endTime)
+	if err1 != nil || err2 != nil {
+		return 60
+	}
+	d := et.Sub(st)
+	if d <= 0 {
+		return 60
+	}
+	return int(d.Minutes())
 }
 
 // CreateSession godoc
@@ -58,16 +105,48 @@ func (ctrl *SessionController) Create(c *gin.Context) {
 		return
 	}
 
+	// Every online session should always be joinable via a link — don't leave it
+	// to the mentor remembering to toggle generate_shareable_link.
+	if input.Mode == "online" {
+		input.GenerateShareableLink = true
+	}
+
 	createdBy := c.GetString("user_id")
 
-	session, err := ctrl.sessionRepo.Create(c.Request.Context(), input, createdBy)
+	// Create the Zoom meeting (if applicable) before persisting, so the join/start
+	// URLs can be stored on the session row in the same insert. If Zoom isn't
+	// configured yet, or the call fails, the session is still created without a
+	// Zoom link rather than failing the whole request.
+	var zoom *models.ZoomMeetingInfo
+	if input.Mode == "online" && input.MeetingPlatform == "zoom" {
+		if ctrl.zoomSvc.Configured() {
+			start, err := ctrl.sessionStartTime(input.SessionDate, input.StartTime)
+			if err != nil {
+				log.Printf("parse session start time for zoom: %v", err)
+			} else if meeting, err := ctrl.zoomSvc.CreateMeeting(
+				input.Name, start, sessionDurationMinutes(input.StartTime, input.EndTime), ctrl.timezone,
+			); err != nil {
+				log.Printf("create zoom meeting: %v", err)
+			} else {
+				zoom = &models.ZoomMeetingInfo{ID: meeting.ID, JoinURL: meeting.JoinURL, StartURL: meeting.StartURL}
+			}
+		} else {
+			log.Printf("zoom not configured, skipping meeting creation for session %q", input.Name)
+		}
+	}
+
+	session, err := ctrl.sessionRepo.Create(c.Request.Context(), input, createdBy, zoom)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create session"})
 		return
 	}
+	session = ctrl.withShareLink(session)
 
 	title := "New session: " + session.Name
 	message := fmt.Sprintf("A new session %q has been scheduled for batch %s.", session.Name, session.BatchNumber)
+	if session.ShareLink != "" {
+		message = fmt.Sprintf("%s Join: %s", message, session.ShareLink)
+	}
 
 	// Notify only the students enrolled in this batch, plus the assigned mentor —
 	// not every student/mentor in the system.
@@ -87,15 +166,15 @@ func (ctrl *SessionController) Create(c *gin.Context) {
 		log.Printf("notify session create (students/mentor): %v", err)
 	}
 
-	// team_lead oversees all batches, so they're notified broadly rather than per-batch.
+	// team_lead and super_admin oversee all batches, so they're notified broadly rather than per-batch.
 	if err := ctrl.notificationRepo.NotifyRoles(c.Request.Context(),
 		title, message, "session", "session", session.ShortID, createdBy,
-		[]string{"team_lead"},
+		[]string{string(models.RoleTeamLead), string(models.RoleSuperAdmin)},
 	); err != nil {
-		log.Printf("notify session create (team_lead): %v", err)
+		log.Printf("notify session create (team_lead/super_admin): %v", err)
 	}
 
-	c.JSON(http.StatusCreated, ctrl.withShareLink(session))
+	c.JSON(http.StatusCreated, sanitizeForRole(session, c.GetString("role")))
 }
 
 // GetAllSessions godoc
@@ -135,8 +214,10 @@ func (ctrl *SessionController) GetAll(c *gin.Context) {
 	if sessions == nil {
 		sessions = []models.Session{}
 	}
+	role := c.GetString("role")
 	for i := range sessions {
 		ctrl.withShareLink(&sessions[i])
+		sanitizeForRole(&sessions[i], role)
 	}
 	c.JSON(http.StatusOK, sessions)
 }
@@ -184,7 +265,20 @@ func (ctrl *SessionController) Update(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, ctrl.withShareLink(session))
+	// Keep the Zoom meeting in sync when name/date/time changed on a session that
+	// already has one. Best-effort — DB is the source of truth, so a Zoom-side
+	// failure here is logged but doesn't fail the request.
+	if session.ZoomMeetingID != nil && (input.Name != nil || input.SessionDate != nil || input.StartTime != nil || input.EndTime != nil) {
+		if start, err := ctrl.sessionStartTime(session.SessionDate, session.StartTime); err != nil {
+			log.Printf("parse session start time for zoom update: %v", err)
+		} else if err := ctrl.zoomSvc.UpdateMeeting(
+			*session.ZoomMeetingID, session.Name, start, sessionDurationMinutes(session.StartTime, session.EndTime), ctrl.timezone,
+		); err != nil {
+			log.Printf("update zoom meeting: %v", err)
+		}
+	}
+
+	c.JSON(http.StatusOK, sanitizeForRole(ctrl.withShareLink(session), c.GetString("role")))
 }
 
 // DeleteSession godoc
@@ -202,6 +296,15 @@ func (ctrl *SessionController) Update(c *gin.Context) {
 func (ctrl *SessionController) Delete(c *gin.Context) {
 	shortID := c.Param("short_id")
 
+	// Best-effort: cancel the Zoom meeting before soft-deleting the session.
+	if session, err := ctrl.sessionRepo.FindByShortID(c.Request.Context(), shortID); err != nil {
+		log.Printf("fetch session before delete: %v", err)
+	} else if session != nil && session.ZoomMeetingID != nil {
+		if err := ctrl.zoomSvc.DeleteMeeting(*session.ZoomMeetingID); err != nil {
+			log.Printf("delete zoom meeting: %v", err)
+		}
+	}
+
 	if err := ctrl.sessionRepo.Delete(c.Request.Context(), shortID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
@@ -212,4 +315,40 @@ func (ctrl *SessionController) Delete(c *gin.Context) {
 	}
 
 	c.Status(http.StatusNoContent)
+}
+
+// JoinByToken godoc
+//
+//	@Summary		Resolve a session share link
+//	@Description	Public, unauthenticated lookup of a session by its share token (the value embedded in share_link, e.g. /sessions/join/{token}). Never returns the Zoom host start URL.
+//	@Tags			sessions
+//	@Produce		json
+//	@Param			token	path		string	true	"Share token"
+//	@Success		200		{object}	models.SessionJoinInfo
+//	@Failure		404		{object}	map[string]string	"Not found"
+//	@Failure		500		{object}	map[string]string	"Internal server error"
+//	@Router			/sessions/by-token/{token} [get]
+func (ctrl *SessionController) JoinByToken(c *gin.Context) {
+	token := c.Param("token")
+
+	session, err := ctrl.sessionRepo.FindByShareToken(c.Request.Context(), token)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch session"})
+		return
+	}
+	if session == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.SessionJoinInfo{
+		Name:            session.Name,
+		SessionDate:     session.SessionDate,
+		StartTime:       session.StartTime,
+		EndTime:         session.EndTime,
+		MentorName:      session.MentorName,
+		Mode:            session.Mode,
+		MeetingPlatform: session.MeetingPlatform,
+		ZoomJoinURL:     session.ZoomJoinURL,
+	})
 }

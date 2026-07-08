@@ -19,6 +19,9 @@ type Session struct {
 	GenerateShareableLink         bool       `json:"generate_shareable_link"`
 	ShareToken                    string     `json:"share_token,omitempty"`
 	ShareLink                     string     `json:"share_link,omitempty"`
+	ZoomMeetingID                 *int64     `json:"zoom_meeting_id,omitempty"`
+	ZoomJoinURL                   string     `json:"zoom_join_url,omitempty"`
+	ZoomStartURL                  string     `json:"zoom_start_url,omitempty"` // host token — stripped for students in the controller
 	FeedbackFormShortID           string     `json:"feedback_form_short_id,omitempty"`
 	FeedbackFormTitle             string     `json:"feedback_form_title,omitempty"`
 	SessionType                   string     `json:"session_type"`
@@ -46,7 +49,7 @@ type CreateSessionInput struct {
 	MeetingPlatform               string   `json:"meeting_platform"                binding:"omitempty,oneof=zoom google_meet teams" example:"zoom"`
 	SendConfirmationEmail         bool     `json:"send_confirmation_email"                                                          example:"true"`
 	SessionReminderNotifications  bool     `json:"session_reminder_notifications"                                                   example:"true"`
-	Topics                        []string `json:"topics"                                                                           example:"['hooks','state management']"`
+	Topics                        []string `json:"topics"                                                                           example:"[\"hooks\",\"state management\"]"`
 	GenerateShareableLink         bool     `json:"generate_shareable_link"                                                          example:"true"`
 	FeedbackFormShortID           string   `json:"feedback_form_short_id"                                                           example:"A3F72C1D"`
 	SessionType                   string   `json:"session_type"                    binding:"required,oneof=batch"                   example:"batch"`
@@ -64,11 +67,32 @@ type UpdateSessionInput struct {
 	MeetingPlatform               *string   `json:"meeting_platform"                example:"google_meet"`
 	SendConfirmationEmail         *bool     `json:"send_confirmation_email"         example:"false"`
 	SessionReminderNotifications  *bool     `json:"session_reminder_notifications"  example:"false"`
-	Topics                        []string  `json:"topics"                          example:"['hooks']"`
+	Topics                        []string  `json:"topics"                          example:"[\"hooks\"]"`
 	GenerateShareableLink         *bool     `json:"generate_shareable_link"         example:"false"`
 	FeedbackFormShortID           *string   `json:"feedback_form_short_id"          example:"B4G83D2E"`
 	BatchShortID                  *string   `json:"batch_short_id"                  example:"use GET /batches to pick a real short_id"`
 	IsActive                      *bool     `json:"is_active"                       example:"false"`
+}
+
+// ZoomMeetingInfo carries a created/updated Zoom meeting's identifiers from
+// the controller (which talks to Zoom) down to the repository (which persists them).
+type ZoomMeetingInfo struct {
+	ID       int64
+	JoinURL  string
+	StartURL string
+}
+
+// SessionJoinInfo is the public, unauthenticated view of a session resolved
+// by share token. It deliberately omits ZoomStartURL (a host token).
+type SessionJoinInfo struct {
+	Name            string `json:"name"`
+	SessionDate     string `json:"session_date"`
+	StartTime       string `json:"start_time"`
+	EndTime         string `json:"end_time"`
+	MentorName      string `json:"mentor_name"`
+	Mode            string `json:"mode"`
+	MeetingPlatform string `json:"meeting_platform,omitempty"`
+	ZoomJoinURL     string `json:"zoom_join_url,omitempty"`
 }
 
 // SessionFilter holds query params for GET /sessions.

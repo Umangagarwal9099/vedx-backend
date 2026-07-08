@@ -35,7 +35,7 @@ type CreateEventInput struct {
 	Mode         string   `json:"mode"          binding:"required,oneof=virtual in_person"   example:"virtual"`
 	GuestAccess  bool     `json:"guest_access"                                               example:"false"`
 	EventManager string   `json:"event_manager"                                              example:"uuid-of-manager"`
-	Categories   []string `json:"categories"                                                 example:"['workshop','go','backend']"`
+	Categories   []string `json:"categories"                                                 example:"[\"workshop\",\"go\",\"backend\"]"`
 }
 
 // UpdateEventInput — all fields optional; send only what you want to change.
@@ -50,7 +50,7 @@ type UpdateEventInput struct {
 	Mode         *string  `json:"mode"          example:"in_person"`
 	GuestAccess  *bool    `json:"guest_access"  example:"true"`
 	EventManager *string  `json:"event_manager" example:"uuid-of-manager"`
-	Categories   []string `json:"categories"    example:"['conference','go']"`
+	Categories   []string `json:"categories"    example:"[\"conference\",\"go\"]"`
 	IsActive     *bool    `json:"is_active"     example:"false"`
 }
 

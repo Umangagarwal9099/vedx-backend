@@ -4721,6 +4721,53 @@ const docTemplate = `{
                 }
             }
         },
+        "/sessions/by-token/{token}": {
+            "get": {
+                "description": "Public, unauthenticated lookup of a session by its share token (the value embedded in share_link, e.g. /sessions/join/{token}). Never returns the Zoom host start URL.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Resolve a session share link",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Share token",
+                        "name": "token",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.SessionJoinInfo"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/sessions/{short_id}": {
             "delete": {
                 "security": [
@@ -5724,6 +5771,41 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/zoom/webhook": {
+            "post": {
+                "description": "Receives Zoom Event Subscription callbacks. Answers Zoom's endpoint.url_validation handshake and verifies the x-zm-signature on all other events before processing them. Not intended to be called directly — configure this URL in the Zoom Marketplace app's Event Subscriptions.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "zoom"
+                ],
+                "summary": "Zoom event subscription webhook",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Invalid signature",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -6754,9 +6836,9 @@ const docTemplate = `{
                         "type": "string"
                     },
                     "example": [
-                        "['workshop'",
-                        "'go'",
-                        "'backend']"
+                        "[\"workshop\"",
+                        "\"go\"",
+                        "\"backend\"]"
                     ]
                 },
                 "description": {
@@ -7140,8 +7222,8 @@ const docTemplate = `{
                         "type": "string"
                     },
                     "example": [
-                        "['hooks'",
-                        "'state management']"
+                        "[\"hooks\"",
+                        "\"state management\"]"
                     ]
                 }
             }
@@ -7744,6 +7826,45 @@ const docTemplate = `{
                 },
                 "updated_at": {
                     "type": "string"
+                },
+                "zoom_join_url": {
+                    "type": "string"
+                },
+                "zoom_meeting_id": {
+                    "type": "integer"
+                },
+                "zoom_start_url": {
+                    "description": "host token — stripped for students in the controller",
+                    "type": "string"
+                }
+            }
+        },
+        "models.SessionJoinInfo": {
+            "type": "object",
+            "properties": {
+                "end_time": {
+                    "type": "string"
+                },
+                "meeting_platform": {
+                    "type": "string"
+                },
+                "mentor_name": {
+                    "type": "string"
+                },
+                "mode": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "session_date": {
+                    "type": "string"
+                },
+                "start_time": {
+                    "type": "string"
+                },
+                "zoom_join_url": {
+                    "type": "string"
                 }
             }
         },
@@ -8175,8 +8296,8 @@ const docTemplate = `{
                         "type": "string"
                     },
                     "example": [
-                        "['conference'",
-                        "'go']"
+                        "[\"conference\"",
+                        "\"go\"]"
                     ]
                 },
                 "description": {
@@ -8451,7 +8572,7 @@ const docTemplate = `{
                         "type": "string"
                     },
                     "example": [
-                        "['hooks']"
+                        "[\"hooks\"]"
                     ]
                 }
             }

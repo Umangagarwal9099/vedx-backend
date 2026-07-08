@@ -40,6 +40,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 
 	// Services
 	storageSvc := service.NewStorageService(cfg.Storage)
+	zoomSvc := service.NewZoomService(cfg.Zoom)
 
 	// Controllers
 	authCtrl             := controller.NewAuthController(userRepo, cfg.JWT.Secret)
@@ -58,7 +59,8 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	assessmentCtrl       := controller.NewAssessmentController(assessmentRepo, notificationRepo)
 	communityCtrl        := controller.NewCommunityController(communityRepo, notificationRepo)
 	notificationCtrl     := controller.NewNotificationController(notificationRepo)
-	sessionCtrl          := controller.NewSessionController(sessionRepo, batchRepo, notificationRepo, cfg.App.PublicURL)
+	sessionCtrl          := controller.NewSessionController(sessionRepo, batchRepo, notificationRepo, zoomSvc, cfg.App.PublicURL, cfg.App.Timezone)
+	zoomWebhookCtrl      := controller.NewZoomWebhookController(zoomSvc)
 
 	v1 := r.Group("/api/v1")
 	{
@@ -70,6 +72,14 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			auth.POST("/login", authCtrl.Login)
 			auth.POST("/register", authCtrl.Register)
 		}
+
+		// Public session join-link resolution — the token itself is the credential
+		// (like a magic link), so this stays outside the JWT-protected group.
+		v1.GET("/sessions/by-token/:token", sessionCtrl.JoinByToken)
+
+		// Zoom calls this directly (no JWT) — authenticity is instead verified via
+		// the x-zm-signature header against the Event Subscriptions secret token.
+		v1.POST("/zoom/webhook", zoomWebhookCtrl.HandleWebhook)
 
 		// ── Protected routes — require a valid JWT ────────────────────────────
 		protected := v1.Group("/")
