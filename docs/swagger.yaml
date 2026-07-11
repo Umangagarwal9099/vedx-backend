@@ -1383,6 +1383,8 @@ definitions:
         type: string
       name:
         type: string
+      recording_url:
+        type: string
       send_confirmation_email:
         type: boolean
       session_date:
@@ -1811,6 +1813,14 @@ definitions:
       start_label:
         example: Low
         type: string
+    type: object
+  models.UpdateFeesPaidInput:
+    properties:
+      fees_paid:
+        example: true
+        type: boolean
+    required:
+    - fees_paid
     type: object
   models.UpdateMaterialInput:
     properties:
@@ -2779,6 +2789,63 @@ paths:
       security:
       - BearerAuth: []
       summary: Remove student from batch
+      tags:
+      - batches
+  /batches/{short_id}/students/{user_id}/fees:
+    patch:
+      consumes:
+      - application/json
+      description: Marks whether a student has fully paid fees for a batch. Live sessions
+        stay accessible to every enrolled student regardless of this flag — it only
+        gates access to session recordings. Restricted to super_admin / team_lead
+        / mentor.
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Student user ID (UUID)
+        in: path
+        name: user_id
+        required: true
+        type: string
+      - description: Fee-payment status
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateFeesPaidInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Student not enrolled in batch
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Set a student's fee-payment status
       tags:
       - batches
   /batches/filter:
@@ -5133,6 +5200,40 @@ paths:
       security:
       - BearerAuth: []
       summary: Delete session
+      tags:
+      - sessions
+    get:
+      description: Returns a single non-deleted session by its short ID. recording_url
+        is omitted for students who haven't been marked fees_paid for the session's
+        batch; live-class access is unaffected.
+      parameters:
+      - description: Session short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Session'
+        "404":
+          description: Session not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get session
       tags:
       - sessions
     patch:

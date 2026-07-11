@@ -38,6 +38,7 @@ const sessionBaseSelect = `
 	       s.zoom_meeting_id,
 	       COALESCE(s.zoom_join_url, ''),
 	       COALESCE(s.zoom_start_url, ''),
+	       COALESCE(s.recording_url, ''),
 	       COALESCE(ff.short_id, ''),
 	       COALESCE(ff.title, ''),
 	       s.session_type::TEXT,
@@ -65,6 +66,7 @@ func scanSession(row pgx.Row) (*models.Session, error) {
 		&s.ZoomMeetingID,
 		&s.ZoomJoinURL,
 		&s.ZoomStartURL,
+		&s.RecordingURL,
 		&s.FeedbackFormShortID,
 		&s.FeedbackFormTitle,
 		&s.SessionType,
@@ -133,6 +135,7 @@ func (r *SessionRepository) Create(ctx context.Context, in models.CreateSessionI
 		       ins.zoom_meeting_id,
 		       COALESCE(ins.zoom_join_url, ''),
 		       COALESCE(ins.zoom_start_url, ''),
+		       COALESCE(ins.recording_url, ''),
 		       COALESCE(ff.short_id, ''),
 		       COALESCE(ff.title, ''),
 		       ins.session_type::TEXT,
@@ -330,6 +333,18 @@ func (r *SessionRepository) Update(ctx context.Context, shortID string, in model
 	return nil
 }
 
+// UpdateRecordingURL stores the Zoom recording link on the session matching
+// zoomMeetingID, called from the recording.completed webhook. A no-op (not
+// an error) if no session has that meeting ID — e.g. a Zoom meeting created
+// outside this app, or the session was later deleted.
+func (r *SessionRepository) UpdateRecordingURL(ctx context.Context, zoomMeetingID int64, recordingURL string) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE sessions SET recording_url = $1, updated_at = NOW() WHERE zoom_meeting_id = $2`,
+		recordingURL, zoomMeetingID,
+	)
+	return err
+}
+
 // Delete soft-deletes a session.
 func (r *SessionRepository) Delete(ctx context.Context, shortID string) error {
 	result, err := r.pool.Exec(ctx,
@@ -368,6 +383,7 @@ func (r *SessionRepository) scanSessions(ctx context.Context, q string, args ...
 			&s.ZoomMeetingID,
 			&s.ZoomJoinURL,
 			&s.ZoomStartURL,
+			&s.RecordingURL,
 			&s.FeedbackFormShortID,
 			&s.FeedbackFormTitle,
 			&s.SessionType,

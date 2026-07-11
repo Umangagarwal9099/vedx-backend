@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -50,6 +51,23 @@ func (ctrl *SessionController) withShareLink(s *models.Session) *models.Session 
 func sanitizeForRole(s *models.Session, role string) *models.Session {
 	if s != nil && role == string(models.RoleStudent) {
 		s.ZoomStartURL = ""
+	}
+	return s
+}
+
+// stripRecordingIfUnpaid removes RecordingURL for students unless they've been
+// marked fees_paid for the session's batch. Live-class access (ZoomJoinURL) is
+// never touched here — only recordings are fee-gated. Staff roles always see it.
+func (ctrl *SessionController) stripRecordingIfUnpaid(ctx context.Context, s *models.Session, role, userID string) *models.Session {
+	if s == nil || s.RecordingURL == "" || role != string(models.RoleStudent) {
+		return s
+	}
+	paid, err := ctrl.batchRepo.IsFeesPaid(ctx, s.BatchID, userID)
+	if err != nil {
+		log.Printf("check fees paid for session %s: %v", s.ShortID, err)
+	}
+	if err != nil || !paid {
+		s.RecordingURL = ""
 	}
 	return s
 }
@@ -144,7 +162,12 @@ func (ctrl *SessionController) Create(c *gin.Context) {
 
 	title := "New session: " + session.Name
 	message := fmt.Sprintf("A new session %q has been scheduled for batch %s.", session.Name, session.BatchNumber)
-	if session.ShareLink != "" {
+	// Prefer the direct Zoom join link — clicking it joins the meeting immediately,
+	// no intermediate app page required. Falls back to the share page (which itself
+	// resolves to the Zoom link) for non-Zoom online modes or if Zoom wasn't configured.
+	if session.ZoomJoinURL != "" {
+		message = fmt.Sprintf("%s Join: %s", message, session.ZoomJoinURL)
+	} else if session.ShareLink != "" {
 		message = fmt.Sprintf("%s Join: %s", message, session.ShareLink)
 	}
 
@@ -215,11 +238,47 @@ func (ctrl *SessionController) GetAll(c *gin.Context) {
 		sessions = []models.Session{}
 	}
 	role := c.GetString("role")
+	userID := c.GetString("user_id")
 	for i := range sessions {
 		ctrl.withShareLink(&sessions[i])
 		sanitizeForRole(&sessions[i], role)
+		ctrl.stripRecordingIfUnpaid(c.Request.Context(), &sessions[i], role, userID)
 	}
 	c.JSON(http.StatusOK, sessions)
+}
+
+// GetSession godoc
+//
+//	@Summary		Get session
+//	@Description	Returns a single non-deleted session by its short ID. recording_url is omitted for students who haven't been marked fees_paid for the session's batch; live-class access is unaffected.
+//	@Tags			sessions
+//	@Produce		json
+//	@Param			short_id	path		string	true	"Session short ID"
+//	@Success		200			{object}	models.Session
+//	@Failure		404			{object}	map[string]string	"Session not found"
+//	@Failure		500			{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/sessions/{short_id} [get]
+func (ctrl *SessionController) GetByShortID(c *gin.Context) {
+	shortID := c.Param("short_id")
+
+	session, err := ctrl.sessionRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch session"})
+		return
+	}
+	if session == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+		return
+	}
+
+	role := c.GetString("role")
+	userID := c.GetString("user_id")
+	ctrl.withShareLink(session)
+	sanitizeForRole(session, role)
+	ctrl.stripRecordingIfUnpaid(c.Request.Context(), session, role, userID)
+
+	c.JSON(http.StatusOK, session)
 }
 
 // UpdateSession godoc

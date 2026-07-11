@@ -289,7 +289,7 @@ func (r *BatchRepository) RemoveStudent(ctx context.Context, batchShortID, userI
 // GetStudents returns every student enrolled in a batch, newest enrollment first.
 func (r *BatchRepository) GetStudents(ctx context.Context, batchShortID string) ([]models.BatchStudent, error) {
 	rows, err := r.pool.Query(ctx, `
-		SELECT u.id, u.first_name, u.last_name, u.email, bs.joined_at
+		SELECT u.id, u.first_name, u.last_name, u.email, bs.fees_paid, bs.joined_at
 		FROM batch_students bs
 		JOIN users u ON u.id = bs.user_id AND u.deleted_at IS NULL
 		WHERE bs.batch_id = (SELECT id FROM batches WHERE short_id = $1 AND deleted_at IS NULL)
@@ -304,12 +304,49 @@ func (r *BatchRepository) GetStudents(ctx context.Context, batchShortID string) 
 	var students []models.BatchStudent
 	for rows.Next() {
 		var s models.BatchStudent
-		if err := rows.Scan(&s.UserID, &s.FirstName, &s.LastName, &s.Email, &s.JoinedAt); err != nil {
+		if err := rows.Scan(&s.UserID, &s.FirstName, &s.LastName, &s.Email, &s.FeesPaid, &s.JoinedAt); err != nil {
 			return nil, err
 		}
 		students = append(students, s)
 	}
 	return students, rows.Err()
+}
+
+// SetFeesPaid updates a single student's fee-payment status for a batch —
+// used to grant or revoke access to that batch's session recordings.
+func (r *BatchRepository) SetFeesPaid(ctx context.Context, batchShortID, userID string, feesPaid bool) error {
+	result, err := r.pool.Exec(ctx, `
+		UPDATE batch_students bs
+		SET fees_paid = $3
+		FROM batches b
+		WHERE bs.batch_id = b.id
+		  AND b.short_id = $1 AND b.deleted_at IS NULL
+		  AND bs.user_id = $2::uuid`,
+		batchShortID, userID, feesPaid,
+	)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+// IsFeesPaid reports whether userID is marked as fully paid for the batch
+// identified by its internal UUID (not short_id — callers already have this
+// from session.BatchID). Returns false, not an error, if the user isn't
+// enrolled in the batch at all.
+func (r *BatchRepository) IsFeesPaid(ctx context.Context, batchID, userID string) (bool, error) {
+	var paid bool
+	err := r.pool.QueryRow(ctx,
+		`SELECT fees_paid FROM batch_students WHERE batch_id = $1::uuid AND user_id = $2::uuid`,
+		batchID, userID,
+	).Scan(&paid)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	return paid, err
 }
 
 // Delete soft-deletes a batch.

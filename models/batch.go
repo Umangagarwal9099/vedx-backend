@@ -62,15 +62,24 @@ type BatchFilter struct {
 }
 
 // BatchStudent represents a single student's enrollment in a batch.
+// FeesPaid gates access to session recordings — live classes remain open to
+// every enrolled student regardless of this flag.
 type BatchStudent struct {
 	UserID    string    `json:"user_id"`
 	FirstName string    `json:"first_name"`
 	LastName  string    `json:"last_name"`
 	Email     string    `json:"email"`
+	FeesPaid  bool      `json:"fees_paid"`
 	JoinedAt  time.Time `json:"joined_at"`
 }
 
 // AddBatchStudentsInput carries one or more student user IDs to enroll in a batch.
 type AddBatchStudentsInput struct {
 	StudentIDs []string `json:"student_ids" binding:"required,min=1" example:"[\"11111111-1111-1111-1111-111111111111\"]"`
+}
+
+// UpdateFeesPaidInput sets a single student's fee-payment status for a batch,
+// used to grant or revoke access to that batch's session recordings.
+type UpdateFeesPaidInput struct {
+	FeesPaid *bool `json:"fees_paid" binding:"required" example:"true"`
 }

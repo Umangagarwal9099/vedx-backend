@@ -284,6 +284,44 @@ func (ctrl *BatchController) RemoveStudent(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// SetStudentFeesPaid godoc
+//
+//	@Summary		Set a student's fee-payment status
+//	@Description	Marks whether a student has fully paid fees for a batch. Live sessions stay accessible to every enrolled student regardless of this flag — it only gates access to session recordings. Restricted to super_admin / team_lead / mentor.
+//	@Tags			batches
+//	@Accept			json
+//	@Produce		json
+//	@Param			short_id	path		string							true	"Batch short ID"
+//	@Param			user_id		path		string							true	"Student user ID (UUID)"
+//	@Param			body		body		models.UpdateFeesPaidInput		true	"Fee-payment status"
+//	@Success		200			{object}	map[string]string
+//	@Failure		400			{object}	map[string]string	"Validation error"
+//	@Failure		404			{object}	map[string]string	"Student not enrolled in batch"
+//	@Failure		500			{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/batches/{short_id}/students/{user_id}/fees [patch]
+func (ctrl *BatchController) SetStudentFeesPaid(c *gin.Context) {
+	shortID := c.Param("short_id")
+	userID := c.Param("user_id")
+
+	var input models.UpdateFeesPaidInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := ctrl.batchRepo.SetFeesPaid(c.Request.Context(), shortID, userID, *input.FeesPaid); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "student not enrolled in batch"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not update fee status"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "updated"})
+}
+
 // DeleteBatch godoc
 //
 //	@Summary		Delete batch

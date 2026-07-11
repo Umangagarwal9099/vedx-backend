@@ -22,6 +22,7 @@ type Session struct {
 	ZoomMeetingID                 *int64     `json:"zoom_meeting_id,omitempty"`
 	ZoomJoinURL                   string     `json:"zoom_join_url,omitempty"`
 	ZoomStartURL                  string     `json:"zoom_start_url,omitempty"` // host token — stripped for students in the controller
+	RecordingURL                  string     `json:"recording_url,omitempty"`
 	FeedbackFormShortID           string     `json:"feedback_form_short_id,omitempty"`
 	FeedbackFormTitle             string     `json:"feedback_form_title,omitempty"`
 	SessionType                   string     `json:"session_type"`

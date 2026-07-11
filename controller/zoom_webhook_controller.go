@@ -7,15 +7,17 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/umangagarwal/vedx-backend/repository"
 	"github.com/umangagarwal/vedx-backend/service"
 )
 
 type ZoomWebhookController struct {
-	zoomSvc *service.ZoomService
+	zoomSvc     *service.ZoomService
+	sessionRepo *repository.SessionRepository
 }
 
-func NewZoomWebhookController(zoomSvc *service.ZoomService) *ZoomWebhookController {
-	return &ZoomWebhookController{zoomSvc: zoomSvc}
+func NewZoomWebhookController(zoomSvc *service.ZoomService, sessionRepo *repository.SessionRepository) *ZoomWebhookController {
+	return &ZoomWebhookController{zoomSvc: zoomSvc, sessionRepo: sessionRepo}
 }
 
 type zoomWebhookEnvelope struct {
@@ -25,6 +27,17 @@ type zoomWebhookEnvelope struct {
 
 type zoomURLValidationPayload struct {
 	PlainToken string `json:"plainToken"`
+}
+
+// zoomRecordingCompletedPayload is the subset of the recording.completed
+// payload.object we care about — share_url is the link participants use to
+// watch the recording (Zoom may also require the recording's passcode,
+// configured in the account's recording settings, to view it).
+type zoomRecordingCompletedPayload struct {
+	Object struct {
+		ID       int64  `json:"id"`
+		ShareURL string `json:"share_url"`
+	} `json:"object"`
 }
 
 // HandleWebhook godoc
@@ -77,9 +90,16 @@ func (ctrl *ZoomWebhookController) HandleWebhook(c *gin.Context) {
 		return
 	}
 
-	// No session/recording state is persisted from these yet — logged so delivery
-	// can be confirmed end-to-end; extend per event type as features need them.
 	log.Printf("zoom webhook event received: %s", envelope.Event)
+
+	if envelope.Event == "recording.completed" {
+		var payload zoomRecordingCompletedPayload
+		if err := json.Unmarshal(envelope.Payload, &payload); err != nil {
+			log.Printf("zoom webhook: invalid recording.completed payload: %v", err)
+		} else if err := ctrl.sessionRepo.UpdateRecordingURL(c.Request.Context(), payload.Object.ID, payload.Object.ShareURL); err != nil {
+			log.Printf("zoom webhook: store recording url for meeting %d: %v", payload.Object.ID, err)
+		}
+	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "received"})
 }

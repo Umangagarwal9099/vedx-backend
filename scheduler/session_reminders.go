@@ -63,15 +63,13 @@ func processDueReminders(
 	}
 
 	for _, session := range due {
-		shareLink := ""
-		if session.ShareToken != "" {
-			shareLink = "/sessions/join/" + session.ShareToken
-		}
-
 		title := "Session starting now: " + session.Name
 		message := fmt.Sprintf("Your session %q for batch %s is starting now.", session.Name, session.BatchNumber)
-		if shareLink != "" {
-			message = fmt.Sprintf("%s Join: %s", message, shareLink)
+		// Prefer the direct Zoom join link so clicking it joins the meeting immediately.
+		if session.ZoomJoinURL != "" {
+			message = fmt.Sprintf("%s Join: %s", message, session.ZoomJoinURL)
+		} else if session.ShareToken != "" {
+			message = fmt.Sprintf("%s Join: /sessions/join/%s", message, session.ShareToken)
 		}
 
 		students, err := batchRepo.GetStudents(ctx, session.BatchShortID)

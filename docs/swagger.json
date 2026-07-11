@@ -1295,6 +1295,89 @@
                 }
             }
         },
+        "/batches/{short_id}/students/{user_id}/fees": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Marks whether a student has fully paid fees for a batch. Live sessions stay accessible to every enrolled student regardless of this flag — it only gates access to session recordings. Restricted to super_admin / team_lead / mentor.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "batches"
+                ],
+                "summary": "Set a student's fee-payment status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Batch short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Student user ID (UUID)",
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fee-payment status",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateFeesPaidInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Student not enrolled in batch",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/blogs": {
             "get": {
                 "security": [
@@ -4767,6 +4850,56 @@
             }
         },
         "/sessions/{short_id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns a single non-deleted session by its short ID. recording_url is omitted for students who haven't been marked fees_paid for the session's batch; live-class access is unaffected.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Get session",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Session short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Session"
+                        }
+                    },
+                    "404": {
+                        "description": "Session not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
             "delete": {
                 "security": [
                     {
@@ -7792,6 +7925,9 @@
                 "name": {
                     "type": "string"
                 },
+                "recording_url": {
+                    "type": "string"
+                },
                 "send_confirmation_email": {
                     "type": "boolean"
                 },
@@ -8402,6 +8538,18 @@
                 "start_label": {
                     "type": "string",
                     "example": "Low"
+                }
+            }
+        },
+        "models.UpdateFeesPaidInput": {
+            "type": "object",
+            "required": [
+                "fees_paid"
+            ],
+            "properties": {
+                "fees_paid": {
+                    "type": "boolean",
+                    "example": true
                 }
             }
         },

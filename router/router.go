@@ -60,7 +60,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	communityCtrl        := controller.NewCommunityController(communityRepo, notificationRepo)
 	notificationCtrl     := controller.NewNotificationController(notificationRepo)
 	sessionCtrl          := controller.NewSessionController(sessionRepo, batchRepo, notificationRepo, zoomSvc, cfg.App.PublicURL, cfg.App.Timezone)
-	zoomWebhookCtrl      := controller.NewZoomWebhookController(zoomSvc)
+	zoomWebhookCtrl      := controller.NewZoomWebhookController(zoomSvc, sessionRepo)
 
 	v1 := r.Group("/api/v1")
 	{
@@ -124,9 +124,10 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				batches.DELETE("/:short_id", adminOrAbove, batchCtrl.Delete)
 
 				// Students — enrolled members of a batch
-				batches.GET("/:short_id/students",             batchCtrl.GetStudents)
-				batches.POST("/:short_id/students",            adminOrAbove, batchCtrl.AddStudents)
-				batches.DELETE("/:short_id/students/:user_id", adminOrAbove, batchCtrl.RemoveStudent)
+				batches.GET("/:short_id/students",              batchCtrl.GetStudents)
+				batches.POST("/:short_id/students",             adminOrAbove, batchCtrl.AddStudents)
+				batches.DELETE("/:short_id/students/:user_id",  adminOrAbove, batchCtrl.RemoveStudent)
+				batches.PATCH("/:short_id/students/:user_id/fees", staffOrAbove, batchCtrl.SetStudentFeesPaid)
 			}
 
 			// Events — super_admin / team_lead / mentor may create, edit, or delete
@@ -257,6 +258,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			{
 				sessions.POST("",             staffOrAbove, sessionCtrl.Create)
 				sessions.GET("",              sessionCtrl.GetAll)
+				sessions.GET("/:short_id",    sessionCtrl.GetByShortID)
 				sessions.PATCH("/:short_id",  staffOrAbove, sessionCtrl.Update)
 				sessions.DELETE("/:short_id", staffOrAbove, sessionCtrl.Delete)
 			}
