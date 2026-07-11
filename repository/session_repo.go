@@ -223,6 +223,12 @@ func (r *SessionRepository) MarkReminderSent(ctx context.Context, id string) err
 	return err
 }
 
+// FindByBatchShortID returns all non-deleted sessions scheduled for a batch, newest first.
+func (r *SessionRepository) FindByBatchShortID(ctx context.Context, batchShortID string) ([]models.Session, error) {
+	q := sessionBaseSelect + ` WHERE b.short_id = $1 AND s.deleted_at IS NULL ORDER BY s.session_date DESC, s.start_time DESC`
+	return r.scanSessions(ctx, q, batchShortID)
+}
+
 // Filter returns non-deleted sessions matching the provided filter (batch, mentor, date).
 func (r *SessionRepository) Filter(ctx context.Context, f models.SessionFilter) ([]models.Session, error) {
 	conditions := []string{"s.deleted_at IS NULL"}

@@ -128,6 +128,9 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				batches.POST("/:short_id/students",             adminOrAbove, batchCtrl.AddStudents)
 				batches.DELETE("/:short_id/students/:user_id",  adminOrAbove, batchCtrl.RemoveStudent)
 				batches.PATCH("/:short_id/students/:user_id/fees", staffOrAbove, batchCtrl.SetStudentFeesPaid)
+
+				// Sessions — scoped to this batch
+				batches.GET("/:short_id/sessions", sessionCtrl.GetByBatch)
 			}
 
 			// Events — super_admin / team_lead / mentor may create, edit, or delete

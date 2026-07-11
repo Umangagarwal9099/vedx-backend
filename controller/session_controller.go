@@ -247,6 +247,38 @@ func (ctrl *SessionController) GetAll(c *gin.Context) {
 	c.JSON(http.StatusOK, sessions)
 }
 
+// GetSessionsByBatch godoc
+//
+//	@Summary		List sessions for a batch
+//	@Description	Returns all non-deleted sessions scheduled for a batch, ordered by session date/time (newest first).
+//	@Tags			sessions
+//	@Produce		json
+//	@Param			short_id	path	string	true	"Batch short ID"
+//	@Success		200	{array}		models.Session
+//	@Failure		500	{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/batches/{short_id}/sessions [get]
+func (ctrl *SessionController) GetByBatch(c *gin.Context) {
+	batchShortID := c.Param("short_id")
+
+	sessions, err := ctrl.sessionRepo.FindByBatchShortID(c.Request.Context(), batchShortID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch sessions"})
+		return
+	}
+	if sessions == nil {
+		sessions = []models.Session{}
+	}
+	role := c.GetString("role")
+	userID := c.GetString("user_id")
+	for i := range sessions {
+		ctrl.withShareLink(&sessions[i])
+		sanitizeForRole(&sessions[i], role)
+		ctrl.stripRecordingIfUnpaid(c.Request.Context(), &sessions[i], role, userID)
+	}
+	c.JSON(http.StatusOK, sessions)
+}
+
 // GetSession godoc
 //
 //	@Summary		Get session
