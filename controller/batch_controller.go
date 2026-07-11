@@ -137,6 +137,30 @@ func (ctrl *BatchController) Filter(c *gin.Context) {
 	c.JSON(http.StatusOK, batches)
 }
 
+// GetMyBatches godoc
+//
+//	@Summary		List my batches
+//	@Description	Returns every non-deleted batch the logged-in user is enrolled in as a student, most recently joined first.
+//	@Tags			batches
+//	@Produce		json
+//	@Success		200	{array}		models.Batch
+//	@Failure		500	{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/batches/mine [get]
+func (ctrl *BatchController) GetMine(c *gin.Context) {
+	userID := c.GetString("user_id")
+
+	batches, err := ctrl.batchRepo.FindByStudentID(c.Request.Context(), userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch batches"})
+		return
+	}
+	if batches == nil {
+		batches = []models.Batch{}
+	}
+	c.JSON(http.StatusOK, batches)
+}
+
 // UpdateBatch godoc
 //
 //	@Summary		Update batch

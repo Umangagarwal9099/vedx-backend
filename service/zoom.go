@@ -153,9 +153,11 @@ type zoomMeetingRequest struct {
 }
 
 // CreateMeeting schedules a Zoom meeting starting at `start` (interpreted in
-// `timezone`) lasting `durationMin` minutes. join_before_host is disabled and
-// a waiting room is enabled so students can't enter until the mentor starts
-// the meeting via the host start URL.
+// `timezone`) lasting `durationMin` minutes. join_before_host is disabled so
+// students can't enter until the mentor starts the meeting via the host start
+// URL — Zoom shows them a "waiting for host" screen instead. WaitingRoom is
+// disabled so that once the mentor does start the meeting, students who click
+// join_url land in directly rather than needing to be manually admitted.
 func (z *ZoomService) CreateMeeting(topic string, start time.Time, durationMin int, timezone string) (*ZoomMeeting, error) {
 	req := zoomMeetingRequest{
 		Topic:     topic,
@@ -165,7 +167,7 @@ func (z *ZoomService) CreateMeeting(topic string, start time.Time, durationMin i
 		Timezone:  timezone,
 		Settings: zoomMeetingSettings{
 			JoinBeforeHost: false,
-			WaitingRoom:    true,
+			WaitingRoom:    false,
 		},
 	}
 
@@ -186,7 +188,7 @@ func (z *ZoomService) UpdateMeeting(meetingID int64, topic string, start time.Ti
 		Timezone:  timezone,
 		Settings: zoomMeetingSettings{
 			JoinBeforeHost: false,
-			WaitingRoom:    true,
+			WaitingRoom:    false,
 		},
 	}
 	if err := z.do(http.MethodPatch, fmt.Sprintf("%s/meetings/%d", zoomAPIBase, meetingID), req, nil); err != nil {

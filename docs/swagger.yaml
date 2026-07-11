@@ -2931,6 +2931,30 @@ paths:
       summary: Filter batches
       tags:
       - batches
+  /batches/mine:
+    get:
+      description: Returns every non-deleted batch the logged-in user is enrolled
+        in as a student, most recently joined first.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Batch'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List my batches
+      tags:
+      - batches
   /blogs:
     get:
       description: Returns all non-deleted blogs ordered newest first. Filter by title

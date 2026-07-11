@@ -120,6 +120,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				batches.POST("",             adminOrAbove, batchCtrl.Create)
 				batches.GET("",              batchCtrl.GetAll)
 				batches.GET("/filter",       batchCtrl.Filter)
+				batches.GET("/mine",         batchCtrl.GetMine)
 				batches.PATCH("/:short_id",  adminOrAbove, batchCtrl.Update)
 				batches.DELETE("/:short_id", adminOrAbove, batchCtrl.Delete)
 

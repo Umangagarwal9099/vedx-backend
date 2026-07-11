@@ -171,6 +171,16 @@ func (r *BatchRepository) Filter(ctx context.Context, f models.BatchFilter) ([]m
 	return r.scanBatches(ctx, q, args...)
 }
 
+// FindByStudentID returns every non-deleted batch userID is enrolled in as a
+// student, most recently joined first.
+func (r *BatchRepository) FindByStudentID(ctx context.Context, userID string) ([]models.Batch, error) {
+	q := batchBaseSelect + `
+		JOIN batch_students bs ON bs.batch_id = b.id AND bs.user_id = $1::UUID
+		WHERE b.deleted_at IS NULL
+		ORDER BY bs.joined_at DESC`
+	return r.scanBatches(ctx, q, userID)
+}
+
 // Update applies a partial update — only non-nil fields are changed.
 func (r *BatchRepository) Update(ctx context.Context, shortID string, in models.UpdateBatchInput) error {
 	args := []interface{}{shortID}
