@@ -102,6 +102,32 @@ func (ctrl *BatchController) GetAll(c *gin.Context) {
 	c.JSON(http.StatusOK, batches)
 }
 
+// GetBatch godoc
+//
+//	@Summary		Get batch
+//	@Description	Returns a single batch by its short_id, with full course and manager details.
+//	@Tags			batches
+//	@Produce		json
+//	@Param			short_id	path		string	true	"Batch short ID"
+//	@Success		200			{object}	models.Batch
+//	@Failure		404			{object}	map[string]string	"Batch not found"
+//	@Failure		500			{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/batches/{short_id} [get]
+func (ctrl *BatchController) GetByShortID(c *gin.Context) {
+	shortID := c.Param("short_id")
+	batch, err := ctrl.batchRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch batch"})
+		return
+	}
+	if batch == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "batch not found"})
+		return
+	}
+	c.JSON(http.StatusOK, batch)
+}
+
 // FilterBatches godoc
 //
 //	@Summary		Filter batches
