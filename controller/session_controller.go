@@ -279,6 +279,60 @@ func (ctrl *SessionController) GetByBatch(c *gin.Context) {
 	c.JSON(http.StatusOK, sessions)
 }
 
+// GetBatchRecordings godoc
+//
+//	@Summary		List a batch's session recordings
+//	@Description	Student-facing view of every recorded session in a batch. If the caller is a student who hasn't been marked fees_paid, recordings is empty and message explains why — staff always see the full list, regardless of any student's payment status.
+//	@Tags			sessions
+//	@Produce		json
+//	@Param			short_id	path		string	true	"Batch short ID"
+//	@Success		200			{object}	models.BatchRecordingsResponse
+//	@Failure		500			{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/batches/{short_id}/recordings [get]
+func (ctrl *SessionController) GetBatchRecordings(c *gin.Context) {
+	batchShortID := c.Param("short_id")
+	role := c.GetString("role")
+	userID := c.GetString("user_id")
+
+	if role == string(models.RoleStudent) {
+		paid, err := ctrl.batchRepo.IsFeesPaidByBatchShortID(c.Request.Context(), batchShortID, userID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch fee status"})
+			return
+		}
+		if !paid {
+			c.JSON(http.StatusOK, models.BatchRecordingsResponse{
+				FeesPaid:   false,
+				Message:    "Please pay your fees for this batch to access session recordings.",
+				Recordings: []models.RecordingListItem{},
+			})
+			return
+		}
+	}
+
+	sessions, err := ctrl.sessionRepo.FindByBatchShortID(c.Request.Context(), batchShortID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch sessions"})
+		return
+	}
+
+	recordings := []models.RecordingListItem{}
+	for _, s := range sessions {
+		if s.RecordingURL == "" {
+			continue
+		}
+		recordings = append(recordings, models.RecordingListItem{
+			SessionShortID: s.ShortID,
+			Name:           s.Name,
+			SessionDate:    s.SessionDate,
+			RecordingURL:   s.RecordingURL,
+		})
+	}
+
+	c.JSON(http.StatusOK, models.BatchRecordingsResponse{FeesPaid: true, Recordings: recordings})
+}
+
 // GetSession godoc
 //
 //	@Summary		Get session

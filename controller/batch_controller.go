@@ -279,6 +279,30 @@ func (ctrl *BatchController) GetStudents(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"total_students": len(students), "students": students})
 }
 
+// GetMyFeesStatus godoc
+//
+//	@Summary		Get my fee-payment status for a batch
+//	@Description	Returns the logged-in user's own fees_paid status for a batch — never exposes other students' data. Use this to decide whether to show session recordings.
+//	@Tags			batches
+//	@Produce		json
+//	@Param			short_id	path		string	true	"Batch short ID"
+//	@Success		200			{object}	map[string]bool	"fees_paid"
+//	@Failure		500			{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/batches/{short_id}/me/fees [get]
+func (ctrl *BatchController) GetMyFeesStatus(c *gin.Context) {
+	shortID := c.Param("short_id")
+	userID := c.GetString("user_id")
+
+	paid, err := ctrl.batchRepo.IsFeesPaidByBatchShortID(c.Request.Context(), shortID, userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch fee status"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"fees_paid": paid})
+}
+
 // RemoveBatchStudent godoc
 //
 //	@Summary		Remove student from batch

@@ -359,6 +359,25 @@ func (r *BatchRepository) IsFeesPaid(ctx context.Context, batchID, userID string
 	return paid, err
 }
 
+// IsFeesPaidByBatchShortID reports whether userID is marked as fully paid for
+// the batch identified by its short_id — for callers (e.g. student-facing
+// endpoints) that only have the short_id on hand, not the internal batch UUID.
+// Returns false, not an error, if the user isn't enrolled in the batch at all.
+func (r *BatchRepository) IsFeesPaidByBatchShortID(ctx context.Context, batchShortID, userID string) (bool, error) {
+	var paid bool
+	err := r.pool.QueryRow(ctx, `
+		SELECT bs.fees_paid
+		FROM batch_students bs
+		JOIN batches b ON b.id = bs.batch_id
+		WHERE b.short_id = $1 AND b.deleted_at IS NULL AND bs.user_id = $2::uuid`,
+		batchShortID, userID,
+	).Scan(&paid)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	return paid, err
+}
+
 // Delete soft-deletes a batch.
 func (r *BatchRepository) Delete(ctx context.Context, shortID string) error {
 	result, err := r.pool.Exec(ctx,
