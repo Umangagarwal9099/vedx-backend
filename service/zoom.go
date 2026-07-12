@@ -139,8 +139,9 @@ func (z *ZoomService) do(method, url string, payload interface{}, out interface{
 }
 
 type zoomMeetingSettings struct {
-	JoinBeforeHost bool `json:"join_before_host"`
-	WaitingRoom    bool `json:"waiting_room"`
+	JoinBeforeHost bool   `json:"join_before_host"`
+	WaitingRoom    bool   `json:"waiting_room"`
+	AutoRecording  string `json:"auto_recording"` // "cloud" starts recording the moment the host starts the meeting, no manual click needed
 }
 
 type zoomMeetingRequest struct {
@@ -158,6 +159,9 @@ type zoomMeetingRequest struct {
 // URL — Zoom shows them a "waiting for host" screen instead. WaitingRoom is
 // disabled so that once the mentor does start the meeting, students who click
 // join_url land in directly rather than needing to be manually admitted.
+// AutoRecording is set to "cloud" so recording starts the moment the host
+// starts the meeting and stops when it ends — this is what eventually
+// triggers Zoom's recording.completed webhook and populates recording_url.
 func (z *ZoomService) CreateMeeting(topic string, start time.Time, durationMin int, timezone string) (*ZoomMeeting, error) {
 	req := zoomMeetingRequest{
 		Topic:     topic,
@@ -168,6 +172,7 @@ func (z *ZoomService) CreateMeeting(topic string, start time.Time, durationMin i
 		Settings: zoomMeetingSettings{
 			JoinBeforeHost: false,
 			WaitingRoom:    false,
+			AutoRecording:  "cloud",
 		},
 	}
 
@@ -189,6 +194,7 @@ func (z *ZoomService) UpdateMeeting(meetingID int64, topic string, start time.Ti
 		Settings: zoomMeetingSettings{
 			JoinBeforeHost: false,
 			WaitingRoom:    false,
+			AutoRecording:  "cloud",
 		},
 	}
 	if err := z.do(http.MethodPatch, fmt.Sprintf("%s/meetings/%d", zoomAPIBase, meetingID), req, nil); err != nil {
