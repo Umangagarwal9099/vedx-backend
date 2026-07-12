@@ -235,7 +235,7 @@ func (ctrl *AssignmentController) Delete(c *gin.Context) {
 //	@Accept			json
 //	@Produce		json
 //	@Param			short_id	path		string							true	"Assignment short ID"
-//	@Param			body		body		models.CreateSubmissionInput	true	"Submission details"
+//	@Param			body		body		models.CreateAssignmentSubmissionInput	true	"Submission details"
 //	@Success		201			{object}	models.AssignmentSubmission
 //	@Failure		400			{object}	map[string]string	"Validation error, or already submitted"
 //	@Failure		500			{object}	map[string]string	"Internal server error"
@@ -244,7 +244,7 @@ func (ctrl *AssignmentController) Delete(c *gin.Context) {
 func (ctrl *AssignmentController) CreateSubmission(c *gin.Context) {
 	shortID := c.Param("short_id")
 
-	var input models.CreateSubmissionInput
+	var input models.CreateAssignmentSubmissionInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -10,15 +11,40 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/umangagarwal/vedx-backend/models"
 	"github.com/umangagarwal/vedx-backend/repository"
+	"github.com/umangagarwal/vedx-backend/service"
 )
 
 type BatchController struct {
 	batchRepo        *repository.BatchRepository
 	notificationRepo *repository.NotificationRepository
+	userRepo         *repository.UserRepository
+	emailSvc         *service.EmailService
 }
 
-func NewBatchController(batchRepo *repository.BatchRepository, notificationRepo *repository.NotificationRepository) *BatchController {
-	return &BatchController{batchRepo: batchRepo, notificationRepo: notificationRepo}
+func NewBatchController(batchRepo *repository.BatchRepository, notificationRepo *repository.NotificationRepository, userRepo *repository.UserRepository, emailSvc *service.EmailService) *BatchController {
+	return &BatchController{batchRepo: batchRepo, notificationRepo: notificationRepo, userRepo: userRepo, emailSvc: emailSvc}
+}
+
+// emailBatchManagers emails the batch manager and additional manager (if set)
+// about a newly created batch.
+func (ctrl *BatchController) emailBatchManagers(ctx context.Context, batch *models.Batch, subject, html string) {
+	if manager, err := ctrl.userRepo.FindByID(ctx, batch.BatchManagerID); err != nil {
+		log.Printf("fetch batch manager for email: %v", err)
+	} else if manager != nil && manager.Email != "" {
+		if err := ctrl.emailSvc.Send(manager.Email, subject, html); err != nil {
+			log.Printf("send batch created email to manager %s: %v", manager.Email, err)
+		}
+	}
+	if batch.AdditionalManagerID == "" {
+		return
+	}
+	if am, err := ctrl.userRepo.FindByID(ctx, batch.AdditionalManagerID); err != nil {
+		log.Printf("fetch additional manager for email: %v", err)
+	} else if am != nil && am.Email != "" {
+		if err := ctrl.emailSvc.Send(am.Email, subject, html); err != nil {
+			log.Printf("send batch created email to additional manager %s: %v", am.Email, err)
+		}
+	}
 }
 
 // CreateBatch godoc
@@ -50,6 +76,8 @@ func (ctrl *BatchController) Create(c *gin.Context) {
 		return
 	}
 
+	subject, html := service.BatchCreatedEmail(batch.BatchNumber, batch.CourseName, batch.StartDate, batch.EndDate)
+
 	if len(input.StudentIDs) > 0 {
 		added, err := ctrl.batchRepo.AddStudents(c.Request.Context(), batch.ShortID, input.StudentIDs, createdBy)
 		if err != nil {
@@ -65,6 +93,21 @@ func (ctrl *BatchController) Create(c *gin.Context) {
 			); err != nil {
 				log.Printf("notify batch add students: %v", err)
 			}
+
+			if ctrl.emailSvc.Configured() {
+				for _, studentID := range added {
+					student, err := ctrl.userRepo.FindByID(c.Request.Context(), studentID)
+					if err != nil {
+						log.Printf("fetch student for batch created email: %v", err)
+						continue
+					}
+					if student != nil && student.Email != "" {
+						if err := ctrl.emailSvc.Send(student.Email, subject, html); err != nil {
+							log.Printf("send batch created email to %s: %v", student.Email, err)
+						}
+					}
+				}
+			}
 		}
 	}
 
@@ -75,6 +118,10 @@ func (ctrl *BatchController) Create(c *gin.Context) {
 		[]string{"mentor", "team_lead"},
 	); err != nil {
 		log.Printf("notify batch create: %v", err)
+	}
+
+	if ctrl.emailSvc.Configured() {
+		ctrl.emailBatchManagers(c.Request.Context(), batch, subject, html)
 	}
 
 	c.JSON(http.StatusCreated, batch)

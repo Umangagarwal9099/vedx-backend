@@ -20,17 +20,21 @@ type SessionController struct {
 	sessionRepo      *repository.SessionRepository
 	batchRepo        *repository.BatchRepository
 	notificationRepo *repository.NotificationRepository
+	userRepo         *repository.UserRepository
 	zoomSvc          *service.ZoomService
+	emailSvc         *service.EmailService
 	publicBaseURL    string
 	timezone         string
 }
 
-func NewSessionController(repo *repository.SessionRepository, batchRepo *repository.BatchRepository, notificationRepo *repository.NotificationRepository, zoomSvc *service.ZoomService, publicBaseURL, timezone string) *SessionController {
+func NewSessionController(repo *repository.SessionRepository, batchRepo *repository.BatchRepository, notificationRepo *repository.NotificationRepository, userRepo *repository.UserRepository, zoomSvc *service.ZoomService, emailSvc *service.EmailService, publicBaseURL, timezone string) *SessionController {
 	return &SessionController{
 		sessionRepo:      repo,
 		batchRepo:        batchRepo,
 		notificationRepo: notificationRepo,
+		userRepo:         userRepo,
 		zoomSvc:          zoomSvc,
+		emailSvc:         emailSvc,
 		publicBaseURL:    publicBaseURL,
 		timezone:         timezone,
 	}
@@ -195,6 +199,33 @@ func (ctrl *SessionController) Create(c *gin.Context) {
 		[]string{string(models.RoleTeamLead), string(models.RoleSuperAdmin)},
 	); err != nil {
 		log.Printf("notify session create (team_lead/super_admin): %v", err)
+	}
+
+	// Confirmation email is opt-in per session (send_confirmation_email) and
+	// silently skipped if SMTP isn't configured — email is best-effort, not a
+	// blocker for session creation.
+	if input.SendConfirmationEmail && ctrl.emailSvc.Configured() {
+		joinLink := session.ZoomJoinURL
+		if joinLink == "" {
+			joinLink = session.ShareLink
+		}
+		subject, html := service.SessionConfirmationEmail(session.Name, session.BatchNumber, session.SessionDate, session.StartTime, joinLink)
+
+		for _, s := range students {
+			if s.Email == "" {
+				continue
+			}
+			if err := ctrl.emailSvc.Send(s.Email, subject, html); err != nil {
+				log.Printf("send session confirmation email to %s: %v", s.Email, err)
+			}
+		}
+		if mentor, err := ctrl.userRepo.FindByID(c.Request.Context(), session.MentorID); err != nil {
+			log.Printf("fetch mentor for confirmation email: %v", err)
+		} else if mentor != nil && mentor.Email != "" {
+			if err := ctrl.emailSvc.Send(mentor.Email, subject, html); err != nil {
+				log.Printf("send session confirmation email to mentor %s: %v", mentor.Email, err)
+			}
+		}
 	}
 
 	c.JSON(http.StatusCreated, sanitizeForRole(session, c.GetString("role")))

@@ -10,15 +10,18 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/umangagarwal/vedx-backend/models"
 	"github.com/umangagarwal/vedx-backend/repository"
+	"github.com/umangagarwal/vedx-backend/service"
 )
 
 type CommunityController struct {
 	communityRepo    *repository.CommunityRepository
 	notificationRepo *repository.NotificationRepository
+	userRepo         *repository.UserRepository
+	emailSvc         *service.EmailService
 }
 
-func NewCommunityController(communityRepo *repository.CommunityRepository, notificationRepo *repository.NotificationRepository) *CommunityController {
-	return &CommunityController{communityRepo: communityRepo, notificationRepo: notificationRepo}
+func NewCommunityController(communityRepo *repository.CommunityRepository, notificationRepo *repository.NotificationRepository, userRepo *repository.UserRepository, emailSvc *service.EmailService) *CommunityController {
+	return &CommunityController{communityRepo: communityRepo, notificationRepo: notificationRepo, userRepo: userRepo, emailSvc: emailSvc}
 }
 
 // CreateCommunity godoc
@@ -57,6 +60,11 @@ func (ctrl *CommunityController) Create(c *gin.Context) {
 		[]string{"mentor", "team_lead"},
 	); err != nil {
 		log.Printf("notify community create: %v", err)
+	}
+
+	if ctrl.emailSvc.Configured() {
+		subject, html := service.CommunityCreatedEmail(community.Name, community.BatchNumber)
+		emailUsersByRoles(c.Request.Context(), ctrl.userRepo, ctrl.emailSvc, []models.Role{models.RoleMentor, models.RoleTeamLead}, subject, html)
 	}
 
 	c.JSON(http.StatusCreated, community)
@@ -224,6 +232,22 @@ func (ctrl *CommunityController) AddMembers(c *gin.Context) {
 				"community", "community", shortID, addedBy, added,
 			); err != nil {
 				log.Printf("notify community add members: %v", err)
+			}
+
+			if ctrl.emailSvc.Configured() {
+				subject, html := service.CommunityMemberAddedEmail(community.Name)
+				for _, userID := range added {
+					user, err := ctrl.userRepo.FindByID(c.Request.Context(), userID)
+					if err != nil {
+						log.Printf("fetch user for community member email: %v", err)
+						continue
+					}
+					if user != nil && user.Email != "" {
+						if err := ctrl.emailSvc.Send(user.Email, subject, html); err != nil {
+							log.Printf("send community member email to %s: %v", user.Email, err)
+						}
+					}
+				}
 			}
 		}
 	}

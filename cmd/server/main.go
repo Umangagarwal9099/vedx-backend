@@ -16,6 +16,7 @@ import (
 	"github.com/umangagarwal/vedx-backend/repository"
 	"github.com/umangagarwal/vedx-backend/router"
 	"github.com/umangagarwal/vedx-backend/scheduler"
+	"github.com/umangagarwal/vedx-backend/service"
 )
 
 //	@title			Vedex API
@@ -67,6 +68,11 @@ func main() {
 		}
 	}()
 
+	emailSvc := service.NewEmailService(cfg.SMTP)
+	if !emailSvc.Configured() {
+		log.Println("SMTP not configured — session/batch reminder and confirmation emails will be skipped")
+	}
+
 	// Background: fire a notification the moment a session's scheduled start time arrives.
 	reminderCtx, cancelReminders := context.WithCancel(context.Background())
 	defer cancelReminders()
@@ -75,6 +81,18 @@ func main() {
 		repository.NewSessionRepository(pool),
 		repository.NewBatchRepository(pool),
 		repository.NewNotificationRepository(pool),
+		repository.NewUserRepository(pool),
+		emailSvc,
+		cfg.App.Timezone,
+	)
+
+	// Background: remind students and the batch manager the day before a batch starts.
+	go scheduler.RunBatchReminders(
+		reminderCtx,
+		repository.NewBatchRepository(pool),
+		repository.NewNotificationRepository(pool),
+		repository.NewUserRepository(pool),
+		emailSvc,
 		cfg.App.Timezone,
 	)
 

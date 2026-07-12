@@ -378,6 +378,24 @@ func (r *BatchRepository) IsFeesPaidByBatchShortID(ctx context.Context, batchSho
 	return paid, err
 }
 
+// FindDueForStartReminder returns active batches starting on startDate
+// ("YYYY-MM-DD") that haven't had a start reminder sent yet.
+func (r *BatchRepository) FindDueForStartReminder(ctx context.Context, startDate string) ([]models.Batch, error) {
+	q := batchBaseSelect + `
+		WHERE b.deleted_at IS NULL
+		  AND b.is_active
+		  AND b.start_date = $1::DATE
+		  AND b.start_reminder_sent_at IS NULL`
+	return r.scanBatches(ctx, q, startDate)
+}
+
+// MarkStartReminderSent records that the start-date reminder has been sent,
+// so the reminder worker doesn't send it again on the next poll.
+func (r *BatchRepository) MarkStartReminderSent(ctx context.Context, id string) error {
+	_, err := r.pool.Exec(ctx, `UPDATE batches SET start_reminder_sent_at = NOW() WHERE id = $1::UUID`, id)
+	return err
+}
+
 // Delete soft-deletes a batch.
 func (r *BatchRepository) Delete(ctx context.Context, shortID string) error {
 	result, err := r.pool.Exec(ctx,

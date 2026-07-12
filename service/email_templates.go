@@ -1,0 +1,96 @@
+package service
+
+import "fmt"
+
+// SessionConfirmationEmail is sent once, at session creation, when
+// send_confirmation_email is true on the input.
+func SessionConfirmationEmail(sessionName, batchNumber, date, startTime, joinLink string) (subject, html string) {
+	subject = fmt.Sprintf("Session scheduled: %s", sessionName)
+	html = fmt.Sprintf(`
+		<p>Hi,</p>
+		<p>A new session <strong>%s</strong> has been scheduled for batch <strong>%s</strong>.</p>
+		<p><strong>Date:</strong> %s<br><strong>Time:</strong> %s</p>
+		%s
+		<p>— Vedex</p>`,
+		sessionName, batchNumber, date, startTime, joinLinkHTML(joinLink))
+	return
+}
+
+// SessionReminderEmail is sent by the reminder scheduler the moment a
+// session's scheduled start time arrives.
+func SessionReminderEmail(sessionName, batchNumber, joinLink string) (subject, html string) {
+	subject = fmt.Sprintf("Starting now: %s", sessionName)
+	html = fmt.Sprintf(`
+		<p>Your session <strong>%s</strong> for batch <strong>%s</strong> is starting now.</p>
+		%s
+		<p>— Vedex</p>`,
+		sessionName, batchNumber, joinLinkHTML(joinLink))
+	return
+}
+
+// BatchStartReminderEmail is sent by the batch reminder scheduler the day
+// before a batch's start date.
+func BatchStartReminderEmail(batchNumber, startDate string) (subject, html string) {
+	subject = fmt.Sprintf("Your batch %s starts tomorrow", batchNumber)
+	html = fmt.Sprintf(`
+		<p>Hi,</p>
+		<p>This is a reminder that your batch <strong>%s</strong> starts on <strong>%s</strong>.</p>
+		<p>— Vedex</p>`,
+		batchNumber, startDate)
+	return
+}
+
+// BatchCreatedEmail is sent to the batch manager(s) and any students enrolled
+// at creation time when a new batch is created.
+func BatchCreatedEmail(batchNumber, courseName, startDate, endDate string) (subject, html string) {
+	subject = fmt.Sprintf("New batch created: %s", batchNumber)
+	html = fmt.Sprintf(`
+		<p>Hi,</p>
+		<p>A new batch <strong>%s</strong> (%s) has been created.</p>
+		<p><strong>Start date:</strong> %s<br><strong>End date:</strong> %s</p>
+		<p>— Vedex</p>`,
+		batchNumber, courseName, startDate, endDate)
+	return
+}
+
+// CommunityCreatedEmail is sent to mentors and team leads when a new
+// community is created.
+func CommunityCreatedEmail(name, batchNumber string) (subject, html string) {
+	subject = fmt.Sprintf("New community: %s", name)
+	html = fmt.Sprintf(`
+		<p>Hi,</p>
+		<p>A new community <strong>%s</strong> has been created for batch <strong>%s</strong>.</p>
+		<p>— Vedex</p>`,
+		name, batchNumber)
+	return
+}
+
+// CommunityMemberAddedEmail is sent to a user when they're added to a community.
+func CommunityMemberAddedEmail(name string) (subject, html string) {
+	subject = fmt.Sprintf("Added to community: %s", name)
+	html = fmt.Sprintf(`
+		<p>Hi,</p>
+		<p>You've been added to the community <strong>%s</strong>.</p>
+		<p>— Vedex</p>`,
+		name)
+	return
+}
+
+// ModuleCreatedEmail is sent broadly (students, mentors, team leads) when a
+// new module is added, mirroring the existing broadcast in-app notification.
+func ModuleCreatedEmail(moduleName, moduleBranch string) (subject, html string) {
+	subject = fmt.Sprintf("New module: %s", moduleName)
+	html = fmt.Sprintf(`
+		<p>Hi,</p>
+		<p>A new module <strong>%s</strong> (%s) has been added.</p>
+		<p>— Vedex</p>`,
+		moduleName, moduleBranch)
+	return
+}
+
+func joinLinkHTML(link string) string {
+	if link == "" {
+		return ""
+	}
+	return fmt.Sprintf(`<p><a href="%s">Join session</a></p>`, link)
+}

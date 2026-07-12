@@ -13,6 +13,24 @@ type Config struct {
 	JWT      JWTConfig
 	Storage  StorageConfig
 	Zoom     ZoomConfig
+	SMTP     SMTPConfig
+}
+
+// SMTPConfig holds credentials for sending transactional email (session
+// confirmations/reminders, batch start reminders). Optional: when unset,
+// Configured() returns false and email sending is skipped rather than failing
+// the parent operation.
+type SMTPConfig struct {
+	Host      string
+	Port      int
+	Username  string
+	Password  string
+	FromEmail string
+	FromName  string
+}
+
+func (s SMTPConfig) Configured() bool {
+	return s.Host != "" && s.Username != "" && s.Password != "" && s.FromEmail != ""
 }
 
 type StorageConfig struct {
@@ -133,6 +151,14 @@ func Load() (*Config, error) {
 			ClientID:           get("ZOOM_CLIENT_ID", ""),
 			ClientSecret:       get("ZOOM_CLIENT_SECRET", ""),
 			WebhookSecretToken: get("ZOOM_WEBHOOK_SECRET_TOKEN", ""),
+		},
+		SMTP: SMTPConfig{
+			Host:      get("SMTP_HOST", "smtp.gmail.com"),
+			Port:      getInt("SMTP_PORT", 587),
+			Username:  get("SMTP_USERNAME", ""),
+			Password:  get("SMTP_PASSWORD", ""),
+			FromEmail: get("SMTP_FROM_EMAIL", ""),
+			FromName:  get("SMTP_FROM_NAME", "Vedex"),
 		},
 	}
 

@@ -283,7 +283,7 @@ func scanSubmission(row pgx.Row) (models.AssignmentSubmission, error) {
 // CreateOrResubmit inserts a student's submission for an assignment, or overwrites
 // an existing one that's in "resubmission_required" state. Returns an error if a
 // submission already exists in any other state (call this "already submitted").
-func (r *AssignmentRepository) CreateOrResubmit(ctx context.Context, assignmentShortID, studentID string, in models.CreateSubmissionInput) (*models.AssignmentSubmission, error) {
+func (r *AssignmentRepository) CreateOrResubmit(ctx context.Context, assignmentShortID, studentID string, in models.CreateAssignmentSubmissionInput) (*models.AssignmentSubmission, error) {
 	var existingStatus string
 	err := r.pool.QueryRow(ctx, `
 		SELECT asub.status::TEXT FROM assignment_submissions asub
