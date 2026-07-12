@@ -30,9 +30,7 @@ func emailUsersByRoles(ctx context.Context, userRepo *repository.UserRepository,
 				continue
 			}
 			seen[u.Email] = true
-			if err := emailSvc.Send(u.Email, subject, html); err != nil {
-				log.Printf("send email to %s: %v", u.Email, err)
-			}
+			emailSvc.SendAsync(u.Email, subject, html)
 		}
 	}
 }

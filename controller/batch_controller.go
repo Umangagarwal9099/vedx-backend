@@ -31,9 +31,7 @@ func (ctrl *BatchController) emailBatchManagers(ctx context.Context, batch *mode
 	if manager, err := ctrl.userRepo.FindByID(ctx, batch.BatchManagerID); err != nil {
 		log.Printf("fetch batch manager for email: %v", err)
 	} else if manager != nil && manager.Email != "" {
-		if err := ctrl.emailSvc.Send(manager.Email, subject, html); err != nil {
-			log.Printf("send batch created email to manager %s: %v", manager.Email, err)
-		}
+		ctrl.emailSvc.SendAsync(manager.Email, subject, html)
 	}
 	if batch.AdditionalManagerID == "" {
 		return
@@ -41,9 +39,7 @@ func (ctrl *BatchController) emailBatchManagers(ctx context.Context, batch *mode
 	if am, err := ctrl.userRepo.FindByID(ctx, batch.AdditionalManagerID); err != nil {
 		log.Printf("fetch additional manager for email: %v", err)
 	} else if am != nil && am.Email != "" {
-		if err := ctrl.emailSvc.Send(am.Email, subject, html); err != nil {
-			log.Printf("send batch created email to additional manager %s: %v", am.Email, err)
-		}
+		ctrl.emailSvc.SendAsync(am.Email, subject, html)
 	}
 }
 
@@ -102,9 +98,7 @@ func (ctrl *BatchController) Create(c *gin.Context) {
 						continue
 					}
 					if student != nil && student.Email != "" {
-						if err := ctrl.emailSvc.Send(student.Email, subject, html); err != nil {
-							log.Printf("send batch created email to %s: %v", student.Email, err)
-						}
+						ctrl.emailSvc.SendAsync(student.Email, subject, html)
 					}
 				}
 			}

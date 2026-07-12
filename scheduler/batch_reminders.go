@@ -85,16 +85,12 @@ func processBatchReminders(
 				if s.Email == "" {
 					continue
 				}
-				if err := emailSvc.Send(s.Email, subject, html); err != nil {
-					log.Printf("scheduler: send batch reminder email to %s: %v", s.Email, err)
-				}
+				emailSvc.SendAsync(s.Email, subject, html)
 			}
 			if manager, err := userRepo.FindByID(ctx, batch.BatchManagerID); err != nil {
 				log.Printf("scheduler: fetch batch manager for reminder email: %v", err)
 			} else if manager != nil && manager.Email != "" {
-				if err := emailSvc.Send(manager.Email, subject, html); err != nil {
-					log.Printf("scheduler: send batch reminder email to manager %s: %v", manager.Email, err)
-				}
+				emailSvc.SendAsync(manager.Email, subject, html)
 			}
 		}
 

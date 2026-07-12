@@ -111,16 +111,12 @@ func processDueReminders(
 				if s.Email == "" {
 					continue
 				}
-				if err := emailSvc.Send(s.Email, subject, html); err != nil {
-					log.Printf("scheduler: send reminder email to %s: %v", s.Email, err)
-				}
+				emailSvc.SendAsync(s.Email, subject, html)
 			}
 			if mentor, err := userRepo.FindByID(ctx, session.MentorID); err != nil {
 				log.Printf("scheduler: fetch mentor for reminder email: %v", err)
 			} else if mentor != nil && mentor.Email != "" {
-				if err := emailSvc.Send(mentor.Email, subject, html); err != nil {
-					log.Printf("scheduler: send reminder email to mentor %s: %v", mentor.Email, err)
-				}
+				emailSvc.SendAsync(mentor.Email, subject, html)
 			}
 		}
 

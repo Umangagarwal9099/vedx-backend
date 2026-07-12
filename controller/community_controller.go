@@ -243,9 +243,7 @@ func (ctrl *CommunityController) AddMembers(c *gin.Context) {
 						continue
 					}
 					if user != nil && user.Email != "" {
-						if err := ctrl.emailSvc.Send(user.Email, subject, html); err != nil {
-							log.Printf("send community member email to %s: %v", user.Email, err)
-						}
+						ctrl.emailSvc.SendAsync(user.Email, subject, html)
 					}
 				}
 			}

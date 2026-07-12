@@ -215,16 +215,12 @@ func (ctrl *SessionController) Create(c *gin.Context) {
 			if s.Email == "" {
 				continue
 			}
-			if err := ctrl.emailSvc.Send(s.Email, subject, html); err != nil {
-				log.Printf("send session confirmation email to %s: %v", s.Email, err)
-			}
+			ctrl.emailSvc.SendAsync(s.Email, subject, html)
 		}
 		if mentor, err := ctrl.userRepo.FindByID(c.Request.Context(), session.MentorID); err != nil {
 			log.Printf("fetch mentor for confirmation email: %v", err)
 		} else if mentor != nil && mentor.Email != "" {
-			if err := ctrl.emailSvc.Send(mentor.Email, subject, html); err != nil {
-				log.Printf("send session confirmation email to mentor %s: %v", mentor.Email, err)
-			}
+			ctrl.emailSvc.SendAsync(mentor.Email, subject, html)
 		}
 	}
 
