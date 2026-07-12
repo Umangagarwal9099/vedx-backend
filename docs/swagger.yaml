@@ -259,6 +259,17 @@ definitions:
       updated_at:
         type: string
     type: object
+  models.BatchRecordingsResponse:
+    properties:
+      fees_paid:
+        type: boolean
+      message:
+        type: string
+      recordings:
+        items:
+          $ref: '#/definitions/models.RecordingListItem'
+        type: array
+    type: object
   models.Blog:
     properties:
       author:
@@ -1296,6 +1307,17 @@ definitions:
       title:
         type: string
       type:
+        type: string
+    type: object
+  models.RecordingListItem:
+    properties:
+      name:
+        type: string
+      recording_url:
+        type: string
+      session_date:
+        type: string
+      session_short_id:
         type: string
     type: object
   models.Role:
@@ -2681,6 +2703,67 @@ paths:
       summary: Update batch
       tags:
       - batches
+  /batches/{short_id}/me/fees:
+    get:
+      description: Returns the logged-in user's own fees_paid status for a batch —
+        never exposes other students' data. Use this to decide whether to show session
+        recordings.
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: fees_paid
+          schema:
+            additionalProperties:
+              type: boolean
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get my fee-payment status for a batch
+      tags:
+      - batches
+  /batches/{short_id}/recordings:
+    get:
+      description: Student-facing view of every recorded session in a batch. If the
+        caller is a student who hasn't been marked fees_paid, recordings is empty
+        and message explains why — staff always see the full list, regardless of any
+        student's payment status.
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.BatchRecordingsResponse'
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List a batch's session recordings
+      tags:
+      - sessions
   /batches/{short_id}/sessions:
     get:
       description: Returns all non-deleted sessions scheduled for a batch, ordered

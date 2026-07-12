@@ -1167,6 +1167,95 @@
                 }
             }
         },
+        "/batches/{short_id}/me/fees": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the logged-in user's own fees_paid status for a batch — never exposes other students' data. Use this to decide whether to show session recordings.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "batches"
+                ],
+                "summary": "Get my fee-payment status for a batch",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Batch short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "fees_paid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "boolean"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/batches/{short_id}/recordings": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Student-facing view of every recorded session in a batch. If the caller is a student who hasn't been marked fees_paid, recordings is empty and message explains why — staff always see the full list, regardless of any student's payment status.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "List a batch's session recordings",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Batch short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.BatchRecordingsResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/batches/{short_id}/sessions": {
             "get": {
                 "security": [
@@ -6413,6 +6502,23 @@
                 }
             }
         },
+        "models.BatchRecordingsResponse": {
+            "type": "object",
+            "properties": {
+                "fees_paid": {
+                    "type": "boolean"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "recordings": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.RecordingListItem"
+                    }
+                }
+            }
+        },
         "models.Blog": {
             "type": "object",
             "properties": {
@@ -7880,6 +7986,23 @@
                     "type": "string"
                 },
                 "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.RecordingListItem": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "recording_url": {
+                    "type": "string"
+                },
+                "session_date": {
+                    "type": "string"
+                },
+                "session_short_id": {
                     "type": "string"
                 }
             }
