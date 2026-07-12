@@ -22,45 +22,55 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	// Repositories
-	userRepo := repository.NewUserRepository(pool)
-	courseRepo := repository.NewCourseRepository(pool)
-	batchRepo := repository.NewBatchRepository(pool)
-	eventRepo := repository.NewEventRepository(pool)
-	announcementRepo := repository.NewAnnouncementRepository(pool)
-	blogRepo := repository.NewBlogRepository(pool)
-	bannerRepo := repository.NewBannerRepository(pool)
-	codingQuestionRepo := repository.NewCodingQuestionRepository(pool)
-	submissionRepo := repository.NewSubmissionRepository(pool)
-	feedbackFormRepo := repository.NewFeedbackFormRepository(pool)
-	moduleRepo := repository.NewModuleRepository(pool)
-	assessmentRepo := repository.NewAssessmentRepository(pool)
-	communityRepo := repository.NewCommunityRepository(pool)
-	notificationRepo := repository.NewNotificationRepository(pool)
-	sessionRepo := repository.NewSessionRepository(pool)
+	userRepo             := repository.NewUserRepository(pool)
+	courseRepo           := repository.NewCourseRepository(pool)
+	batchRepo            := repository.NewBatchRepository(pool)
+	eventRepo            := repository.NewEventRepository(pool)
+	announcementRepo     := repository.NewAnnouncementRepository(pool)
+	blogRepo             := repository.NewBlogRepository(pool)
+	bannerRepo           := repository.NewBannerRepository(pool)
+	codingQuestionRepo   := repository.NewCodingQuestionRepository(pool)
+	submissionRepo       := repository.NewSubmissionRepository(pool)
+	feedbackFormRepo     := repository.NewFeedbackFormRepository(pool)
+	moduleRepo           := repository.NewModuleRepository(pool)
+	assessmentRepo       := repository.NewAssessmentRepository(pool)
+	communityRepo        := repository.NewCommunityRepository(pool)
+	notificationRepo     := repository.NewNotificationRepository(pool)
+	sessionRepo          := repository.NewSessionRepository(pool)
+	assignmentRepo       := repository.NewAssignmentRepository(pool)
+	resourceRepo         := repository.NewResourceRepository(pool)
+	projectRepo          := repository.NewProjectRepository(pool)
+	questionBankRepo     := repository.NewQuestionBankRepository(pool)
+	examAttemptRepo      := repository.NewExamAttemptRepository(pool)
 
 	// Services
 	storageSvc := service.NewStorageService(cfg.Storage)
 	zoomSvc := service.NewZoomService(cfg.Zoom)
 
 	// Controllers
-	authCtrl := controller.NewAuthController(userRepo, cfg.JWT.Secret)
-	userCtrl := controller.NewUserController(userRepo)
-	courseCtrl := controller.NewCourseController(courseRepo, notificationRepo)
-	batchCtrl := controller.NewBatchController(batchRepo, notificationRepo)
-	eventCtrl := controller.NewEventController(eventRepo, notificationRepo)
-	announcementCtrl := controller.NewAnnouncementController(announcementRepo, notificationRepo)
-	uploadCtrl := controller.NewUploadController(storageSvc)
-	codingQuestionCtrl := controller.NewCodingQuestionController(codingQuestionRepo, notificationRepo)
-	submissionCtrl := controller.NewSubmissionController(submissionRepo)
-	feedbackFormCtrl := controller.NewFeedbackFormController(feedbackFormRepo, notificationRepo)
-	moduleCtrl := controller.NewModuleController(moduleRepo, notificationRepo)
-	blogCtrl := controller.NewBlogController(blogRepo, notificationRepo)
-	bannerCtrl := controller.NewBannerController(bannerRepo, notificationRepo)
-	assessmentCtrl := controller.NewAssessmentController(assessmentRepo, notificationRepo)
-	communityCtrl := controller.NewCommunityController(communityRepo, notificationRepo)
-	notificationCtrl := controller.NewNotificationController(notificationRepo)
-	sessionCtrl := controller.NewSessionController(sessionRepo, batchRepo, notificationRepo, zoomSvc, cfg.App.PublicURL, cfg.App.Timezone)
-	zoomWebhookCtrl := controller.NewZoomWebhookController(zoomSvc, sessionRepo)
+	authCtrl             := controller.NewAuthController(userRepo, cfg.JWT.Secret)
+	userCtrl             := controller.NewUserController(userRepo)
+	courseCtrl           := controller.NewCourseController(courseRepo, notificationRepo)
+	batchCtrl            := controller.NewBatchController(batchRepo, notificationRepo)
+	eventCtrl            := controller.NewEventController(eventRepo, notificationRepo)
+	announcementCtrl     := controller.NewAnnouncementController(announcementRepo, notificationRepo)
+	uploadCtrl           := controller.NewUploadController(storageSvc)
+	codingQuestionCtrl   := controller.NewCodingQuestionController(codingQuestionRepo, notificationRepo)
+	submissionCtrl       := controller.NewSubmissionController(submissionRepo)
+	feedbackFormCtrl     := controller.NewFeedbackFormController(feedbackFormRepo, notificationRepo)
+	moduleCtrl           := controller.NewModuleController(moduleRepo, notificationRepo)
+	blogCtrl             := controller.NewBlogController(blogRepo, notificationRepo)
+	bannerCtrl           := controller.NewBannerController(bannerRepo, notificationRepo)
+	assessmentCtrl       := controller.NewAssessmentController(assessmentRepo, questionBankRepo, batchRepo, notificationRepo)
+	communityCtrl        := controller.NewCommunityController(communityRepo, notificationRepo)
+	notificationCtrl     := controller.NewNotificationController(notificationRepo)
+	sessionCtrl          := controller.NewSessionController(sessionRepo, batchRepo, notificationRepo, zoomSvc, cfg.App.PublicURL, cfg.App.Timezone)
+	zoomWebhookCtrl      := controller.NewZoomWebhookController(zoomSvc)
+	assignmentCtrl       := controller.NewAssignmentController(assignmentRepo, batchRepo, notificationRepo)
+	resourceCtrl         := controller.NewResourceController(resourceRepo)
+	projectCtrl          := controller.NewProjectController(projectRepo, batchRepo, notificationRepo)
+	questionBankCtrl     := controller.NewQuestionBankController(questionBankRepo)
+	examAttemptCtrl      := controller.NewExamAttemptController(examAttemptRepo, assessmentRepo, questionBankRepo)
 
 	v1 := r.Group("/api/v1")
 	{
@@ -121,6 +131,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				batches.GET("", batchCtrl.GetAll)
 				batches.GET("/filter", batchCtrl.Filter)
 				batches.GET("/mine", batchCtrl.GetMine)
+				batches.GET("/:short_id", batchCtrl.GetByShortID)
 				batches.PATCH("/:short_id", adminOrAbove, batchCtrl.Update)
 				batches.DELETE("/:short_id", adminOrAbove, batchCtrl.Delete)
 
@@ -235,13 +246,40 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				banners.DELETE("/:short_id", adminOrAbove, bannerCtrl.Delete)
 			}
 
-			// Assessments — only super_admin / team_lead may create, edit, or delete
+			// Assessments — only super_admin / team_lead may create, edit, or delete.
+			// Also doubles as the real exam engine: question links + timed attempts.
 			assessments := protected.Group("/assessments")
 			{
-				assessments.POST("", adminOrAbove, assessmentCtrl.Create)
-				assessments.GET("", assessmentCtrl.GetAll)
-				assessments.PATCH("/:short_id", adminOrAbove, assessmentCtrl.Update)
+				assessments.POST("",             adminOrAbove, assessmentCtrl.Create)
+				assessments.GET("",              assessmentCtrl.GetAll)
+				assessments.GET("/:short_id",    assessmentCtrl.GetByShortID)
+				assessments.PATCH("/:short_id",  adminOrAbove, assessmentCtrl.Update)
 				assessments.DELETE("/:short_id", adminOrAbove, assessmentCtrl.Delete)
+
+				// Question links — attach/reorder/detach bank questions on an assessment
+				assessments.POST("/:short_id/questions",                            staffOrAbove, assessmentCtrl.AttachQuestion)
+				assessments.GET("/:short_id/questions",                             assessmentCtrl.GetQuestions)
+				assessments.PATCH("/:short_id/questions/:question_short_id",        staffOrAbove, assessmentCtrl.UpdateAttachedQuestion)
+				assessments.DELETE("/:short_id/questions/:question_short_id",       staffOrAbove, assessmentCtrl.DetachQuestion)
+
+				// Attempts — students start/answer/submit their own; staff monitor and grade
+				assessments.POST("/:short_id/attempts",                             examAttemptCtrl.StartAttempt)
+				assessments.GET("/:short_id/attempts",                staffOrAbove, examAttemptCtrl.GetAllAttempts)
+				assessments.GET("/:short_id/attempts/me",                           examAttemptCtrl.GetMyAttempts)
+				assessments.GET("/:short_id/attempts/:attempt_short_id",            examAttemptCtrl.GetAttempt)
+				assessments.POST("/:short_id/attempts/:attempt_short_id/answers",   examAttemptCtrl.SubmitAnswer)
+				assessments.POST("/:short_id/attempts/:attempt_short_id/submit",    examAttemptCtrl.SubmitAttempt)
+				assessments.PATCH("/:short_id/attempts/:attempt_short_id/answers/:question_short_id/grade", staffOrAbove, examAttemptCtrl.GradeAnswer)
+			}
+
+			// Question bank — private/course/global visibility; staff manage, everyone reads what they can see
+			questions := protected.Group("/questions")
+			{
+				questions.POST("",             staffOrAbove, questionBankCtrl.Create)
+				questions.GET("",              questionBankCtrl.GetAll)
+				questions.GET("/:short_id",    questionBankCtrl.GetByShortID)
+				questions.PATCH("/:short_id",  staffOrAbove, questionBankCtrl.Update)
+				questions.DELETE("/:short_id", staffOrAbove, questionBankCtrl.Delete)
 			}
 
 			// Communities — scoped to a batch. super_admin / team_lead / mentor manage them;
@@ -271,6 +309,62 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				sessions.DELETE("/:short_id", staffOrAbove, sessionCtrl.Delete)
 			}
 
+			// Assignments — scoped to a batch. super_admin / team_lead / mentor manage
+			// them and grade submissions; students submit their own work.
+			assignments := protected.Group("/assignments")
+			{
+				assignments.POST("",             staffOrAbove, assignmentCtrl.Create)
+				assignments.GET("",              assignmentCtrl.GetAll)
+				assignments.GET("/:short_id",    assignmentCtrl.GetByShortID)
+				assignments.PATCH("/:short_id",  staffOrAbove, assignmentCtrl.Update)
+				assignments.DELETE("/:short_id", staffOrAbove, assignmentCtrl.Delete)
+
+				// Submissions — nested under an assignment
+				assignments.POST("/:short_id/submissions",                             assignmentCtrl.CreateSubmission)
+				assignments.GET("/:short_id/submissions/me",                           assignmentCtrl.GetMySubmission)
+				assignments.GET("/:short_id/submissions",                staffOrAbove, assignmentCtrl.GetAllSubmissions)
+				assignments.PATCH("/:short_id/submissions/:submission_short_id", staffOrAbove, assignmentCtrl.GradeSubmission)
+			}
+
+			// Resources — learning materials. Leave batch unset on create for global
+			// visibility; scoped resources are only visible to that batch's students.
+			resources := protected.Group("/resources")
+			{
+				resources.POST("",             staffOrAbove, resourceCtrl.Create)
+				resources.GET("",              resourceCtrl.GetAll)
+				resources.GET("/:short_id",    resourceCtrl.GetByShortID)
+				resources.PATCH("/:short_id",  staffOrAbove, resourceCtrl.Update)
+				resources.DELETE("/:short_id", staffOrAbove, resourceCtrl.Delete)
+			}
+
+			// Projects — scoped to a batch, made up of milestones. Team-based projects
+			// use nested teams; individual projects submit directly per student.
+			projects := protected.Group("/projects")
+			{
+				projects.POST("",             staffOrAbove, projectCtrl.Create)
+				projects.GET("",              projectCtrl.GetAll)
+				projects.GET("/:short_id",    projectCtrl.GetByShortID)
+				projects.PATCH("/:short_id",  staffOrAbove, projectCtrl.Update)
+				projects.DELETE("/:short_id", staffOrAbove, projectCtrl.Delete)
+
+				// Milestones — nested under a project
+				projects.POST("/:short_id/milestones",                          staffOrAbove, projectCtrl.AddMilestone)
+				projects.PATCH("/:short_id/milestones/:milestone_short_id",     staffOrAbove, projectCtrl.UpdateMilestone)
+				projects.DELETE("/:short_id/milestones/:milestone_short_id",    staffOrAbove, projectCtrl.DeleteMilestone)
+
+				// Teams — nested under a project, only relevant when is_team_project
+				projects.POST("/:short_id/teams",                                    staffOrAbove, projectCtrl.CreateTeam)
+				projects.DELETE("/:short_id/teams/:team_short_id",                   staffOrAbove, projectCtrl.DeleteTeam)
+				projects.POST("/:short_id/teams/:team_short_id/members",             staffOrAbove, projectCtrl.AddTeamMembers)
+				projects.DELETE("/:short_id/teams/:team_short_id/members/:user_id",  staffOrAbove, projectCtrl.RemoveTeamMember)
+
+				// Submissions — nested under a milestone
+				projects.POST("/:short_id/milestones/:milestone_short_id/submissions",                                projectCtrl.CreateSubmission)
+				projects.GET("/:short_id/milestones/:milestone_short_id/submissions/me",                              projectCtrl.GetMySubmission)
+				projects.GET("/:short_id/milestones/:milestone_short_id/submissions",             staffOrAbove,       projectCtrl.GetAllSubmissions)
+				projects.PATCH("/:short_id/milestones/:milestone_short_id/submissions/:submission_short_id", staffOrAbove, projectCtrl.GradeSubmission)
+			}
+
 			// Notifications — GET/read are per-user (my inbox); manage-content is admin-only
 			notifications := protected.Group("/notifications")
 			{
@@ -287,7 +381,10 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			protected.POST("/upload/banner-image", uploadCtrl.UploadBannerImage)
 			protected.POST("/upload/material", uploadCtrl.UploadMaterial)
 			protected.POST("/upload/assessment-thumbnail", uploadCtrl.UploadAssessmentThumbnail)
-			protected.POST("/upload/assessment-file", uploadCtrl.UploadAssessmentFile)
+			protected.POST("/upload/assessment-file",      uploadCtrl.UploadAssessmentFile)
+			protected.POST("/upload/assignment-file",      uploadCtrl.UploadAssignmentFile)
+			protected.POST("/upload/resource-file",        uploadCtrl.UploadResourceFile)
+			protected.POST("/upload/project-file",         uploadCtrl.UploadProjectFile)
 		}
 	}
 
