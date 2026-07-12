@@ -12,6 +12,7 @@ type Config struct {
 	Database DatabaseConfig
 	JWT      JWTConfig
 	Storage  StorageConfig
+	Zoom     ZoomConfig
 }
 
 type StorageConfig struct {
@@ -21,9 +22,32 @@ type StorageConfig struct {
 	MaterialBucket string
 }
 
+// ZoomConfig holds Server-to-Server OAuth credentials for the Zoom API.
+// Optional: when unset, Configured() returns false and session creation
+// simply skips Zoom meeting creation instead of failing.
+type ZoomConfig struct {
+	AccountID          string
+	ClientID           string
+	ClientSecret       string
+	WebhookSecretToken string
+}
+
+func (z ZoomConfig) Configured() bool {
+	return z.AccountID != "" && z.ClientID != "" && z.ClientSecret != ""
+}
+
+// WebhookConfigured reports whether the Event Subscriptions "Secret Token" has
+// been set, required to validate the webhook endpoint URL and verify incoming
+// event signatures.
+func (z ZoomConfig) WebhookConfigured() bool {
+	return z.WebhookSecretToken != ""
+}
+
 type AppConfig struct {
-	Env  string
-	Port string
+	Env       string
+	Port      string
+	PublicURL string
+	Timezone  string
 }
 
 type DatabaseConfig struct {
@@ -81,8 +105,10 @@ func Load() (*Config, error) {
 
 	cfg := &Config{
 		App: AppConfig{
-			Env:  get("APP_ENV", "development"),
-			Port: get("PORT", get("APP_PORT", "8080")), // PORT is set automatically by Render
+			Env:       get("APP_ENV", "development"),
+			Port:      get("PORT", get("APP_PORT", "8080")), // PORT is set automatically by Render
+			PublicURL: get("APP_PUBLIC_URL", ""),            // base URL used to build session share links, e.g. https://app.example.com
+			Timezone:  get("APP_TIMEZONE", "Asia/Kolkata"),  // used when scheduling Zoom meetings
 		},
 		Database: DatabaseConfig{
 			Host:     require("DB_HOST"),
@@ -101,6 +127,12 @@ func Load() (*Config, error) {
 			ServiceRoleKey: require("SUPABASE_SERVICE_KEY"),
 			Bucket:         get("SUPABASE_STORAGE_BUCKET", "events"),
 			MaterialBucket: get("SUPABASE_MATERIAL_BUCKET", "materials"),
+		},
+		Zoom: ZoomConfig{
+			AccountID:          get("ZOOM_ACCOUNT_ID", ""),
+			ClientID:           get("ZOOM_CLIENT_ID", ""),
+			ClientSecret:       get("ZOOM_CLIENT_SECRET", ""),
+			WebhookSecretToken: get("ZOOM_WEBHOOK_SECRET_TOKEN", ""),
 		},
 	}
 

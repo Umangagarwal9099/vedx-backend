@@ -31,7 +31,9 @@ const batchBaseSelect = `
 	       COALESCE(CONCAT(am.first_name, ' ', am.last_name), ''),
 	       COALESCE(b.module, ''),
 	       b.start_date::TEXT, b.end_date::TEXT,
-	       b.is_active, b.created_by, b.created_at, b.updated_at
+	       b.is_active,
+	       (SELECT COUNT(*) FROM batch_students bs WHERE bs.batch_id = b.id),
+	       b.created_by, b.created_at, b.updated_at
 	FROM batches b
 	JOIN  courses c  ON b.course_id             = c.id  AND c.deleted_at  IS NULL
 	JOIN  users   bm ON b.batch_manager_id       = bm.id AND bm.deleted_at IS NULL
@@ -66,7 +68,8 @@ func (r *BatchRepository) Create(ctx context.Context, in models.CreateBatchInput
 			       COALESCE(CONCAT(am.first_name, ' ', am.last_name), ''),
 			       COALESCE(ins.module, ''),
 			       ins.start_date::TEXT, ins.end_date::TEXT,
-			       ins.is_active, ins.created_by, ins.created_at, ins.updated_at
+			       ins.is_active, 0,
+			       ins.created_by, ins.created_at, ins.updated_at
 			FROM ins
 			JOIN  courses c  ON ins.course_id             = c.id
 			JOIN  users   bm ON ins.batch_manager_id       = bm.id
@@ -80,7 +83,7 @@ func (r *BatchRepository) Create(ctx context.Context, in models.CreateBatchInput
 			&b.BatchManagerID, &b.BatchManagerName,
 			&b.AdditionalManagerID, &b.AdditionalManagerName,
 			&b.Module, &b.StartDate, &b.EndDate,
-			&b.IsActive, &b.CreatedBy, &b.CreatedAt, &b.UpdatedAt,
+			&b.IsActive, &b.StudentCount, &b.CreatedBy, &b.CreatedAt, &b.UpdatedAt,
 		)
 		if err == nil {
 			return &b, nil
@@ -111,7 +114,7 @@ func (r *BatchRepository) FindByShortID(ctx context.Context, shortID string) (*m
 		&b.BatchManagerID, &b.BatchManagerName,
 		&b.AdditionalManagerID, &b.AdditionalManagerName,
 		&b.Module, &b.StartDate, &b.EndDate,
-		&b.IsActive, &b.CreatedBy, &b.CreatedAt, &b.UpdatedAt,
+		&b.IsActive, &b.StudentCount, &b.CreatedBy, &b.CreatedAt, &b.UpdatedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
@@ -166,6 +169,16 @@ func (r *BatchRepository) Filter(ctx context.Context, f models.BatchFilter) ([]m
 
 	q := batchBaseSelect + " WHERE " + strings.Join(conditions, " AND ") + " ORDER BY b.created_at DESC"
 	return r.scanBatches(ctx, q, args...)
+}
+
+// FindByStudentID returns every non-deleted batch userID is enrolled in as a
+// student, most recently joined first.
+func (r *BatchRepository) FindByStudentID(ctx context.Context, userID string) ([]models.Batch, error) {
+	q := batchBaseSelect + `
+		JOIN batch_students bs ON bs.batch_id = b.id AND bs.user_id = $1::UUID
+		WHERE b.deleted_at IS NULL
+		ORDER BY bs.joined_at DESC`
+	return r.scanBatches(ctx, q, userID)
 }
 
 // Update applies a partial update — only non-nil fields are changed.
@@ -235,6 +248,136 @@ func (r *BatchRepository) Update(ctx context.Context, shortID string, in models.
 	return nil
 }
 
+// AddStudents bulk-enrolls students into a batch by user ID. Only users with
+// role='student' are matched; students already enrolled are left unchanged.
+// Returns the IDs of students actually added.
+func (r *BatchRepository) AddStudents(ctx context.Context, batchShortID string, studentIDs []string, addedBy string) ([]string, error) {
+	rows, err := r.pool.Query(ctx, `
+		INSERT INTO batch_students (batch_id, user_id, added_by)
+		SELECT b.id, u.id, $3
+		FROM batches b
+		CROSS JOIN unnest($2::uuid[]) AS uid(user_id)
+		JOIN users u ON u.id = uid.user_id AND u.deleted_at IS NULL AND u.role = 'student'
+		WHERE b.short_id = $1 AND b.deleted_at IS NULL
+		ON CONFLICT (batch_id, user_id) DO NOTHING
+		RETURNING user_id`,
+		batchShortID, studentIDs, addedBy,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("add students: %w", err)
+	}
+	defer rows.Close()
+
+	var added []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		added = append(added, id)
+	}
+	return added, rows.Err()
+}
+
+// RemoveStudent removes a single student from a batch.
+func (r *BatchRepository) RemoveStudent(ctx context.Context, batchShortID, userID string) error {
+	result, err := r.pool.Exec(ctx, `
+		DELETE FROM batch_students
+		WHERE batch_id = (SELECT id FROM batches WHERE short_id = $1 AND deleted_at IS NULL)
+		  AND user_id = $2::uuid`,
+		batchShortID, userID,
+	)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+// GetStudents returns every student enrolled in a batch, newest enrollment first.
+func (r *BatchRepository) GetStudents(ctx context.Context, batchShortID string) ([]models.BatchStudent, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT u.id, u.first_name, u.last_name, u.email, bs.fees_paid, bs.joined_at
+		FROM batch_students bs
+		JOIN users u ON u.id = bs.user_id AND u.deleted_at IS NULL
+		WHERE bs.batch_id = (SELECT id FROM batches WHERE short_id = $1 AND deleted_at IS NULL)
+		ORDER BY bs.joined_at DESC`,
+		batchShortID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var students []models.BatchStudent
+	for rows.Next() {
+		var s models.BatchStudent
+		if err := rows.Scan(&s.UserID, &s.FirstName, &s.LastName, &s.Email, &s.FeesPaid, &s.JoinedAt); err != nil {
+			return nil, err
+		}
+		students = append(students, s)
+	}
+	return students, rows.Err()
+}
+
+// SetFeesPaid updates a single student's fee-payment status for a batch —
+// used to grant or revoke access to that batch's session recordings.
+func (r *BatchRepository) SetFeesPaid(ctx context.Context, batchShortID, userID string, feesPaid bool) error {
+	result, err := r.pool.Exec(ctx, `
+		UPDATE batch_students bs
+		SET fees_paid = $3
+		FROM batches b
+		WHERE bs.batch_id = b.id
+		  AND b.short_id = $1 AND b.deleted_at IS NULL
+		  AND bs.user_id = $2::uuid`,
+		batchShortID, userID, feesPaid,
+	)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+// IsFeesPaid reports whether userID is marked as fully paid for the batch
+// identified by its internal UUID (not short_id — callers already have this
+// from session.BatchID). Returns false, not an error, if the user isn't
+// enrolled in the batch at all.
+func (r *BatchRepository) IsFeesPaid(ctx context.Context, batchID, userID string) (bool, error) {
+	var paid bool
+	err := r.pool.QueryRow(ctx,
+		`SELECT fees_paid FROM batch_students WHERE batch_id = $1::uuid AND user_id = $2::uuid`,
+		batchID, userID,
+	).Scan(&paid)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	return paid, err
+}
+
+// IsFeesPaidByBatchShortID reports whether userID is marked as fully paid for
+// the batch identified by its short_id — for callers (e.g. student-facing
+// endpoints) that only have the short_id on hand, not the internal batch UUID.
+// Returns false, not an error, if the user isn't enrolled in the batch at all.
+func (r *BatchRepository) IsFeesPaidByBatchShortID(ctx context.Context, batchShortID, userID string) (bool, error) {
+	var paid bool
+	err := r.pool.QueryRow(ctx, `
+		SELECT bs.fees_paid
+		FROM batch_students bs
+		JOIN batches b ON b.id = bs.batch_id
+		WHERE b.short_id = $1 AND b.deleted_at IS NULL AND bs.user_id = $2::uuid`,
+		batchShortID, userID,
+	).Scan(&paid)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	return paid, err
+}
+
 // Delete soft-deletes a batch.
 func (r *BatchRepository) Delete(ctx context.Context, shortID string) error {
 	result, err := r.pool.Exec(ctx,
@@ -265,7 +408,7 @@ func (r *BatchRepository) scanBatches(ctx context.Context, q string, args ...int
 			&b.BatchManagerID, &b.BatchManagerName,
 			&b.AdditionalManagerID, &b.AdditionalManagerName,
 			&b.Module, &b.StartDate, &b.EndDate,
-			&b.IsActive, &b.CreatedBy, &b.CreatedAt, &b.UpdatedAt,
+			&b.IsActive, &b.StudentCount, &b.CreatedBy, &b.CreatedAt, &b.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}

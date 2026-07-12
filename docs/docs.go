@@ -250,6 +250,238 @@ const docTemplate = `{
                 }
             }
         },
+        "/assessments": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns all active and inactive assessments. Supports optional filtering by name (partial match), description (partial match), and is_active (true|false).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "assessments"
+                ],
+                "summary": "List assessments",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by name (partial match)",
+                        "name": "name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by description (partial match)",
+                        "name": "description",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by active status: true or false",
+                        "name": "is_active",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.Assessment"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create a new assessment. Upload thumbnail via POST /upload/assessment-thumbnail and files via POST /upload/assessment-file first, then pass the returned URLs here. result_declaration must be one of: manual | automatic. result_display must be one of: marks_and_status | status_only.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "assessments"
+                ],
+                "summary": "Create assessment",
+                "parameters": [
+                    {
+                        "description": "Assessment details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateAssessmentInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.Assessment"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/assessments/{short_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Soft-deletes an assessment by its short ID. The record is retained in the database with deleted_at set.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "assessments"
+                ],
+                "summary": "Delete assessment",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Assessment short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Assessment not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Partially update an assessment. All fields are optional — only provided fields are updated. To replace files, upload new ones via POST /upload/assessment-file and pass the full updated file_urls array. To replace the thumbnail, upload via POST /upload/assessment-thumbnail.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "assessments"
+                ],
+                "summary": "Update assessment",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Assessment short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to update",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateAssessmentInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Assessment"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error or no fields provided",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Assessment not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/auth/login": {
             "post": {
                 "description": "Single login endpoint for all roles. Returns a JWT — send it as ` + "`" + `Authorization: Bearer \u003ctoken\u003e` + "`" + ` on protected requests.",
@@ -640,7 +872,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Create a new batch. Restricted to super_admin. A short unique ID is generated automatically. Provide course_short_id to link to a course.",
+                "description": "Create a new batch. Restricted to super_admin. A short unique ID is generated automatically. Provide course_short_id to link to a course. Optionally pass student_ids to enroll students immediately — students can also be added later via POST /batches/{short_id}/students.",
                 "consumes": [
                     "application/json"
                 ],
@@ -780,6 +1012,43 @@ const docTemplate = `{
                 }
             }
         },
+        "/batches/mine": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns every non-deleted batch the logged-in user is enrolled in as a student, most recently joined first.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "batches"
+                ],
+                "summary": "List my batches",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.Batch"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/batches/{short_id}": {
             "delete": {
                 "security": [
@@ -881,6 +1150,389 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Batch not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/batches/{short_id}/me/fees": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the logged-in user's own fees_paid status for a batch — never exposes other students' data. Use this to decide whether to show session recordings.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "batches"
+                ],
+                "summary": "Get my fee-payment status for a batch",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Batch short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "fees_paid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "boolean"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/batches/{short_id}/recordings": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Student-facing view of every recorded session in a batch. If the caller is a student who hasn't been marked fees_paid, recordings is empty and message explains why — staff always see the full list, regardless of any student's payment status.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "List a batch's session recordings",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Batch short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.BatchRecordingsResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/batches/{short_id}/sessions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns all non-deleted sessions scheduled for a batch, ordered by session date/time (newest first).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "List sessions for a batch",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Batch short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.Session"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/batches/{short_id}/students": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns every student enrolled in a batch along with the total student count.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "batches"
+                ],
+                "summary": "List batch students",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Batch short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "total_students and students[]",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Enroll one or more students into a batch by user ID. Only users with role=student are matched; students already enrolled are left unchanged. Restricted to super_admin / team_lead.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "batches"
+                ],
+                "summary": "Add students to batch",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Batch short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Student user IDs to add",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.AddBatchStudentsInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Number of students added",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "integer"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/batches/{short_id}/students/{user_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Removes a single student from a batch by user ID. Restricted to super_admin / team_lead.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "batches"
+                ],
+                "summary": "Remove student from batch",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Batch short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Student user ID (UUID)",
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Student not enrolled in batch",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/batches/{short_id}/students/{user_id}/fees": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Marks whether a student has fully paid fees for a batch. Live sessions stay accessible to every enrolled student regardless of this flag — it only gates access to session recordings. Restricted to super_admin / team_lead / mentor.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "batches"
+                ],
+                "summary": "Set a student's fee-payment status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Batch short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Student user ID (UUID)",
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fee-payment status",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateFeesPaidInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Student not enrolled in batch",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -1421,6 +2073,442 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Question not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/communities": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns all non-deleted communities with batch details and a live member count.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "communities"
+                ],
+                "summary": "List communities",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.Community"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create a new community scoped to a batch. Restricted to super_admin / team_lead / mentor. A short unique ID is generated automatically.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "communities"
+                ],
+                "summary": "Create community",
+                "parameters": [
+                    {
+                        "description": "Community details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateCommunityInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.Community"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/communities/{short_id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns a single non-deleted community by its short_id, with a live member count.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "communities"
+                ],
+                "summary": "Get community",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Community short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Community"
+                        }
+                    },
+                    "404": {
+                        "description": "Community not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Soft-delete a community by its short_id.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "communities"
+                ],
+                "summary": "Delete community",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Community short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Community not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Partially update a community by its short_id. Send only the fields you want to change.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "communities"
+                ],
+                "summary": "Update community",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Community short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to update (all optional)",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateCommunityInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Community"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Community not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/communities/{short_id}/members": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns every member of a community along with the total member count.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "communities"
+                ],
+                "summary": "List community members",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Community short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "total_members and members[]",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Add one or more users (students, mentors, admins, etc.) to a community by user ID. Users already in the community are left unchanged.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "communities"
+                ],
+                "summary": "Add community members",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Community short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "User IDs to add",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.AddCommunityMembersInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Number of members added",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "integer"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/communities/{short_id}/members/{user_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Removes a single user from a community by user ID.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "communities"
+                ],
+                "summary": "Remove community member",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Community short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "User ID (UUID)",
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Member not found in community",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -3490,6 +4578,621 @@ const docTemplate = `{
                 }
             }
         },
+        "/notifications": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns every notification addressed to the logged-in user, newest first, each with an is_read flag.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "List my notifications",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.NotificationView"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Manually broadcast a notification to one or more roles. Use role \"all\" to target every active user (the caller is never notified about their own action). Restricted to super_admin / team_lead.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "Create notification",
+                "parameters": [
+                    {
+                        "description": "Notification details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateNotificationInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.Notification"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/notifications/{short_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Soft-delete a notification by its short_id. Removes it from every recipient's inbox. Restricted to super_admin / team_lead.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "Delete notification",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Notification short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Notification not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Edit the title/message of a notification by its short_id. This changes the content seen by every recipient. Restricted to super_admin / team_lead.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "Update notification",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Notification short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to update (all optional)",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateNotificationInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Notification"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Notification not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/notifications/{short_id}/read": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Marks a notification read (default) or unread for the logged-in recipient only. Body is optional — omit it to mark read.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "Mark notification read/unread",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Notification short ID",
+                        "name": "short_id",
+                        "in": "path"
+                    },
+                    {
+                        "description": "Optional — defaults to is_read: true",
+                        "name": "body",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/models.MarkReadInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Notification not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/sessions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns all non-deleted sessions ordered by session date/time (newest first). Supports optional filtering by batch_short_id, mentor_id, date (YYYY-MM-DD), and is_active.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "List sessions",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by batch short ID",
+                        "name": "batch_short_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by mentor user ID",
+                        "name": "mentor_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by session date (YYYY-MM-DD)",
+                        "name": "date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by active status: true or false",
+                        "name": "is_active",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.Session"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Schedule a new session. mode must be online | offline; meeting_platform (zoom | google_meet | teams) is required when mode is online. session_type currently only supports \"batch\" — pass batch_short_id from GET /batches. Pick mentor_id from GET /mentors. Set generate_shareable_link to true to receive a public join link, and feedback_form_short_id (from GET /feedback-forms) to attach a class feedback form. send_confirmation_email and session_reminder_notifications are stored preferences; actual email/reminder dispatch is handled by a separate notification worker. In-app notifications go only to students enrolled in the target batch, the assigned mentor, and team_leads — not every student in the system.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Create session",
+                "parameters": [
+                    {
+                        "description": "Session details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateSessionInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.Session"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/sessions/by-token/{token}": {
+            "get": {
+                "description": "Public, unauthenticated lookup of a session by its share token (the value embedded in share_link, e.g. /sessions/join/{token}). Never returns the Zoom host start URL.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Resolve a session share link",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Share token",
+                        "name": "token",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.SessionJoinInfo"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/sessions/{short_id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns a single non-deleted session by its short ID. recording_url is omitted for students who haven't been marked fees_paid for the session's batch; live-class access is unaffected.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Get session",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Session short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Session"
+                        }
+                    },
+                    "404": {
+                        "description": "Session not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Soft-deletes a session by its short ID. The record is retained in the database with deleted_at set.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Delete session",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Session short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Session not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Partially update a session — including mentor, date/time, and batch. All fields are optional; only provided fields are updated. Set generate_shareable_link to false to revoke the existing share link, or to true to (re)generate one.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Update session",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Session short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to update",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateSessionInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Session"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error or no fields provided",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Session not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/submissions": {
             "post": {
                 "security": [
@@ -3703,6 +5406,122 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/upload/assessment-file": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Upload a file (PDF, Word, Excel, PowerPoint, image, video, audio, zip, etc.) to attach to an assessment. Returns the public URL to include in the file_urls array when creating or updating an assessment. Max size 500 MB. Call this endpoint once per file and collect all returned URLs.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "upload"
+                ],
+                "summary": "Upload assessment file",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "Assessment file",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "url: public URL of the uploaded file",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Upload failed",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/upload/assessment-thumbnail": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Upload a thumbnail image for an assessment. Returns the public URL to use in the thumbnail field when creating or updating an assessment. Max size 10 MB. Allowed types: JPEG, PNG, WebP, GIF.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "upload"
+                ],
+                "summary": "Upload assessment thumbnail",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "Thumbnail image file",
+                        "name": "image",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "url: public URL of the uploaded thumbnail",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Upload failed",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -4266,6 +6085,41 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/zoom/webhook": {
+            "post": {
+                "description": "Receives Zoom Event Subscription callbacks. Answers Zoom's endpoint.url_validation handshake and verifies the x-zm-signature on all other events before processing them. Not intended to be called directly — configure this URL in the Zoom Marketplace app's Event Subscriptions.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "zoom"
+                ],
+                "summary": "Zoom event subscription webhook",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Invalid signature",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -4388,6 +6242,42 @@ const docTemplate = `{
                 }
             }
         },
+        "models.AddBatchStudentsInput": {
+            "type": "object",
+            "required": [
+                "student_ids"
+            ],
+            "properties": {
+                "student_ids": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "[\"11111111-1111-1111-1111-111111111111\"]"
+                    ]
+                }
+            }
+        },
+        "models.AddCommunityMembersInput": {
+            "type": "object",
+            "required": [
+                "user_ids"
+            ],
+            "properties": {
+                "user_ids": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "[\"11111111-1111-1111-1111-111111111111\"]"
+                    ]
+                }
+            }
+        },
         "models.Announcement": {
             "type": "object",
             "properties": {
@@ -4448,6 +6338,62 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "text": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.Assessment": {
+            "type": "object",
+            "properties": {
+                "allow_attempts_after_passing": {
+                    "type": "boolean"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "file_url": {
+                    "type": "string"
+                },
+                "general_instructions": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_active": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "passing_percentage": {
+                    "type": "number"
+                },
+                "result_declaration": {
+                    "type": "string"
+                },
+                "result_display": {
+                    "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "thumbnail": {
+                    "type": "string"
+                },
+                "total_marks": {
+                    "type": "integer"
+                },
+                "updated_at": {
                     "type": "string"
                 }
             }
@@ -4550,8 +6496,28 @@ const docTemplate = `{
                 "start_date": {
                     "type": "string"
                 },
+                "student_count": {
+                    "type": "integer"
+                },
                 "updated_at": {
                     "type": "string"
+                }
+            }
+        },
+        "models.BatchRecordingsResponse": {
+            "type": "object",
+            "properties": {
+                "fees_paid": {
+                    "type": "boolean"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "recordings": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.RecordingListItem"
+                    }
                 }
             }
         },
@@ -4704,13 +6670,25 @@ const docTemplate = `{
                 }
             }
         },
-        "models.Course": {
+        "models.Community": {
             "type": "object",
             "properties": {
+                "batch_id": {
+                    "type": "string"
+                },
+                "batch_number": {
+                    "type": "string"
+                },
+                "batch_short_id": {
+                    "type": "string"
+                },
                 "created_at": {
                     "type": "string"
                 },
                 "created_by": {
+                    "type": "string"
+                },
+                "created_by_name": {
                     "type": "string"
                 },
                 "deleted_at": {
@@ -4725,8 +6703,70 @@ const docTemplate = `{
                 "is_active": {
                     "type": "boolean"
                 },
+                "member_count": {
+                    "type": "integer"
+                },
                 "name": {
                     "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.Course": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "duration": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "instructor": {
+                    "type": "string"
+                },
+                "is_active": {
+                    "type": "boolean"
+                },
+                "level": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "objectives": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "overview": {
+                    "type": "string"
+                },
+                "requirements": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "short_id": {
                     "type": "string"
@@ -4775,6 +6815,69 @@ const docTemplate = `{
                         "existing_and_new"
                     ],
                     "example": "existing_only"
+                }
+            }
+        },
+        "models.CreateAssessmentInput": {
+            "type": "object",
+            "required": [
+                "name",
+                "passing_percentage",
+                "result_declaration",
+                "result_display",
+                "total_marks"
+            ],
+            "properties": {
+                "allow_attempts_after_passing": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "description": {
+                    "type": "string",
+                    "example": "Test your knowledge of Go basics."
+                },
+                "file_url": {
+                    "type": "string",
+                    "example": "https://cdn.example.com/file.pdf"
+                },
+                "general_instructions": {
+                    "type": "string",
+                    "example": "Read all questions carefully before answering."
+                },
+                "name": {
+                    "type": "string",
+                    "example": "Golang Fundamentals Quiz"
+                },
+                "passing_percentage": {
+                    "type": "number",
+                    "maximum": 100,
+                    "minimum": 0,
+                    "example": 60
+                },
+                "result_declaration": {
+                    "type": "string",
+                    "enum": [
+                        "manual",
+                        "automatic"
+                    ],
+                    "example": "automatic"
+                },
+                "result_display": {
+                    "type": "string",
+                    "enum": [
+                        "marks_and_status",
+                        "status_only"
+                    ],
+                    "example": "marks_and_status"
+                },
+                "thumbnail": {
+                    "type": "string",
+                    "example": "https://cdn.example.com/thumbnail.jpg"
+                },
+                "total_marks": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "example": 100
                 }
             }
         },
@@ -4854,6 +6957,15 @@ const docTemplate = `{
                 "start_date": {
                     "type": "string",
                     "example": "2024-01-15"
+                },
+                "student_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "[\"11111111-1111-1111-1111-111111111111\"]"
+                    ]
                 }
             }
         },
@@ -4964,23 +7076,68 @@ const docTemplate = `{
                 }
             }
         },
+        "models.CreateCommunityInput": {
+            "type": "object",
+            "required": [
+                "batch_short_id",
+                "name"
+            ],
+            "properties": {
+                "batch_short_id": {
+                    "type": "string",
+                    "example": "A3F72C1D"
+                },
+                "description": {
+                    "type": "string",
+                    "example": "Community space for Batch 2024 students and mentors"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "Batch 2024 Community"
+                }
+            }
+        },
         "models.CreateCourseInput": {
             "type": "object",
             "required": [
                 "name"
             ],
             "properties": {
+                "category": {
+                    "type": "string"
+                },
                 "description": {
-                    "type": "string",
-                    "example": "Learn Go from scratch"
+                    "type": "string"
+                },
+                "duration": {
+                    "type": "string"
+                },
+                "instructor": {
+                    "type": "string"
+                },
+                "level": {
+                    "type": "string"
                 },
                 "name": {
-                    "type": "string",
-                    "example": "Go for Beginners"
+                    "type": "string"
+                },
+                "objectives": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "overview": {
+                    "type": "string"
+                },
+                "requirements": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "thumbnail": {
-                    "type": "string",
-                    "example": "https://cdn.example.com/thumb.jpg"
+                    "type": "string"
                 }
             }
         },
@@ -5001,9 +7158,9 @@ const docTemplate = `{
                         "type": "string"
                     },
                     "example": [
-                        "['workshop'",
-                        "'go'",
-                        "'backend']"
+                        "[\"workshop\"",
+                        "\"go\"",
+                        "\"backend\"]"
                     ]
                 },
                 "description": {
@@ -5271,6 +7428,128 @@ const docTemplate = `{
                 }
             }
         },
+        "models.CreateNotificationInput": {
+            "type": "object",
+            "required": [
+                "message",
+                "roles",
+                "title"
+            ],
+            "properties": {
+                "message": {
+                    "type": "string",
+                    "example": "We'll be down for maintenance from 11 PM to 1 AM."
+                },
+                "roles": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "[\"student\"",
+                        "\"mentor\"]"
+                    ]
+                },
+                "title": {
+                    "type": "string",
+                    "example": "Platform maintenance tonight"
+                },
+                "type": {
+                    "type": "string",
+                    "example": "general"
+                }
+            }
+        },
+        "models.CreateSessionInput": {
+            "type": "object",
+            "required": [
+                "batch_short_id",
+                "end_time",
+                "mentor_id",
+                "mode",
+                "name",
+                "session_date",
+                "session_type",
+                "start_time"
+            ],
+            "properties": {
+                "batch_short_id": {
+                    "type": "string",
+                    "example": "use GET /batches to pick a real short_id"
+                },
+                "end_time": {
+                    "type": "string",
+                    "example": "11:30"
+                },
+                "feedback_form_short_id": {
+                    "type": "string",
+                    "example": "A3F72C1D"
+                },
+                "generate_shareable_link": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "meeting_platform": {
+                    "type": "string",
+                    "enum": [
+                        "zoom",
+                        "google_meet",
+                        "teams"
+                    ],
+                    "example": "zoom"
+                },
+                "mentor_id": {
+                    "type": "string",
+                    "example": "use GET /mentors to pick a real ID"
+                },
+                "mode": {
+                    "type": "string",
+                    "enum": [
+                        "online",
+                        "offline"
+                    ],
+                    "example": "online"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "React Hooks Deep Dive"
+                },
+                "send_confirmation_email": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "session_date": {
+                    "type": "string",
+                    "example": "2025-09-15"
+                },
+                "session_reminder_notifications": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "session_type": {
+                    "type": "string",
+                    "enum": [
+                        "batch"
+                    ],
+                    "example": "batch"
+                },
+                "start_time": {
+                    "type": "string",
+                    "example": "10:00"
+                },
+                "topics": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "[\"hooks\"",
+                        "\"state management\"]"
+                    ]
+                }
+            }
+        },
         "models.CreateSubmissionInput": {
             "type": "object",
             "required": [
@@ -5527,6 +7806,15 @@ const docTemplate = `{
                 }
             }
         },
+        "models.MarkReadInput": {
+            "type": "object",
+            "properties": {
+                "is_read": {
+                    "type": "boolean",
+                    "example": true
+                }
+            }
+        },
         "models.MaterialType": {
             "type": "string",
             "enum": [
@@ -5637,6 +7925,90 @@ const docTemplate = `{
                 }
             }
         },
+        "models.Notification": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "ref_short_id": {
+                    "type": "string"
+                },
+                "ref_type": {
+                    "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.NotificationView": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "is_read": {
+                    "type": "boolean"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "read_at": {
+                    "type": "string"
+                },
+                "ref_short_id": {
+                    "type": "string"
+                },
+                "ref_type": {
+                    "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.RecordingListItem": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "recording_url": {
+                    "type": "string"
+                },
+                "session_date": {
+                    "type": "string"
+                },
+                "session_short_id": {
+                    "type": "string"
+                }
+            }
+        },
         "models.Role": {
             "type": "string",
             "enum": [
@@ -5703,6 +8075,137 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.Session": {
+            "type": "object",
+            "properties": {
+                "batch_id": {
+                    "type": "string"
+                },
+                "batch_number": {
+                    "type": "string"
+                },
+                "batch_short_id": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "end_time": {
+                    "type": "string"
+                },
+                "feedback_form_short_id": {
+                    "type": "string"
+                },
+                "feedback_form_title": {
+                    "type": "string"
+                },
+                "generate_shareable_link": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_active": {
+                    "type": "boolean"
+                },
+                "meeting_platform": {
+                    "type": "string"
+                },
+                "mentor_id": {
+                    "type": "string"
+                },
+                "mentor_name": {
+                    "type": "string"
+                },
+                "mode": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "recording_url": {
+                    "type": "string"
+                },
+                "send_confirmation_email": {
+                    "type": "boolean"
+                },
+                "session_date": {
+                    "type": "string"
+                },
+                "session_reminder_notifications": {
+                    "type": "boolean"
+                },
+                "session_type": {
+                    "type": "string"
+                },
+                "share_link": {
+                    "type": "string"
+                },
+                "share_token": {
+                    "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "start_time": {
+                    "type": "string"
+                },
+                "topics": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "zoom_join_url": {
+                    "type": "string"
+                },
+                "zoom_meeting_id": {
+                    "type": "integer"
+                },
+                "zoom_start_url": {
+                    "description": "host token — stripped for students in the controller",
+                    "type": "string"
+                }
+            }
+        },
+        "models.SessionJoinInfo": {
+            "type": "object",
+            "properties": {
+                "end_time": {
+                    "type": "string"
+                },
+                "meeting_platform": {
+                    "type": "string"
+                },
+                "mentor_name": {
+                    "type": "string"
+                },
+                "mode": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "session_date": {
+                    "type": "string"
+                },
+                "start_time": {
+                    "type": "string"
+                },
+                "zoom_join_url": {
                     "type": "string"
                 }
             }
@@ -5842,6 +8345,55 @@ const docTemplate = `{
                 "visibility": {
                     "type": "string",
                     "example": "existing_and_new"
+                }
+            }
+        },
+        "models.UpdateAssessmentInput": {
+            "type": "object",
+            "properties": {
+                "allow_attempts_after_passing": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "description": {
+                    "type": "string",
+                    "example": "Updated description."
+                },
+                "file_url": {
+                    "type": "string",
+                    "example": "https://cdn.example.com/new-file.pdf"
+                },
+                "general_instructions": {
+                    "type": "string",
+                    "example": "Updated instructions."
+                },
+                "is_active": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "name": {
+                    "type": "string",
+                    "example": "Updated Assessment Name"
+                },
+                "passing_percentage": {
+                    "type": "number",
+                    "example": 70
+                },
+                "result_declaration": {
+                    "type": "string",
+                    "example": "manual"
+                },
+                "result_display": {
+                    "type": "string",
+                    "example": "status_only"
+                },
+                "thumbnail": {
+                    "type": "string",
+                    "example": "https://cdn.example.com/new-thumb.jpg"
+                },
+                "total_marks": {
+                    "type": "integer",
+                    "example": 150
                 }
             }
         },
@@ -6012,12 +8564,16 @@ const docTemplate = `{
                 }
             }
         },
-        "models.UpdateCourseInput": {
+        "models.UpdateCommunityInput": {
             "type": "object",
             "properties": {
+                "batch_short_id": {
+                    "type": "string",
+                    "example": "B4G83D2E"
+                },
                 "description": {
                     "type": "string",
-                    "example": "Deep dive into Go internals"
+                    "example": "Updated description"
                 },
                 "is_active": {
                     "type": "boolean",
@@ -6025,11 +8581,51 @@ const docTemplate = `{
                 },
                 "name": {
                     "type": "string",
-                    "example": "Go Advanced"
+                    "example": "Batch 2024 Community"
+                }
+            }
+        },
+        "models.UpdateCourseInput": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "duration": {
+                    "type": "string"
+                },
+                "instructor": {
+                    "type": "string"
+                },
+                "is_active": {
+                    "type": "boolean"
+                },
+                "level": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "objectives": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "overview": {
+                    "type": "string"
+                },
+                "requirements": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "thumbnail": {
-                    "type": "string",
-                    "example": "https://cdn.example.com/new-thumb.jpg"
+                    "type": "string"
                 }
             }
         },
@@ -6042,8 +8638,8 @@ const docTemplate = `{
                         "type": "string"
                     },
                     "example": [
-                        "['conference'",
-                        "'go']"
+                        "[\"conference\"",
+                        "\"go\"]"
                     ]
                 },
                 "description": {
@@ -6153,6 +8749,18 @@ const docTemplate = `{
                 }
             }
         },
+        "models.UpdateFeesPaidInput": {
+            "type": "object",
+            "required": [
+                "fees_paid"
+            ],
+            "properties": {
+                "fees_paid": {
+                    "type": "boolean",
+                    "example": true
+                }
+            }
+        },
         "models.UpdateMaterialInput": {
             "type": "object",
             "properties": {
@@ -6241,6 +8849,85 @@ const docTemplate = `{
                 "short_description": {
                     "type": "string",
                     "example": "Deep dive into the topic"
+                }
+            }
+        },
+        "models.UpdateNotificationInput": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string",
+                    "example": "Updated message"
+                },
+                "title": {
+                    "type": "string",
+                    "example": "Updated title"
+                }
+            }
+        },
+        "models.UpdateSessionInput": {
+            "type": "object",
+            "properties": {
+                "batch_short_id": {
+                    "type": "string",
+                    "example": "use GET /batches to pick a real short_id"
+                },
+                "end_time": {
+                    "type": "string",
+                    "example": "12:00"
+                },
+                "feedback_form_short_id": {
+                    "type": "string",
+                    "example": "B4G83D2E"
+                },
+                "generate_shareable_link": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "is_active": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "meeting_platform": {
+                    "type": "string",
+                    "example": "google_meet"
+                },
+                "mentor_id": {
+                    "type": "string",
+                    "example": "use GET /mentors to pick a real ID"
+                },
+                "mode": {
+                    "type": "string",
+                    "example": "offline"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "React Hooks Deep Dive — Part 2"
+                },
+                "send_confirmation_email": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "session_date": {
+                    "type": "string",
+                    "example": "2025-09-22"
+                },
+                "session_reminder_notifications": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "start_time": {
+                    "type": "string",
+                    "example": "10:30"
+                },
+                "topics": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "[\"hooks\"]"
+                    ]
                 }
             }
         },

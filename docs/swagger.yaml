@@ -86,6 +86,30 @@ definitions:
         example: 550e8400-e29b-41d4-a716-446655440000
         type: string
     type: object
+  models.AddBatchStudentsInput:
+    properties:
+      student_ids:
+        example:
+        - '["11111111-1111-1111-1111-111111111111"]'
+        items:
+          type: string
+        minItems: 1
+        type: array
+    required:
+    - student_ids
+    type: object
+  models.AddCommunityMembersInput:
+    properties:
+      user_ids:
+        example:
+        - '["11111111-1111-1111-1111-111111111111"]'
+        items:
+          type: string
+        minItems: 1
+        type: array
+    required:
+    - user_ids
+    type: object
   models.Announcement:
     properties:
       created_at:
@@ -127,6 +151,43 @@ definitions:
         type: string
     required:
     - question_short_id
+    type: object
+  models.Assessment:
+    properties:
+      allow_attempts_after_passing:
+        type: boolean
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      description:
+        type: string
+      file_url:
+        type: string
+      general_instructions:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      name:
+        type: string
+      passing_percentage:
+        type: number
+      result_declaration:
+        type: string
+      result_display:
+        type: string
+      short_id:
+        type: string
+      thumbnail:
+        type: string
+      total_marks:
+        type: integer
+      updated_at:
+        type: string
     type: object
   models.Banner:
     properties:
@@ -193,8 +254,21 @@ definitions:
         type: string
       start_date:
         type: string
+      student_count:
+        type: integer
       updated_at:
         type: string
+    type: object
+  models.BatchRecordingsResponse:
+    properties:
+      fees_paid:
+        type: boolean
+      message:
+        type: string
+      recordings:
+        items:
+          $ref: '#/definitions/models.RecordingListItem'
+        type: array
     type: object
   models.Blog:
     properties:
@@ -294,11 +368,19 @@ definitions:
       is_hidden:
         type: boolean
     type: object
-  models.Course:
+  models.Community:
     properties:
+      batch_id:
+        type: string
+      batch_number:
+        type: string
+      batch_short_id:
+        type: string
       created_at:
         type: string
       created_by:
+        type: string
+      created_by_name:
         type: string
       deleted_at:
         type: string
@@ -308,8 +390,49 @@ definitions:
         type: string
       is_active:
         type: boolean
+      member_count:
+        type: integer
       name:
         type: string
+      short_id:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.Course:
+    properties:
+      category:
+        type: string
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      description:
+        type: string
+      duration:
+        type: string
+      id:
+        type: string
+      instructor:
+        type: string
+      is_active:
+        type: boolean
+      level:
+        type: string
+      name:
+        type: string
+      objectives:
+        items:
+          type: string
+        type: array
+      overview:
+        type: string
+      requirements:
+        items:
+          type: string
+        type: array
       short_id:
         type: string
       thumbnail:
@@ -345,6 +468,54 @@ definitions:
     - name
     - urgency
     - visibility
+    type: object
+  models.CreateAssessmentInput:
+    properties:
+      allow_attempts_after_passing:
+        example: false
+        type: boolean
+      description:
+        example: Test your knowledge of Go basics.
+        type: string
+      file_url:
+        example: https://cdn.example.com/file.pdf
+        type: string
+      general_instructions:
+        example: Read all questions carefully before answering.
+        type: string
+      name:
+        example: Golang Fundamentals Quiz
+        type: string
+      passing_percentage:
+        example: 60
+        maximum: 100
+        minimum: 0
+        type: number
+      result_declaration:
+        enum:
+        - manual
+        - automatic
+        example: automatic
+        type: string
+      result_display:
+        enum:
+        - marks_and_status
+        - status_only
+        example: marks_and_status
+        type: string
+      thumbnail:
+        example: https://cdn.example.com/thumbnail.jpg
+        type: string
+      total_marks:
+        example: 100
+        minimum: 1
+        type: integer
+    required:
+    - name
+    - passing_percentage
+    - result_declaration
+    - result_display
+    - total_marks
     type: object
   models.CreateBannerInput:
     properties:
@@ -397,6 +568,12 @@ definitions:
       start_date:
         example: "2024-01-15"
         type: string
+      student_ids:
+        example:
+        - '["11111111-1111-1111-1111-111111111111"]'
+        items:
+          type: string
+        type: array
     required:
     - batch_manager_id
     - batch_number
@@ -481,16 +658,46 @@ definitions:
     - test_cases
     - title
     type: object
-  models.CreateCourseInput:
+  models.CreateCommunityInput:
     properties:
+      batch_short_id:
+        example: A3F72C1D
+        type: string
       description:
-        example: Learn Go from scratch
+        example: Community space for Batch 2024 students and mentors
         type: string
       name:
-        example: Go for Beginners
+        example: Batch 2024 Community
         type: string
+    required:
+    - batch_short_id
+    - name
+    type: object
+  models.CreateCourseInput:
+    properties:
+      category:
+        type: string
+      description:
+        type: string
+      duration:
+        type: string
+      instructor:
+        type: string
+      level:
+        type: string
+      name:
+        type: string
+      objectives:
+        items:
+          type: string
+        type: array
+      overview:
+        type: string
+      requirements:
+        items:
+          type: string
+        type: array
       thumbnail:
-        example: https://cdn.example.com/thumb.jpg
         type: string
     required:
     - name
@@ -499,9 +706,9 @@ definitions:
     properties:
       categories:
         example:
-        - '[''workshop'''
-        - '''go'''
-        - '''backend'']'
+        - '["workshop"'
+        - '"go"'
+        - '"backend"]'
         items:
           type: string
         type: array
@@ -711,6 +918,97 @@ definitions:
     required:
     - section_name
     type: object
+  models.CreateNotificationInput:
+    properties:
+      message:
+        example: We'll be down for maintenance from 11 PM to 1 AM.
+        type: string
+      roles:
+        example:
+        - '["student"'
+        - '"mentor"]'
+        items:
+          type: string
+        minItems: 1
+        type: array
+      title:
+        example: Platform maintenance tonight
+        type: string
+      type:
+        example: general
+        type: string
+    required:
+    - message
+    - roles
+    - title
+    type: object
+  models.CreateSessionInput:
+    properties:
+      batch_short_id:
+        example: use GET /batches to pick a real short_id
+        type: string
+      end_time:
+        example: "11:30"
+        type: string
+      feedback_form_short_id:
+        example: A3F72C1D
+        type: string
+      generate_shareable_link:
+        example: true
+        type: boolean
+      meeting_platform:
+        enum:
+        - zoom
+        - google_meet
+        - teams
+        example: zoom
+        type: string
+      mentor_id:
+        example: use GET /mentors to pick a real ID
+        type: string
+      mode:
+        enum:
+        - online
+        - offline
+        example: online
+        type: string
+      name:
+        example: React Hooks Deep Dive
+        type: string
+      send_confirmation_email:
+        example: true
+        type: boolean
+      session_date:
+        example: "2025-09-15"
+        type: string
+      session_reminder_notifications:
+        example: true
+        type: boolean
+      session_type:
+        enum:
+        - batch
+        example: batch
+        type: string
+      start_time:
+        example: "10:00"
+        type: string
+      topics:
+        example:
+        - '["hooks"'
+        - '"state management"]'
+        items:
+          type: string
+        type: array
+    required:
+    - batch_short_id
+    - end_time
+    - mentor_id
+    - mode
+    - name
+    - session_date
+    - session_type
+    - start_time
+    type: object
   models.CreateSubmissionInput:
     properties:
       code:
@@ -880,6 +1178,12 @@ definitions:
       updated_at:
         type: string
     type: object
+  models.MarkReadInput:
+    properties:
+      is_read:
+        example: true
+        type: boolean
+    type: object
   models.MaterialType:
     enum:
     - link
@@ -961,6 +1265,61 @@ definitions:
       updated_at:
         type: string
     type: object
+  models.Notification:
+    properties:
+      created_at:
+        type: string
+      created_by:
+        type: string
+      id:
+        type: string
+      message:
+        type: string
+      ref_short_id:
+        type: string
+      ref_type:
+        type: string
+      short_id:
+        type: string
+      title:
+        type: string
+      type:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.NotificationView:
+    properties:
+      created_at:
+        type: string
+      is_read:
+        type: boolean
+      message:
+        type: string
+      read_at:
+        type: string
+      ref_short_id:
+        type: string
+      ref_type:
+        type: string
+      short_id:
+        type: string
+      title:
+        type: string
+      type:
+        type: string
+    type: object
+  models.RecordingListItem:
+    properties:
+      name:
+        type: string
+      recording_url:
+        type: string
+      session_date:
+        type: string
+      session_short_id:
+        type: string
+    type: object
   models.Role:
     enum:
     - student
@@ -1008,6 +1367,93 @@ definitions:
       short_id:
         type: string
       updated_at:
+        type: string
+    type: object
+  models.Session:
+    properties:
+      batch_id:
+        type: string
+      batch_number:
+        type: string
+      batch_short_id:
+        type: string
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      end_time:
+        type: string
+      feedback_form_short_id:
+        type: string
+      feedback_form_title:
+        type: string
+      generate_shareable_link:
+        type: boolean
+      id:
+        type: string
+      is_active:
+        type: boolean
+      meeting_platform:
+        type: string
+      mentor_id:
+        type: string
+      mentor_name:
+        type: string
+      mode:
+        type: string
+      name:
+        type: string
+      recording_url:
+        type: string
+      send_confirmation_email:
+        type: boolean
+      session_date:
+        type: string
+      session_reminder_notifications:
+        type: boolean
+      session_type:
+        type: string
+      share_link:
+        type: string
+      share_token:
+        type: string
+      short_id:
+        type: string
+      start_time:
+        type: string
+      topics:
+        items:
+          type: string
+        type: array
+      updated_at:
+        type: string
+      zoom_join_url:
+        type: string
+      zoom_meeting_id:
+        type: integer
+      zoom_start_url:
+        description: host token — stripped for students in the controller
+        type: string
+    type: object
+  models.SessionJoinInfo:
+    properties:
+      end_time:
+        type: string
+      meeting_platform:
+        type: string
+      mentor_name:
+        type: string
+      mode:
+        type: string
+      name:
+        type: string
+      session_date:
+        type: string
+      start_time:
+        type: string
+      zoom_join_url:
         type: string
     type: object
   models.StarterCode:
@@ -1104,6 +1550,42 @@ definitions:
       visibility:
         example: existing_and_new
         type: string
+    type: object
+  models.UpdateAssessmentInput:
+    properties:
+      allow_attempts_after_passing:
+        example: true
+        type: boolean
+      description:
+        example: Updated description.
+        type: string
+      file_url:
+        example: https://cdn.example.com/new-file.pdf
+        type: string
+      general_instructions:
+        example: Updated instructions.
+        type: string
+      is_active:
+        example: false
+        type: boolean
+      name:
+        example: Updated Assessment Name
+        type: string
+      passing_percentage:
+        example: 70
+        type: number
+      result_declaration:
+        example: manual
+        type: string
+      result_display:
+        example: status_only
+        type: string
+      thumbnail:
+        example: https://cdn.example.com/new-thumb.jpg
+        type: string
+      total_marks:
+        example: 150
+        type: integer
     type: object
   models.UpdateBannerInput:
     properties:
@@ -1223,27 +1705,56 @@ definitions:
           type: string
         type: array
     type: object
-  models.UpdateCourseInput:
+  models.UpdateCommunityInput:
     properties:
+      batch_short_id:
+        example: B4G83D2E
+        type: string
       description:
-        example: Deep dive into Go internals
+        example: Updated description
         type: string
       is_active:
         example: false
         type: boolean
       name:
-        example: Go Advanced
+        example: Batch 2024 Community
         type: string
+    type: object
+  models.UpdateCourseInput:
+    properties:
+      category:
+        type: string
+      description:
+        type: string
+      duration:
+        type: string
+      instructor:
+        type: string
+      is_active:
+        type: boolean
+      level:
+        type: string
+      name:
+        type: string
+      objectives:
+        items:
+          type: string
+        type: array
+      overview:
+        type: string
+      requirements:
+        items:
+          type: string
+        type: array
       thumbnail:
-        example: https://cdn.example.com/new-thumb.jpg
         type: string
     type: object
   models.UpdateEventInput:
     properties:
       categories:
         example:
-        - '[''conference'''
-        - '''go'']'
+        - '["conference"'
+        - '"go"]'
         items:
           type: string
         type: array
@@ -1325,6 +1836,14 @@ definitions:
         example: Low
         type: string
     type: object
+  models.UpdateFeesPaidInput:
+    properties:
+      fees_paid:
+        example: true
+        type: boolean
+    required:
+    - fees_paid
+    type: object
   models.UpdateMaterialInput:
     properties:
       allow_access_on:
@@ -1388,6 +1907,63 @@ definitions:
       short_description:
         example: Deep dive into the topic
         type: string
+    type: object
+  models.UpdateNotificationInput:
+    properties:
+      message:
+        example: Updated message
+        type: string
+      title:
+        example: Updated title
+        type: string
+    type: object
+  models.UpdateSessionInput:
+    properties:
+      batch_short_id:
+        example: use GET /batches to pick a real short_id
+        type: string
+      end_time:
+        example: "12:00"
+        type: string
+      feedback_form_short_id:
+        example: B4G83D2E
+        type: string
+      generate_shareable_link:
+        example: false
+        type: boolean
+      is_active:
+        example: false
+        type: boolean
+      meeting_platform:
+        example: google_meet
+        type: string
+      mentor_id:
+        example: use GET /mentors to pick a real ID
+        type: string
+      mode:
+        example: offline
+        type: string
+      name:
+        example: React Hooks Deep Dive — Part 2
+        type: string
+      send_confirmation_email:
+        example: false
+        type: boolean
+      session_date:
+        example: "2025-09-22"
+        type: string
+      session_reminder_notifications:
+        example: false
+        type: boolean
+      start_time:
+        example: "10:30"
+        type: string
+      topics:
+        example:
+        - '["hooks"]'
+        items:
+          type: string
+        type: array
     type: object
   models.UpdateUserInput:
     properties:
@@ -1591,6 +2167,163 @@ paths:
       summary: Update announcement
       tags:
       - announcements
+  /assessments:
+    get:
+      description: Returns all active and inactive assessments. Supports optional
+        filtering by name (partial match), description (partial match), and is_active
+        (true|false).
+      parameters:
+      - description: Filter by name (partial match)
+        in: query
+        name: name
+        type: string
+      - description: Filter by description (partial match)
+        in: query
+        name: description
+        type: string
+      - description: 'Filter by active status: true or false'
+        in: query
+        name: is_active
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Assessment'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List assessments
+      tags:
+      - assessments
+    post:
+      consumes:
+      - application/json
+      description: 'Create a new assessment. Upload thumbnail via POST /upload/assessment-thumbnail
+        and files via POST /upload/assessment-file first, then pass the returned URLs
+        here. result_declaration must be one of: manual | automatic. result_display
+        must be one of: marks_and_status | status_only.'
+      parameters:
+      - description: Assessment details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateAssessmentInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Assessment'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create assessment
+      tags:
+      - assessments
+  /assessments/{short_id}:
+    delete:
+      description: Soft-deletes an assessment by its short ID. The record is retained
+        in the database with deleted_at set.
+      parameters:
+      - description: Assessment short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Assessment not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete assessment
+      tags:
+      - assessments
+    patch:
+      consumes:
+      - application/json
+      description: Partially update an assessment. All fields are optional — only
+        provided fields are updated. To replace files, upload new ones via POST /upload/assessment-file
+        and pass the full updated file_urls array. To replace the thumbnail, upload
+        via POST /upload/assessment-thumbnail.
+      parameters:
+      - description: Assessment short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateAssessmentInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Assessment'
+        "400":
+          description: Validation error or no fields provided
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Assessment not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update assessment
+      tags:
+      - assessments
   /auth/login:
     post:
       consumes:
@@ -1851,7 +2584,9 @@ paths:
       consumes:
       - application/json
       description: Create a new batch. Restricted to super_admin. A short unique ID
-        is generated automatically. Provide course_short_id to link to a course.
+        is generated automatically. Provide course_short_id to link to a course. Optionally
+        pass student_ids to enroll students immediately — students can also be added
+        later via POST /batches/{short_id}/students.
       parameters:
       - description: Batch details
         in: body
@@ -1968,6 +2703,264 @@ paths:
       summary: Update batch
       tags:
       - batches
+  /batches/{short_id}/me/fees:
+    get:
+      description: Returns the logged-in user's own fees_paid status for a batch —
+        never exposes other students' data. Use this to decide whether to show session
+        recordings.
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: fees_paid
+          schema:
+            additionalProperties:
+              type: boolean
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get my fee-payment status for a batch
+      tags:
+      - batches
+  /batches/{short_id}/recordings:
+    get:
+      description: Student-facing view of every recorded session in a batch. If the
+        caller is a student who hasn't been marked fees_paid, recordings is empty
+        and message explains why — staff always see the full list, regardless of any
+        student's payment status.
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.BatchRecordingsResponse'
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List a batch's session recordings
+      tags:
+      - sessions
+  /batches/{short_id}/sessions:
+    get:
+      description: Returns all non-deleted sessions scheduled for a batch, ordered
+        by session date/time (newest first).
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Session'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List sessions for a batch
+      tags:
+      - sessions
+  /batches/{short_id}/students:
+    get:
+      description: Returns every student enrolled in a batch along with the total
+        student count.
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: total_students and students[]
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List batch students
+      tags:
+      - batches
+    post:
+      consumes:
+      - application/json
+      description: Enroll one or more students into a batch by user ID. Only users
+        with role=student are matched; students already enrolled are left unchanged.
+        Restricted to super_admin / team_lead.
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Student user IDs to add
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.AddBatchStudentsInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Number of students added
+          schema:
+            additionalProperties:
+              type: integer
+            type: object
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Add students to batch
+      tags:
+      - batches
+  /batches/{short_id}/students/{user_id}:
+    delete:
+      description: Removes a single student from a batch by user ID. Restricted to
+        super_admin / team_lead.
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Student user ID (UUID)
+        in: path
+        name: user_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Student not enrolled in batch
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Remove student from batch
+      tags:
+      - batches
+  /batches/{short_id}/students/{user_id}/fees:
+    patch:
+      consumes:
+      - application/json
+      description: Marks whether a student has fully paid fees for a batch. Live sessions
+        stay accessible to every enrolled student regardless of this flag — it only
+        gates access to session recordings. Restricted to super_admin / team_lead
+        / mentor.
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Student user ID (UUID)
+        in: path
+        name: user_id
+        required: true
+        type: string
+      - description: Fee-payment status
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateFeesPaidInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Student not enrolled in batch
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Set a student's fee-payment status
+      tags:
+      - batches
   /batches/filter:
     get:
       description: Filter non-deleted batches by any combination of fields. All query
@@ -2019,6 +3012,30 @@ paths:
       security:
       - BearerAuth: []
       summary: Filter batches
+      tags:
+      - batches
+  /batches/mine:
+    get:
+      description: Returns every non-deleted batch the logged-in user is enrolled
+        in as a student, most recently joined first.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Batch'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List my batches
       tags:
       - batches
   /blogs:
@@ -2373,6 +3390,291 @@ paths:
       summary: List all coding questions (admin view)
       tags:
       - coding-questions
+  /communities:
+    get:
+      description: Returns all non-deleted communities with batch details and a live
+        member count.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Community'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List communities
+      tags:
+      - communities
+    post:
+      consumes:
+      - application/json
+      description: Create a new community scoped to a batch. Restricted to super_admin
+        / team_lead / mentor. A short unique ID is generated automatically.
+      parameters:
+      - description: Community details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateCommunityInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Community'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create community
+      tags:
+      - communities
+  /communities/{short_id}:
+    delete:
+      description: Soft-delete a community by its short_id.
+      parameters:
+      - description: Community short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Community not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete community
+      tags:
+      - communities
+    get:
+      description: Returns a single non-deleted community by its short_id, with a
+        live member count.
+      parameters:
+      - description: Community short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Community'
+        "404":
+          description: Community not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get community
+      tags:
+      - communities
+    patch:
+      consumes:
+      - application/json
+      description: Partially update a community by its short_id. Send only the fields
+        you want to change.
+      parameters:
+      - description: Community short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Fields to update (all optional)
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateCommunityInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Community'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Community not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update community
+      tags:
+      - communities
+  /communities/{short_id}/members:
+    get:
+      description: Returns every member of a community along with the total member
+        count.
+      parameters:
+      - description: Community short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: total_members and members[]
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List community members
+      tags:
+      - communities
+    post:
+      consumes:
+      - application/json
+      description: Add one or more users (students, mentors, admins, etc.) to a community
+        by user ID. Users already in the community are left unchanged.
+      parameters:
+      - description: Community short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: User IDs to add
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.AddCommunityMembersInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Number of members added
+          schema:
+            additionalProperties:
+              type: integer
+            type: object
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Add community members
+      tags:
+      - communities
+  /communities/{short_id}/members/{user_id}:
+    delete:
+      description: Removes a single user from a community by user ID.
+      parameters:
+      - description: Community short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: User ID (UUID)
+        in: path
+        name: user_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Member not found in community
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Remove community member
+      tags:
+      - communities
   /courses:
     get:
       description: Returns all active and inactive non-deleted courses.
@@ -3735,6 +5037,423 @@ paths:
       summary: Filter modules
       tags:
       - modules
+  /notifications:
+    get:
+      description: Returns every notification addressed to the logged-in user, newest
+        first, each with an is_read flag.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.NotificationView'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List my notifications
+      tags:
+      - notifications
+    post:
+      consumes:
+      - application/json
+      description: Manually broadcast a notification to one or more roles. Use role
+        "all" to target every active user (the caller is never notified about their
+        own action). Restricted to super_admin / team_lead.
+      parameters:
+      - description: Notification details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateNotificationInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Notification'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create notification
+      tags:
+      - notifications
+  /notifications/{short_id}:
+    delete:
+      description: Soft-delete a notification by its short_id. Removes it from every
+        recipient's inbox. Restricted to super_admin / team_lead.
+      parameters:
+      - description: Notification short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Notification not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete notification
+      tags:
+      - notifications
+    patch:
+      consumes:
+      - application/json
+      description: Edit the title/message of a notification by its short_id. This
+        changes the content seen by every recipient. Restricted to super_admin / team_lead.
+      parameters:
+      - description: Notification short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Fields to update (all optional)
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateNotificationInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Notification'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Notification not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update notification
+      tags:
+      - notifications
+  /notifications/{short_id}/read:
+    patch:
+      consumes:
+      - application/json
+      description: Marks a notification read (default) or unread for the logged-in
+        recipient only. Body is optional — omit it to mark read.
+      parameters:
+      - description: Notification short ID
+        in: path
+        name: short_id
+        type: string
+      - description: 'Optional — defaults to is_read: true'
+        in: body
+        name: body
+        schema:
+          $ref: '#/definitions/models.MarkReadInput'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Notification not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Mark notification read/unread
+      tags:
+      - notifications
+  /sessions:
+    get:
+      description: Returns all non-deleted sessions ordered by session date/time (newest
+        first). Supports optional filtering by batch_short_id, mentor_id, date (YYYY-MM-DD),
+        and is_active.
+      parameters:
+      - description: Filter by batch short ID
+        in: query
+        name: batch_short_id
+        type: string
+      - description: Filter by mentor user ID
+        in: query
+        name: mentor_id
+        type: string
+      - description: Filter by session date (YYYY-MM-DD)
+        in: query
+        name: date
+        type: string
+      - description: 'Filter by active status: true or false'
+        in: query
+        name: is_active
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Session'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List sessions
+      tags:
+      - sessions
+    post:
+      consumes:
+      - application/json
+      description: Schedule a new session. mode must be online | offline; meeting_platform
+        (zoom | google_meet | teams) is required when mode is online. session_type
+        currently only supports "batch" — pass batch_short_id from GET /batches. Pick
+        mentor_id from GET /mentors. Set generate_shareable_link to true to receive
+        a public join link, and feedback_form_short_id (from GET /feedback-forms)
+        to attach a class feedback form. send_confirmation_email and session_reminder_notifications
+        are stored preferences; actual email/reminder dispatch is handled by a separate
+        notification worker. In-app notifications go only to students enrolled in
+        the target batch, the assigned mentor, and team_leads — not every student
+        in the system.
+      parameters:
+      - description: Session details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateSessionInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Session'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create session
+      tags:
+      - sessions
+  /sessions/{short_id}:
+    delete:
+      description: Soft-deletes a session by its short ID. The record is retained
+        in the database with deleted_at set.
+      parameters:
+      - description: Session short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Session not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete session
+      tags:
+      - sessions
+    get:
+      description: Returns a single non-deleted session by its short ID. recording_url
+        is omitted for students who haven't been marked fees_paid for the session's
+        batch; live-class access is unaffected.
+      parameters:
+      - description: Session short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Session'
+        "404":
+          description: Session not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get session
+      tags:
+      - sessions
+    patch:
+      consumes:
+      - application/json
+      description: Partially update a session — including mentor, date/time, and batch.
+        All fields are optional; only provided fields are updated. Set generate_shareable_link
+        to false to revoke the existing share link, or to true to (re)generate one.
+      parameters:
+      - description: Session short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateSessionInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Session'
+        "400":
+          description: Validation error or no fields provided
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Session not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update session
+      tags:
+      - sessions
+  /sessions/by-token/{token}:
+    get:
+      description: Public, unauthenticated lookup of a session by its share token
+        (the value embedded in share_link, e.g. /sessions/join/{token}). Never returns
+        the Zoom host start URL.
+      parameters:
+      - description: Share token
+        in: path
+        name: token
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.SessionJoinInfo'
+        "404":
+          description: Not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Resolve a session share link
+      tags:
+      - sessions
   /submissions:
     post:
       consumes:
@@ -3880,6 +5599,85 @@ paths:
       summary: List submissions for a specific user (admin/mentor)
       tags:
       - submissions
+  /upload/assessment-file:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Upload a file (PDF, Word, Excel, PowerPoint, image, video, audio,
+        zip, etc.) to attach to an assessment. Returns the public URL to include in
+        the file_urls array when creating or updating an assessment. Max size 500
+        MB. Call this endpoint once per file and collect all returned URLs.
+      parameters:
+      - description: Assessment file
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'url: public URL of the uploaded file'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Upload failed
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Upload assessment file
+      tags:
+      - upload
+  /upload/assessment-thumbnail:
+    post:
+      consumes:
+      - multipart/form-data
+      description: 'Upload a thumbnail image for an assessment. Returns the public
+        URL to use in the thumbnail field when creating or updating an assessment.
+        Max size 10 MB. Allowed types: JPEG, PNG, WebP, GIF.'
+      parameters:
+      - description: Thumbnail image file
+        in: formData
+        name: image
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'url: public URL of the uploaded thumbnail'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Upload failed
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Upload assessment thumbnail
+      tags:
+      - upload
   /upload/banner-image:
     post:
       consumes:
@@ -4245,6 +6043,32 @@ paths:
       summary: Search users
       tags:
       - users
+  /zoom/webhook:
+    post:
+      consumes:
+      - application/json
+      description: Receives Zoom Event Subscription callbacks. Answers Zoom's endpoint.url_validation
+        handshake and verifies the x-zm-signature on all other events before processing
+        them. Not intended to be called directly — configure this URL in the Zoom
+        Marketplace app's Event Subscriptions.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Invalid signature
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Zoom event subscription webhook
+      tags:
+      - zoom
 schemes:
 - http
 - https

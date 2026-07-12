@@ -2,6 +2,8 @@ package controller
 
 import (
 	"errors"
+	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -11,11 +13,12 @@ import (
 )
 
 type EventController struct {
-	eventRepo *repository.EventRepository
+	eventRepo        *repository.EventRepository
+	notificationRepo *repository.NotificationRepository
 }
 
-func NewEventController(eventRepo *repository.EventRepository) *EventController {
-	return &EventController{eventRepo: eventRepo}
+func NewEventController(eventRepo *repository.EventRepository, notificationRepo *repository.NotificationRepository) *EventController {
+	return &EventController{eventRepo: eventRepo, notificationRepo: notificationRepo}
 }
 
 // CreateEvent godoc
@@ -44,6 +47,15 @@ func (ctrl *EventController) Create(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create event"})
 		return
+	}
+
+	if err := ctrl.notificationRepo.NotifyRoles(c.Request.Context(),
+		"New event: "+event.Name,
+		fmt.Sprintf("A new event %q has been scheduled.", event.Name),
+		"event", "event", event.ShortID, createdBy,
+		[]string{"student", "mentor", "team_lead"},
+	); err != nil {
+		log.Printf("notify event create: %v", err)
 	}
 
 	c.JSON(http.StatusCreated, event)

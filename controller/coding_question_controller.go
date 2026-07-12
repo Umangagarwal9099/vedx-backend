@@ -2,6 +2,8 @@ package controller
 
 import (
 	"errors"
+	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -11,11 +13,12 @@ import (
 )
 
 type CodingQuestionController struct {
-	repo *repository.CodingQuestionRepository
+	repo             *repository.CodingQuestionRepository
+	notificationRepo *repository.NotificationRepository
 }
 
-func NewCodingQuestionController(repo *repository.CodingQuestionRepository) *CodingQuestionController {
-	return &CodingQuestionController{repo: repo}
+func NewCodingQuestionController(repo *repository.CodingQuestionRepository, notificationRepo *repository.NotificationRepository) *CodingQuestionController {
+	return &CodingQuestionController{repo: repo, notificationRepo: notificationRepo}
 }
 
 // Create godoc
@@ -45,6 +48,16 @@ func (ctrl *CodingQuestionController) Create(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create coding question"})
 		return
 	}
+
+	if err := ctrl.notificationRepo.NotifyRoles(c.Request.Context(),
+		"New coding question: "+q.Title,
+		fmt.Sprintf("A new coding question %q has been added.", q.Title),
+		"coding_question", "coding_question", q.ShortID, createdBy,
+		[]string{"student", "mentor", "team_lead"},
+	); err != nil {
+		log.Printf("notify coding question create: %v", err)
+	}
+
 	c.JSON(http.StatusCreated, q)
 }
 

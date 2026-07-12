@@ -2,6 +2,8 @@ package controller
 
 import (
 	"errors"
+	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -11,11 +13,12 @@ import (
 )
 
 type BlogController struct {
-	blogRepo *repository.BlogRepository
+	blogRepo         *repository.BlogRepository
+	notificationRepo *repository.NotificationRepository
 }
 
-func NewBlogController(blogRepo *repository.BlogRepository) *BlogController {
-	return &BlogController{blogRepo: blogRepo}
+func NewBlogController(blogRepo *repository.BlogRepository, notificationRepo *repository.NotificationRepository) *BlogController {
+	return &BlogController{blogRepo: blogRepo, notificationRepo: notificationRepo}
 }
 
 // CreateBlog godoc
@@ -49,6 +52,17 @@ func (ctrl *BlogController) Create(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create blog"})
 		return
+	}
+
+	if blog.Status == "published" {
+		if err := ctrl.notificationRepo.NotifyRoles(c.Request.Context(),
+			"New blog post: "+blog.Title,
+			fmt.Sprintf("A new blog post %q has been published.", blog.Title),
+			"blog", "blog", blog.ShortID, createdBy,
+			[]string{"student", "mentor", "team_lead"},
+		); err != nil {
+			log.Printf("notify blog create: %v", err)
+		}
 	}
 
 	c.JSON(http.StatusCreated, blog)

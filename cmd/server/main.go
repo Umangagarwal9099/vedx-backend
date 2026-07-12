@@ -13,7 +13,9 @@ import (
 	"github.com/umangagarwal/vedx-backend/config"
 	"github.com/umangagarwal/vedx-backend/db"
 	"github.com/umangagarwal/vedx-backend/docs"
+	"github.com/umangagarwal/vedx-backend/repository"
 	"github.com/umangagarwal/vedx-backend/router"
+	"github.com/umangagarwal/vedx-backend/scheduler"
 )
 
 //	@title			Vedex API
@@ -64,6 +66,17 @@ func main() {
 			cancel()
 		}
 	}()
+
+	// Background: fire a notification the moment a session's scheduled start time arrives.
+	reminderCtx, cancelReminders := context.WithCancel(context.Background())
+	defer cancelReminders()
+	go scheduler.RunSessionReminders(
+		reminderCtx,
+		repository.NewSessionRepository(pool),
+		repository.NewBatchRepository(pool),
+		repository.NewNotificationRepository(pool),
+		cfg.App.Timezone,
+	)
 
 	r := router.New(pool, cfg)
 
