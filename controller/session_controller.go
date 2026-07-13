@@ -202,8 +202,8 @@ func (ctrl *SessionController) Create(c *gin.Context) {
 	}
 
 	// Confirmation email is opt-in per session (send_confirmation_email) and
-	// silently skipped if SMTP isn't configured — email is best-effort, not a
-	// blocker for session creation.
+	// silently skipped if Resend isn't configured — email is best-effort, not
+	// a blocker for session creation.
 	if input.SendConfirmationEmail && ctrl.emailSvc.Configured() {
 		joinLink := session.ZoomJoinURL
 		if joinLink == "" {

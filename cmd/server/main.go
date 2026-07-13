@@ -68,9 +68,9 @@ func main() {
 		}
 	}()
 
-	emailSvc := service.NewEmailService(cfg.SMTP)
+	emailSvc := service.NewEmailService(cfg.Resend)
 	if !emailSvc.Configured() {
-		log.Println("SMTP not configured — session/batch reminder and confirmation emails will be skipped")
+		log.Println("Resend not configured — session/batch reminder and confirmation emails will be skipped")
 	}
 
 	// Background: fire a notification the moment a session's scheduled start time arrives.

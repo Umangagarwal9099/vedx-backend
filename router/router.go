@@ -46,7 +46,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	// Services
 	storageSvc := service.NewStorageService(cfg.Storage)
 	zoomSvc := service.NewZoomService(cfg.Zoom)
-	emailSvc := service.NewEmailService(cfg.SMTP)
+	emailSvc := service.NewEmailService(cfg.Resend)
 
 	// Controllers
 	authCtrl             := controller.NewAuthController(userRepo, cfg.JWT.Secret)
