@@ -228,6 +228,31 @@ func (ctrl *BatchController) GetMine(c *gin.Context) {
 	c.JSON(http.StatusOK, batches)
 }
 
+// GetByStudentID godoc
+//
+//	@Summary		List a student's batches
+//	@Description	Returns every batch a given student is enrolled in. Restricted to super_admin / team_lead / mentor — for a mentor/employee to view a student's real enrollment on their profile page.
+//	@Tags			batches
+//	@Produce		json
+//	@Param			id	path		string	true	"Student user ID"
+//	@Success		200	{array}		models.Batch
+//	@Failure		500	{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/users/{id}/batches [get]
+func (ctrl *BatchController) GetByStudentID(c *gin.Context) {
+	userID := c.Param("id")
+
+	batches, err := ctrl.batchRepo.FindByStudentID(c.Request.Context(), userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch batches"})
+		return
+	}
+	if batches == nil {
+		batches = []models.Batch{}
+	}
+	c.JSON(http.StatusOK, batches)
+}
+
 // UpdateBatch godoc
 //
 //	@Summary		Update batch

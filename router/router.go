@@ -150,6 +150,9 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				batches.GET("/:short_id/recordings", sessionCtrl.GetBatchRecordings)
 			}
 
+			// A student's real batch enrollment, for their admin profile page.
+			protected.GET("/users/:id/batches", staffOrAbove, batchCtrl.GetByStudentID)
+
 			// Events — super_admin / team_lead / mentor may create, edit, or delete
 			events := protected.Group("/events")
 			{
