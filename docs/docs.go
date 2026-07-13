@@ -257,7 +257,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Returns all active and inactive assessments. Supports optional filtering by name (partial match), description (partial match), and is_active (true|false).",
+                "description": "Returns assessments scoped to the caller's role — students see active global assessments plus ones for their enrolled batches; mentors see global plus their managed batches; team_lead/super_admin see everything (with optional name/description/is_active/batch_short_id filters).",
                 "produces": [
                     "application/json"
                 ],
@@ -282,6 +282,12 @@ const docTemplate = `{
                         "type": "string",
                         "description": "Filter by active status: true or false",
                         "name": "is_active",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by batch short ID",
+                        "name": "batch_short_id",
                         "in": "query"
                     }
                 ],
@@ -312,7 +318,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Create a new assessment. Upload thumbnail via POST /upload/assessment-thumbnail and files via POST /upload/assessment-file first, then pass the returned URLs here. result_declaration must be one of: manual | automatic. result_display must be one of: marks_and_status | status_only.",
+                "description": "Create a new assessment — either static content (leave start_at/end_at/duration_minutes unset) or a real timed exam. Attach questions afterwards via POST /assessments/{short_id}/questions. Leave batch_short_id empty for global visibility. Upload thumbnail via POST /upload/assessment-thumbnail and files via POST /upload/assessment-file first, then pass the returned URLs here.",
                 "consumes": [
                     "application/json"
                 ],
@@ -363,6 +369,56 @@ const docTemplate = `{
             }
         },
         "/assessments/{short_id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns a single assessment by its short_id.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "assessments"
+                ],
+                "summary": "Get assessment",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Assessment short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Assessment"
+                        }
+                    },
+                    "404": {
+                        "description": "Assessment not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
             "delete": {
                 "security": [
                     {
@@ -463,6 +519,1167 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Assessment not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/assessments/{short_id}/attempts": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns every attempt at an assessment across all students, for monitoring and grading. Restricted to super_admin / team_lead / mentor.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "exam-attempts"
+                ],
+                "summary": "List all attempts",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Assessment short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.ExamAttempt"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Starts a new timed attempt at an assessment, or resumes the caller's existing in-progress attempt. Enforces the assessment's start/end window and max_attempts. Returns the attempt with its (possibly randomized) question list, sanitized of correct answers.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "exam-attempts"
+                ],
+                "summary": "Start (or resume) an exam attempt",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Assessment short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.AttemptDetail"
+                        }
+                    },
+                    "400": {
+                        "description": "Outside the exam window, or attempts exhausted",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Assessment not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/assessments/{short_id}/attempts/me": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the calling student's attempts at an assessment, newest first.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "exam-attempts"
+                ],
+                "summary": "List my attempts",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Assessment short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.ExamAttempt"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/assessments/{short_id}/attempts/{attempt_short_id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns a single attempt with its full question list. Correct answers are only included once the attempt is finished and the assessment allows revealing them.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "exam-attempts"
+                ],
+                "summary": "Get attempt detail",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Assessment short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Attempt short ID",
+                        "name": "attempt_short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.AttemptDetail"
+                        }
+                    },
+                    "404": {
+                        "description": "Attempt not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/assessments/{short_id}/attempts/{attempt_short_id}/answers": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Saves (or overwrites) the caller's answer to one question within their in-progress attempt. Call this on every change — it's cheap to call repeatedly.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "exam-attempts"
+                ],
+                "summary": "Autosave an answer",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Assessment short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Attempt short ID",
+                        "name": "attempt_short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Answer",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.SubmitAnswerInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Validation error, or attempt is no longer in progress",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/assessments/{short_id}/attempts/{attempt_short_id}/answers/{question_short_id}/grade": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Records marks and feedback for a short_answer/descriptive/coding answer within a submitted attempt. Once every answer in the attempt has a grade, the attempt automatically flips to \"evaluated\" with its total score and pass/fail computed. Restricted to super_admin / team_lead / mentor.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "exam-attempts"
+                ],
+                "summary": "Manually grade an answer",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Assessment short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Attempt short ID",
+                        "name": "attempt_short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Question short ID",
+                        "name": "question_short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Grade details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.GradeAnswerInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/assessments/{short_id}/attempts/{attempt_short_id}/submit": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Finalizes the caller's attempt. Objective questions (mcq/multi_select/true_false/fill_blank) are auto-graded immediately; if the assessment has no other question types, the attempt is fully evaluated right away. Otherwise it's marked \"submitted\" pending manual grading of descriptive/coding answers.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "exam-attempts"
+                ],
+                "summary": "Submit an attempt",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Assessment short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Attempt short ID",
+                        "name": "attempt_short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.AttemptDetail"
+                        }
+                    },
+                    "404": {
+                        "description": "Attempt not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/assessments/{short_id}/questions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns every question attached to an assessment, in display order. Restricted to super_admin / team_lead / mentor (students never see the raw question bank with answers — they get a sanitized view via the attempt endpoints).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "assessments"
+                ],
+                "summary": "List assessment questions",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Assessment short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.AssessmentQuestion"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Attaches an existing question-bank entry (see POST /questions) to an assessment, with a display order and optional marks override. Restricted to super_admin / team_lead / mentor.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "assessments"
+                ],
+                "summary": "Attach question to assessment",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Assessment short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Question to attach",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.AttachQuestionInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/assessments/{short_id}/questions/{question_short_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Removes a question from an assessment (the question itself remains in the bank). Restricted to super_admin / team_lead / mentor.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "assessments"
+                ],
+                "summary": "Detach question from assessment",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Assessment short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Question short ID",
+                        "name": "question_short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Updates the display order or marks override for a question already attached to an assessment. Restricted to super_admin / team_lead / mentor.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "assessments"
+                ],
+                "summary": "Update attached question",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Assessment short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Question short ID",
+                        "name": "question_short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to update",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateAttachedQuestionInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/assignments": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns assignments scoped to the caller's role — students see published assignments for their enrolled batches; mentors see assignments for batches they manage; team_lead/super_admin see everything. Supports optional filtering by batch_short_id and status.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "assignments"
+                ],
+                "summary": "List assignments",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by batch short ID",
+                        "name": "batch_short_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by status: draft | active | closed",
+                        "name": "status",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.Assignment"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create a new assignment scoped to a batch, with an optional module/session tie. Restricted to super_admin / team_lead / mentor. Set status to \"active\" to publish and notify the batch immediately, or \"draft\" (default) to save without notifying.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "assignments"
+                ],
+                "summary": "Create assignment",
+                "parameters": [
+                    {
+                        "description": "Assignment details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateAssignmentInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.Assignment"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/assignments/{short_id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns a single assignment by its short_id.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "assignments"
+                ],
+                "summary": "Get assignment",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Assignment short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Assignment"
+                        }
+                    },
+                    "404": {
+                        "description": "Assignment not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Soft-deletes an assignment by its short ID. Restricted to super_admin / team_lead / mentor.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "assignments"
+                ],
+                "summary": "Delete assignment",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Assignment short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Assignment not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Partially update an assignment. All fields are optional. Restricted to super_admin / team_lead / mentor. Note: publishing a draft via this endpoint (changing status to \"active\") does not re-trigger student notifications — publish with status \"active\" on create instead, or notify separately.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "assignments"
+                ],
+                "summary": "Update assignment",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Assignment short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to update",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateAssignmentInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Assignment"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error or no fields provided",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Assignment not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/assignments/{short_id}/submissions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns every submission for an assignment, newest first. Restricted to super_admin / team_lead / mentor.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "assignments"
+                ],
+                "summary": "List submissions",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Assignment short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.AssignmentSubmission"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Submit (or resubmit, if the mentor has requested a resubmission) the calling student's work for an assignment. Upload files first via POST /upload/assignment-file and pass the returned URL as file_url.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "assignments"
+                ],
+                "summary": "Submit assignment",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Assignment short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Submission details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateAssignmentSubmissionInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.AssignmentSubmission"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error, or already submitted",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/assignments/{short_id}/submissions/me": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the calling student's submission for an assignment, if any.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "assignments"
+                ],
+                "summary": "Get my submission",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Assignment short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.AssignmentSubmission"
+                        }
+                    },
+                    "404": {
+                        "description": "No submission yet",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/assignments/{short_id}/submissions/{submission_short_id}": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Records marks and feedback for a student's submission, or requests a resubmission. Restricted to super_admin / team_lead / mentor.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "assignments"
+                ],
+                "summary": "Grade submission",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Assignment short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Submission short ID",
+                        "name": "submission_short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Grade details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.GradeSubmissionInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Submission not found",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -1050,6 +2267,56 @@ const docTemplate = `{
             }
         },
         "/batches/{short_id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns a single batch by its short_id, with full course and manager details.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "batches"
+                ],
+                "summary": "Get batch",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Batch short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Batch"
+                        }
+                    },
+                    "404": {
+                        "description": "Batch not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
             "delete": {
                 "security": [
                     {
@@ -4858,6 +6125,1551 @@ const docTemplate = `{
                 }
             }
         },
+        "/projects": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns projects scoped to the caller's role — students see published projects for their enrolled batches; mentors see projects for batches they manage; team_lead/super_admin see everything.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "projects"
+                ],
+                "summary": "List projects",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by batch short ID",
+                        "name": "batch_short_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by status: draft | active | closed",
+                        "name": "status",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.Project"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create a new project scoped to a batch. Set is_team_project to true if students should submit as teams (create teams afterwards via POST /projects/{short_id}/teams). Restricted to super_admin / team_lead / mentor.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "projects"
+                ],
+                "summary": "Create project",
+                "parameters": [
+                    {
+                        "description": "Project details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateProjectInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.Project"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/projects/{short_id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns a single project by its short_id, with its milestones and (if applicable) teams embedded.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "projects"
+                ],
+                "summary": "Get project",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.ProjectDetail"
+                        }
+                    },
+                    "404": {
+                        "description": "Project not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Soft-deletes a project by its short ID. Restricted to super_admin / team_lead / mentor.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "projects"
+                ],
+                "summary": "Delete project",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Project not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Partially update a project. All fields are optional. Restricted to super_admin / team_lead / mentor.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "projects"
+                ],
+                "summary": "Update project",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to update",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateProjectInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Project"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error or no fields provided",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Project not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/projects/{short_id}/milestones": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Add a milestone/checkpoint to a project (e.g. Topic Approval, Design Submission, Final Submission). Mark exactly one milestone is_final to designate the final deliverable. Restricted to super_admin / team_lead / mentor.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "projects"
+                ],
+                "summary": "Add milestone",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Milestone details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateMilestoneInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.ProjectMilestone"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/projects/{short_id}/milestones/{milestone_short_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Soft-deletes a milestone. Restricted to super_admin / team_lead / mentor.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "projects"
+                ],
+                "summary": "Delete milestone",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Milestone short ID",
+                        "name": "milestone_short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Milestone not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Partially update a milestone. Restricted to super_admin / team_lead / mentor.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "projects"
+                ],
+                "summary": "Update milestone",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Milestone short ID",
+                        "name": "milestone_short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to update",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateMilestoneInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Validation error or no fields provided",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Milestone not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/projects/{short_id}/milestones/{milestone_short_id}/submissions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns every submission for a milestone, newest first. Restricted to super_admin / team_lead / mentor.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "projects"
+                ],
+                "summary": "List milestone submissions",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Milestone short ID",
+                        "name": "milestone_short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.ProjectSubmission"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Submit (or resubmit, if the mentor has requested one) work for a milestone. If the project is team-based, the calling student must already belong to a team for this project. Upload files first via POST /upload/project-file and pass the URL as file_url.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "projects"
+                ],
+                "summary": "Submit milestone work",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Milestone short ID",
+                        "name": "milestone_short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Submission details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateProjectSubmissionInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.ProjectSubmission"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error, not on a team, or already submitted",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/projects/{short_id}/milestones/{milestone_short_id}/submissions/me": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the calling student's (or their team's) submission for a milestone, if any.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "projects"
+                ],
+                "summary": "Get my milestone submission",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Milestone short ID",
+                        "name": "milestone_short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.ProjectSubmission"
+                        }
+                    },
+                    "404": {
+                        "description": "No submission yet",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/projects/{short_id}/milestones/{milestone_short_id}/submissions/{submission_short_id}": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Records marks and feedback for a milestone submission, or requests a resubmission. Restricted to super_admin / team_lead / mentor.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "projects"
+                ],
+                "summary": "Grade milestone submission",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Milestone short ID",
+                        "name": "milestone_short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Submission short ID",
+                        "name": "submission_short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Grade details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.GradeProjectSubmissionInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Submission not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/projects/{short_id}/teams": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create a team for a team-based project, optionally with initial student members. Restricted to super_admin / team_lead / mentor.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "projects"
+                ],
+                "summary": "Create project team",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Team details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateTeamInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.ProjectTeam"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/projects/{short_id}/teams/{team_short_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Soft-deletes a team. Restricted to super_admin / team_lead / mentor.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "projects"
+                ],
+                "summary": "Delete project team",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Team short ID",
+                        "name": "team_short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Team not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/projects/{short_id}/teams/{team_short_id}/members": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Add one or more students to a project team. Restricted to super_admin / team_lead / mentor.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "projects"
+                ],
+                "summary": "Add team members",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Team short ID",
+                        "name": "team_short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Student IDs to add",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.AddTeamMembersInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/projects/{short_id}/teams/{team_short_id}/members/{user_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Removes a student from a project team. Restricted to super_admin / team_lead / mentor.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "projects"
+                ],
+                "summary": "Remove team member",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Team short ID",
+                        "name": "team_short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Student user ID",
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Member not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/questions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns questions visible to the caller — their own private questions plus anything shared at course/global visibility. team_lead/super_admin see every question. Supports optional filtering by question_type, topic, and difficulty.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "questions"
+                ],
+                "summary": "List questions",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by type: mcq | multi_select | true_false | fill_blank | short_answer | descriptive | coding",
+                        "name": "question_type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by topic (partial match)",
+                        "name": "topic",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by difficulty: easy | medium | hard",
+                        "name": "difficulty",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.Question"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Add a question to the question bank. For question_type \"coding\", set coding_question_short_id to link an existing entry from GET /coding-questions instead of duplicating it — grading for coding answers within an exam is manual. Visibility defaults to \"private\" (only visible to the creator); set \"course\" or \"global\" to share it.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "questions"
+                ],
+                "summary": "Create question",
+                "parameters": [
+                    {
+                        "description": "Question details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateQuestionInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.Question"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/questions/{short_id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns a single question-bank entry by its short_id (including its correct answer — restricted to super_admin / team_lead / mentor).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "questions"
+                ],
+                "summary": "Get question",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Question short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Question"
+                        }
+                    },
+                    "404": {
+                        "description": "Question not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Soft-deletes a question-bank entry. Restricted to super_admin / team_lead / mentor.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "questions"
+                ],
+                "summary": "Delete question",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Question short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Question not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Partially update a question-bank entry. Restricted to super_admin / team_lead / mentor.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "questions"
+                ],
+                "summary": "Update question",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Question short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to update",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateQuestionInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Question"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error or no fields provided",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Question not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/resources": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns resources scoped to the caller's role — students see global resources plus those for their enrolled batches (expired resources excluded); mentors see global resources plus those for batches they manage; team_lead/super_admin see everything. Supports optional filtering by batch_short_id and resource_type.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "resources"
+                ],
+                "summary": "List resources",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by batch short ID",
+                        "name": "batch_short_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by type: pdf | document | video | link | image | code | other",
+                        "name": "resource_type",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.Resource"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Publish a new learning resource. Upload a file first via POST /upload/resource-file and pass the returned URL, or pass an external link directly. Leave batch_short_id empty for global visibility (all students), or set it to scope to one batch. Restricted to super_admin / team_lead / mentor.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "resources"
+                ],
+                "summary": "Create resource",
+                "parameters": [
+                    {
+                        "description": "Resource details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateResourceInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.Resource"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/resources/{short_id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns a single resource by its short_id.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "resources"
+                ],
+                "summary": "Get resource",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Resource short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Resource"
+                        }
+                    },
+                    "404": {
+                        "description": "Resource not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Soft-deletes a resource by its short ID. Restricted to super_admin / team_lead / mentor.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "resources"
+                ],
+                "summary": "Delete resource",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Resource short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Resource not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Partially update a resource. All fields are optional. Send an empty string for batch_short_id/module_short_id/session_short_id to clear that scoping. Restricted to super_admin / team_lead / mentor.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "resources"
+                ],
+                "summary": "Update resource",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Resource short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to update",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateResourceInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Resource"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error or no fields provided",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Resource not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/sessions": {
             "get": {
                 "security": [
@@ -5532,6 +8344,64 @@ const docTemplate = `{
                 }
             }
         },
+        "/upload/assignment-file": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Upload a student's assignment submission file. Returns the public URL to pass as file_url when submitting via POST /assignments/{short_id}/submissions. Max size 500 MB.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "upload"
+                ],
+                "summary": "Upload assignment submission file",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "Submission file",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "url: public URL of the uploaded file",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Upload failed",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/upload/banner-image": {
             "post": {
                 "security": [
@@ -5728,6 +8598,122 @@ const docTemplate = `{
                     {
                         "type": "file",
                         "description": "Material file",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "url: public URL of the uploaded file",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Upload failed",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/upload/project-file": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Upload a project submission file (report, zip, presentation, etc.). Returns the public URL to pass as file_url when submitting via POST /projects/{short_id}/milestones/{milestone_short_id}/submissions. Max size 500 MB.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "upload"
+                ],
+                "summary": "Upload project submission file",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "Submission file",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "url: public URL of the uploaded file",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Upload failed",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/upload/resource-file": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Upload a learning resource file (PDF, doc, video, image, code, etc.) to attach to a resource. Returns the public URL to pass as url when creating or updating a resource via POST/PATCH /resources. Max size 500 MB.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "upload"
+                ],
+                "summary": "Upload resource file",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "Resource file",
                         "name": "file",
                         "in": "formData",
                         "required": true
@@ -6278,6 +9264,24 @@ const docTemplate = `{
                 }
             }
         },
+        "models.AddTeamMembersInput": {
+            "type": "object",
+            "required": [
+                "student_ids"
+            ],
+            "properties": {
+                "student_ids": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "[\"11111111-1111-1111-1111-111111111111\"]"
+                    ]
+                }
+            }
+        },
         "models.Announcement": {
             "type": "object",
             "properties": {
@@ -6348,6 +9352,15 @@ const docTemplate = `{
                 "allow_attempts_after_passing": {
                     "type": "boolean"
                 },
+                "auto_submit": {
+                    "type": "boolean"
+                },
+                "batch_number": {
+                    "type": "string"
+                },
+                "batch_short_id": {
+                    "type": "string"
+                },
                 "created_at": {
                     "type": "string"
                 },
@@ -6358,6 +9371,12 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "description": {
+                    "type": "string"
+                },
+                "duration_minutes": {
+                    "type": "integer"
+                },
+                "end_at": {
                     "type": "string"
                 },
                 "file_url": {
@@ -6372,11 +9391,29 @@ const docTemplate = `{
                 "is_active": {
                     "type": "boolean"
                 },
+                "max_attempts": {
+                    "type": "integer"
+                },
                 "name": {
                     "type": "string"
                 },
+                "negative_marking": {
+                    "type": "boolean"
+                },
                 "passing_percentage": {
                     "type": "number"
+                },
+                "question_count": {
+                    "type": "integer"
+                },
+                "randomize_options": {
+                    "type": "boolean"
+                },
+                "randomize_questions": {
+                    "type": "boolean"
+                },
+                "requires_proctoring": {
+                    "type": "boolean"
                 },
                 "result_declaration": {
                     "type": "string"
@@ -6387,6 +9424,12 @@ const docTemplate = `{
                 "short_id": {
                     "type": "string"
                 },
+                "show_correct_answers": {
+                    "type": "boolean"
+                },
+                "start_at": {
+                    "type": "string"
+                },
                 "thumbnail": {
                     "type": "string"
                 },
@@ -6394,6 +9437,349 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.AssessmentQuestion": {
+            "type": "object",
+            "properties": {
+                "coding_question_short_id": {
+                    "type": "string"
+                },
+                "coding_question_title": {
+                    "type": "string"
+                },
+                "correct_option_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "correct_text": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "created_by_name": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "difficulty": {
+                    "description": "easy | medium | hard",
+                    "type": "string"
+                },
+                "explanation": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "marks": {
+                    "type": "integer"
+                },
+                "marks_override": {
+                    "type": "integer"
+                },
+                "negative_marks": {
+                    "type": "integer"
+                },
+                "options": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.QuestionOption"
+                    }
+                },
+                "order_index": {
+                    "type": "integer"
+                },
+                "question_text": {
+                    "type": "string"
+                },
+                "question_type": {
+                    "description": "mcq | multi_select | true_false | fill_blank | short_answer | descriptive | coding",
+                    "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "topic": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "visibility": {
+                    "description": "private | course | global",
+                    "type": "string"
+                }
+            }
+        },
+        "models.Assignment": {
+            "type": "object",
+            "properties": {
+                "allowed_file_formats": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "allowed_submission_types": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "batch_id": {
+                    "type": "string"
+                },
+                "batch_number": {
+                    "type": "string"
+                },
+                "batch_short_id": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "created_by_name": {
+                    "type": "string"
+                },
+                "deadline": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "late_penalty_percent": {
+                    "type": "integer"
+                },
+                "late_submission_allowed": {
+                    "type": "boolean"
+                },
+                "max_file_size_mb": {
+                    "type": "integer"
+                },
+                "max_marks": {
+                    "type": "integer"
+                },
+                "module_name": {
+                    "type": "string"
+                },
+                "module_short_id": {
+                    "type": "string"
+                },
+                "pending_review_count": {
+                    "type": "integer"
+                },
+                "session_name": {
+                    "type": "string"
+                },
+                "session_short_id": {
+                    "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "status": {
+                    "description": "draft | active | closed",
+                    "type": "string"
+                },
+                "submission_count": {
+                    "type": "integer"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.AssignmentSubmission": {
+            "type": "object",
+            "properties": {
+                "assignment_short_id": {
+                    "type": "string"
+                },
+                "content": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "evaluated_at": {
+                    "type": "string"
+                },
+                "evaluated_by": {
+                    "type": "string"
+                },
+                "feedback": {
+                    "type": "string"
+                },
+                "file_url": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "marks": {
+                    "type": "integer"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "status": {
+                    "description": "submitted | late | evaluated | resubmission_required",
+                    "type": "string"
+                },
+                "student_email": {
+                    "type": "string"
+                },
+                "student_id": {
+                    "type": "string"
+                },
+                "student_name": {
+                    "type": "string"
+                },
+                "submission_type": {
+                    "description": "link | text | file",
+                    "type": "string"
+                },
+                "submitted_at": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.AttachQuestionInput": {
+            "type": "object",
+            "required": [
+                "question_short_id"
+            ],
+            "properties": {
+                "marks_override": {
+                    "type": "integer",
+                    "example": 10
+                },
+                "order_index": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "question_short_id": {
+                    "type": "string",
+                    "example": "use GET /questions to pick a real short_id"
+                }
+            }
+        },
+        "models.AttemptDetail": {
+            "type": "object",
+            "properties": {
+                "assessment_short_id": {
+                    "type": "string"
+                },
+                "attempt_number": {
+                    "type": "integer"
+                },
+                "auto_submitted": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "max_score": {
+                    "type": "integer"
+                },
+                "passed": {
+                    "type": "boolean"
+                },
+                "questions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.AttemptQuestionView"
+                    }
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "description": "in_progress | submitted | evaluated",
+                    "type": "string"
+                },
+                "student_id": {
+                    "type": "string"
+                },
+                "student_name": {
+                    "type": "string"
+                },
+                "submitted_at": {
+                    "type": "string"
+                },
+                "total_score": {
+                    "type": "integer"
+                }
+            }
+        },
+        "models.AttemptQuestionView": {
+            "type": "object",
+            "properties": {
+                "coding_question_short_id": {
+                    "type": "string"
+                },
+                "coding_question_title": {
+                    "type": "string"
+                },
+                "correct_option_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "correct_text": {
+                    "type": "string"
+                },
+                "explanation": {
+                    "type": "string"
+                },
+                "marks": {
+                    "type": "integer"
+                },
+                "my_answer": {
+                    "$ref": "#/definitions/models.StudentAnswer"
+                },
+                "options": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.QuestionOption"
+                    }
+                },
+                "question_text": {
+                    "type": "string"
+                },
+                "question_type": {
+                    "type": "string"
+                },
+                "short_id": {
                     "type": "string"
                 }
             }
@@ -6832,9 +10218,25 @@ const docTemplate = `{
                     "type": "boolean",
                     "example": false
                 },
+                "auto_submit": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "batch_short_id": {
+                    "type": "string",
+                    "example": "use GET /batches to pick a real short_id, or omit for global visibility"
+                },
                 "description": {
                     "type": "string",
                     "example": "Test your knowledge of Go basics."
+                },
+                "duration_minutes": {
+                    "type": "integer",
+                    "example": 60
+                },
+                "end_at": {
+                    "type": "string",
+                    "example": "2026-07-15T11:00:00Z"
                 },
                 "file_url": {
                     "type": "string",
@@ -6844,15 +10246,35 @@ const docTemplate = `{
                     "type": "string",
                     "example": "Read all questions carefully before answering."
                 },
+                "max_attempts": {
+                    "type": "integer",
+                    "example": 1
+                },
                 "name": {
                     "type": "string",
                     "example": "Golang Fundamentals Quiz"
+                },
+                "negative_marking": {
+                    "type": "boolean",
+                    "example": false
                 },
                 "passing_percentage": {
                     "type": "number",
                     "maximum": 100,
                     "minimum": 0,
                     "example": 60
+                },
+                "randomize_options": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "randomize_questions": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "requires_proctoring": {
+                    "type": "boolean",
+                    "example": false
                 },
                 "result_declaration": {
                     "type": "string",
@@ -6870,6 +10292,14 @@ const docTemplate = `{
                     ],
                     "example": "marks_and_status"
                 },
+                "show_correct_answers": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "start_at": {
+                    "type": "string",
+                    "example": "2026-07-15T09:00:00Z"
+                },
                 "thumbnail": {
                     "type": "string",
                     "example": "https://cdn.example.com/thumbnail.jpg"
@@ -6878,6 +10308,113 @@ const docTemplate = `{
                     "type": "integer",
                     "minimum": 1,
                     "example": 100
+                }
+            }
+        },
+        "models.CreateAssignmentInput": {
+            "type": "object",
+            "required": [
+                "allowed_submission_types",
+                "batch_short_id",
+                "deadline",
+                "max_marks",
+                "title"
+            ],
+            "properties": {
+                "allowed_file_formats": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "[\".pdf\"",
+                        "\".zip\"]"
+                    ]
+                },
+                "allowed_submission_types": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "[\"file\"",
+                        "\"link\"]"
+                    ]
+                },
+                "batch_short_id": {
+                    "type": "string",
+                    "example": "use GET /batches to pick a real short_id"
+                },
+                "deadline": {
+                    "type": "string",
+                    "example": "2026-07-15T23:59:00Z"
+                },
+                "description": {
+                    "type": "string",
+                    "example": "Implement a LinkedList from scratch and submit your source file."
+                },
+                "late_penalty_percent": {
+                    "type": "integer",
+                    "example": 10
+                },
+                "late_submission_allowed": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "max_file_size_mb": {
+                    "type": "integer",
+                    "example": 25
+                },
+                "max_marks": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "example": 100
+                },
+                "module_short_id": {
+                    "type": "string",
+                    "example": "use GET /modules to pick a real short_id"
+                },
+                "session_short_id": {
+                    "type": "string",
+                    "example": "use GET /sessions to pick a real short_id"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "draft",
+                        "active"
+                    ],
+                    "example": "active"
+                },
+                "title": {
+                    "type": "string",
+                    "example": "Java Collections Assignment"
+                }
+            }
+        },
+        "models.CreateAssignmentSubmissionInput": {
+            "type": "object",
+            "required": [
+                "submission_type"
+            ],
+            "properties": {
+                "content": {
+                    "type": "string",
+                    "example": "https://github.com/student/repo"
+                },
+                "file_url": {
+                    "type": "string",
+                    "example": "https://cdn.example.com/submission.pdf"
+                },
+                "submission_type": {
+                    "type": "string",
+                    "enum": [
+                        "link",
+                        "text",
+                        "file"
+                    ],
+                    "example": "file"
                 }
             }
         },
@@ -7378,6 +10915,34 @@ const docTemplate = `{
                 }
             }
         },
+        "models.CreateMilestoneInput": {
+            "type": "object",
+            "required": [
+                "title"
+            ],
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "example": "Submit your chosen project idea for approval."
+                },
+                "due_date": {
+                    "type": "string",
+                    "example": "2026-07-05T23:59:00Z"
+                },
+                "is_final": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "order_index": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "title": {
+                    "type": "string",
+                    "example": "Topic Approval"
+                }
+            }
+        },
         "models.CreateModuleInput": {
             "type": "object",
             "required": [
@@ -7458,6 +11023,187 @@ const docTemplate = `{
                 "type": {
                     "type": "string",
                     "example": "general"
+                }
+            }
+        },
+        "models.CreateProjectInput": {
+            "type": "object",
+            "required": [
+                "allowed_submission_types",
+                "batch_short_id",
+                "category",
+                "final_deadline",
+                "max_marks",
+                "title"
+            ],
+            "properties": {
+                "allowed_submission_types": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "[\"link\"",
+                        "\"file\"]"
+                    ]
+                },
+                "batch_short_id": {
+                    "type": "string",
+                    "example": "use GET /batches to pick a real short_id"
+                },
+                "category": {
+                    "type": "string",
+                    "enum": [
+                        "individual",
+                        "group",
+                        "module",
+                        "capstone",
+                        "internship",
+                        "final_course"
+                    ],
+                    "example": "capstone"
+                },
+                "evaluation_criteria": {
+                    "type": "string",
+                    "example": "Functionality 40%, code quality 30%, presentation 30%."
+                },
+                "expected_deliverables": {
+                    "type": "string",
+                    "example": "GitHub repo, deployed app, final report."
+                },
+                "final_deadline": {
+                    "type": "string",
+                    "example": "2026-08-15T23:59:00Z"
+                },
+                "is_team_project": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "max_marks": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "example": 200
+                },
+                "module_short_id": {
+                    "type": "string",
+                    "example": "use GET /modules to pick a real short_id"
+                },
+                "problem_statement": {
+                    "type": "string",
+                    "example": "Build a full-stack e-commerce platform with cart, checkout, and admin panel."
+                },
+                "reference_files": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "[\"https://cdn.example.com/brief.pdf\"]"
+                    ]
+                },
+                "requirements": {
+                    "type": "string",
+                    "example": "React frontend, Node.js backend, PostgreSQL database."
+                },
+                "start_date": {
+                    "type": "string",
+                    "example": "2026-07-01"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "draft",
+                        "active"
+                    ],
+                    "example": "active"
+                },
+                "title": {
+                    "type": "string",
+                    "example": "E-Commerce Capstone"
+                }
+            }
+        },
+        "models.CreateProjectSubmissionInput": {
+            "type": "object",
+            "required": [
+                "submission_type"
+            ],
+            "properties": {
+                "content": {
+                    "type": "string",
+                    "example": "https://github.com/team/repo"
+                },
+                "file_url": {
+                    "type": "string",
+                    "example": "https://cdn.example.com/report.pdf"
+                },
+                "submission_type": {
+                    "type": "string",
+                    "enum": [
+                        "link",
+                        "text",
+                        "file"
+                    ],
+                    "example": "link"
+                }
+            }
+        },
+        "models.CreateQuestionInput": {
+            "type": "object"
+        },
+        "models.CreateResourceInput": {
+            "type": "object",
+            "required": [
+                "resource_type",
+                "title",
+                "url"
+            ],
+            "properties": {
+                "batch_short_id": {
+                    "type": "string",
+                    "example": "use GET /batches to pick a real short_id, or omit for global visibility"
+                },
+                "description": {
+                    "type": "string",
+                    "example": "Quick reference for week 1."
+                },
+                "expires_at": {
+                    "type": "string",
+                    "example": "2026-12-31T23:59:00Z"
+                },
+                "is_downloadable": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "module_short_id": {
+                    "type": "string",
+                    "example": "use GET /modules to pick a real short_id"
+                },
+                "resource_type": {
+                    "type": "string",
+                    "enum": [
+                        "pdf",
+                        "document",
+                        "video",
+                        "link",
+                        "image",
+                        "code",
+                        "other"
+                    ],
+                    "example": "pdf"
+                },
+                "session_short_id": {
+                    "type": "string",
+                    "example": "use GET /sessions to pick a real short_id"
+                },
+                "title": {
+                    "type": "string",
+                    "example": "Python Cheatsheet — Variables \u0026 Data Types"
+                },
+                "url": {
+                    "type": "string",
+                    "example": "https://cdn.example.com/cheatsheet.pdf"
                 }
             }
         },
@@ -7589,6 +11335,27 @@ const docTemplate = `{
                 }
             }
         },
+        "models.CreateTeamInput": {
+            "type": "object",
+            "required": [
+                "name"
+            ],
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "example": "Team Phoenix"
+                },
+                "student_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "[\"11111111-1111-1111-1111-111111111111\"]"
+                    ]
+                }
+            }
+        },
         "models.Event": {
             "type": "object",
             "properties": {
@@ -7651,6 +11418,51 @@ const docTemplate = `{
                 },
                 "updated_at": {
                     "type": "string"
+                }
+            }
+        },
+        "models.ExamAttempt": {
+            "type": "object",
+            "properties": {
+                "assessment_short_id": {
+                    "type": "string"
+                },
+                "attempt_number": {
+                    "type": "integer"
+                },
+                "auto_submitted": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "max_score": {
+                    "type": "integer"
+                },
+                "passed": {
+                    "type": "boolean"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "description": "in_progress | submitted | evaluated",
+                    "type": "string"
+                },
+                "student_id": {
+                    "type": "string"
+                },
+                "student_name": {
+                    "type": "string"
+                },
+                "submitted_at": {
+                    "type": "string"
+                },
+                "total_score": {
+                    "type": "integer"
                 }
             }
         },
@@ -7803,6 +11615,70 @@ const docTemplate = `{
                 },
                 "updated_at": {
                     "type": "string"
+                }
+            }
+        },
+        "models.GradeAnswerInput": {
+            "type": "object",
+            "required": [
+                "marks_awarded"
+            ],
+            "properties": {
+                "feedback": {
+                    "type": "string",
+                    "example": "Good explanation, minor detail missing."
+                },
+                "marks_awarded": {
+                    "type": "integer",
+                    "example": 8
+                }
+            }
+        },
+        "models.GradeProjectSubmissionInput": {
+            "type": "object",
+            "required": [
+                "marks"
+            ],
+            "properties": {
+                "feedback": {
+                    "type": "string",
+                    "example": "Great execution, minor UI polish needed."
+                },
+                "marks": {
+                    "type": "integer",
+                    "example": 90
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "evaluated",
+                        "resubmission_required"
+                    ],
+                    "example": "evaluated"
+                }
+            }
+        },
+        "models.GradeSubmissionInput": {
+            "type": "object",
+            "required": [
+                "marks"
+            ],
+            "properties": {
+                "feedback": {
+                    "type": "string",
+                    "example": "Good structure, but missing edge-case handling."
+                },
+                "marks": {
+                    "type": "integer",
+                    "example": 85
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "evaluated",
+                        "resubmission_required"
+                    ],
+                    "example": "evaluated"
                 }
             }
         },
@@ -7992,6 +11868,415 @@ const docTemplate = `{
                 }
             }
         },
+        "models.Project": {
+            "type": "object",
+            "properties": {
+                "allowed_submission_types": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "batch_number": {
+                    "type": "string"
+                },
+                "batch_short_id": {
+                    "type": "string"
+                },
+                "category": {
+                    "description": "individual | group | module | capstone | internship | final_course",
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "created_by_name": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "evaluation_criteria": {
+                    "type": "string"
+                },
+                "expected_deliverables": {
+                    "type": "string"
+                },
+                "final_deadline": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_team_project": {
+                    "type": "boolean"
+                },
+                "max_marks": {
+                    "type": "integer"
+                },
+                "module_name": {
+                    "type": "string"
+                },
+                "module_short_id": {
+                    "type": "string"
+                },
+                "problem_statement": {
+                    "type": "string"
+                },
+                "reference_files": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "requirements": {
+                    "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "start_date": {
+                    "type": "string"
+                },
+                "status": {
+                    "description": "draft | active | closed",
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.ProjectDetail": {
+            "type": "object",
+            "properties": {
+                "allowed_submission_types": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "batch_number": {
+                    "type": "string"
+                },
+                "batch_short_id": {
+                    "type": "string"
+                },
+                "category": {
+                    "description": "individual | group | module | capstone | internship | final_course",
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "created_by_name": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "evaluation_criteria": {
+                    "type": "string"
+                },
+                "expected_deliverables": {
+                    "type": "string"
+                },
+                "final_deadline": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_team_project": {
+                    "type": "boolean"
+                },
+                "max_marks": {
+                    "type": "integer"
+                },
+                "milestones": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.ProjectMilestone"
+                    }
+                },
+                "module_name": {
+                    "type": "string"
+                },
+                "module_short_id": {
+                    "type": "string"
+                },
+                "problem_statement": {
+                    "type": "string"
+                },
+                "reference_files": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "requirements": {
+                    "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "start_date": {
+                    "type": "string"
+                },
+                "status": {
+                    "description": "draft | active | closed",
+                    "type": "string"
+                },
+                "teams": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.ProjectTeam"
+                    }
+                },
+                "title": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.ProjectMilestone": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "due_date": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_final": {
+                    "type": "boolean"
+                },
+                "order_index": {
+                    "type": "integer"
+                },
+                "project_id": {
+                    "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.ProjectSubmission": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "evaluated_at": {
+                    "type": "string"
+                },
+                "evaluated_by": {
+                    "type": "string"
+                },
+                "feedback": {
+                    "type": "string"
+                },
+                "file_url": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "marks": {
+                    "type": "integer"
+                },
+                "milestone_short_id": {
+                    "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "status": {
+                    "description": "submitted | late | evaluated | resubmission_required",
+                    "type": "string"
+                },
+                "student_id": {
+                    "type": "string"
+                },
+                "student_name": {
+                    "type": "string"
+                },
+                "submission_type": {
+                    "description": "link | text | file",
+                    "type": "string"
+                },
+                "submitted_at": {
+                    "type": "string"
+                },
+                "team_name": {
+                    "type": "string"
+                },
+                "team_short_id": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.ProjectTeam": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "members": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.ProjectTeamMember"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "project_id": {
+                    "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.ProjectTeamMember": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "first_name": {
+                    "type": "string"
+                },
+                "joined_at": {
+                    "type": "string"
+                },
+                "last_name": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.Question": {
+            "type": "object",
+            "properties": {
+                "coding_question_short_id": {
+                    "type": "string"
+                },
+                "coding_question_title": {
+                    "type": "string"
+                },
+                "correct_option_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "correct_text": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "created_by_name": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "difficulty": {
+                    "description": "easy | medium | hard",
+                    "type": "string"
+                },
+                "explanation": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "marks": {
+                    "type": "integer"
+                },
+                "negative_marks": {
+                    "type": "integer"
+                },
+                "options": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.QuestionOption"
+                    }
+                },
+                "question_text": {
+                    "type": "string"
+                },
+                "question_type": {
+                    "description": "mcq | multi_select | true_false | fill_blank | short_answer | descriptive | coding",
+                    "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "topic": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "visibility": {
+                    "description": "private | course | global",
+                    "type": "string"
+                }
+            }
+        },
+        "models.QuestionOption": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "text": {
+                    "type": "string"
+                }
+            }
+        },
         "models.RecordingListItem": {
             "type": "object",
             "properties": {
@@ -8005,6 +12290,69 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "session_short_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.Resource": {
+            "type": "object",
+            "properties": {
+                "batch_number": {
+                    "type": "string"
+                },
+                "batch_short_id": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "created_by_name": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_downloadable": {
+                    "type": "boolean"
+                },
+                "module_name": {
+                    "type": "string"
+                },
+                "module_short_id": {
+                    "type": "string"
+                },
+                "resource_type": {
+                    "description": "pdf | document | video | link | image | code | other",
+                    "type": "string"
+                },
+                "session_name": {
+                    "type": "string"
+                },
+                "session_short_id": {
+                    "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "url": {
                     "type": "string"
                 }
             }
@@ -8216,6 +12564,32 @@ const docTemplate = `{
                 "type": "string"
             }
         },
+        "models.StudentAnswer": {
+            "type": "object",
+            "properties": {
+                "feedback": {
+                    "type": "string"
+                },
+                "is_correct": {
+                    "type": "boolean"
+                },
+                "marks_awarded": {
+                    "type": "integer"
+                },
+                "question_short_id": {
+                    "type": "string"
+                },
+                "selected_option_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "text_answer": {
+                    "type": "string"
+                }
+            }
+        },
         "models.Submission": {
             "type": "object",
             "properties": {
@@ -8304,6 +12678,31 @@ const docTemplate = `{
                 }
             }
         },
+        "models.SubmitAnswerInput": {
+            "type": "object",
+            "required": [
+                "question_short_id"
+            ],
+            "properties": {
+                "question_short_id": {
+                    "type": "string",
+                    "example": "A3F72C1D"
+                },
+                "selected_option_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "[\"a\"]"
+                    ]
+                },
+                "text_answer": {
+                    "type": "string",
+                    "example": "Goroutine"
+                }
+            }
+        },
         "models.SubmitFeedbackFormInput": {
             "type": "object",
             "required": [
@@ -8355,9 +12754,25 @@ const docTemplate = `{
                     "type": "boolean",
                     "example": true
                 },
+                "auto_submit": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "batch_short_id": {
+                    "type": "string",
+                    "example": ""
+                },
                 "description": {
                     "type": "string",
                     "example": "Updated description."
+                },
+                "duration_minutes": {
+                    "type": "integer",
+                    "example": 90
+                },
+                "end_at": {
+                    "type": "string",
+                    "example": "2026-07-16T11:00:00Z"
                 },
                 "file_url": {
                     "type": "string",
@@ -8371,13 +12786,33 @@ const docTemplate = `{
                     "type": "boolean",
                     "example": false
                 },
+                "max_attempts": {
+                    "type": "integer",
+                    "example": 2
+                },
                 "name": {
                     "type": "string",
                     "example": "Updated Assessment Name"
                 },
+                "negative_marking": {
+                    "type": "boolean",
+                    "example": true
+                },
                 "passing_percentage": {
                     "type": "number",
                     "example": 70
+                },
+                "randomize_options": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "randomize_questions": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "requires_proctoring": {
+                    "type": "boolean",
+                    "example": true
                 },
                 "result_declaration": {
                     "type": "string",
@@ -8387,6 +12822,14 @@ const docTemplate = `{
                     "type": "string",
                     "example": "status_only"
                 },
+                "show_correct_answers": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "start_at": {
+                    "type": "string",
+                    "example": "2026-07-16T09:00:00Z"
+                },
                 "thumbnail": {
                     "type": "string",
                     "example": "https://cdn.example.com/new-thumb.jpg"
@@ -8394,6 +12837,91 @@ const docTemplate = `{
                 "total_marks": {
                     "type": "integer",
                     "example": 150
+                }
+            }
+        },
+        "models.UpdateAssignmentInput": {
+            "type": "object",
+            "properties": {
+                "allowed_file_formats": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "[\".pdf\"]"
+                    ]
+                },
+                "allowed_submission_types": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "[\"file\"]"
+                    ]
+                },
+                "batch_short_id": {
+                    "type": "string",
+                    "example": "use GET /batches to pick a real short_id"
+                },
+                "deadline": {
+                    "type": "string",
+                    "example": "2026-07-20T23:59:00Z"
+                },
+                "description": {
+                    "type": "string",
+                    "example": "Updated instructions."
+                },
+                "late_penalty_percent": {
+                    "type": "integer",
+                    "example": 0
+                },
+                "late_submission_allowed": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "max_file_size_mb": {
+                    "type": "integer",
+                    "example": 50
+                },
+                "max_marks": {
+                    "type": "integer",
+                    "example": 150
+                },
+                "module_short_id": {
+                    "type": "string",
+                    "example": "use GET /modules to pick a real short_id"
+                },
+                "session_short_id": {
+                    "type": "string",
+                    "example": "use GET /sessions to pick a real short_id"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "draft",
+                        "active",
+                        "closed"
+                    ],
+                    "example": "closed"
+                },
+                "title": {
+                    "type": "string",
+                    "example": "Java Collections Assignment — Part 2"
+                }
+            }
+        },
+        "models.UpdateAttachedQuestionInput": {
+            "type": "object",
+            "properties": {
+                "marks_override": {
+                    "type": "integer",
+                    "example": 15
+                },
+                "order_index": {
+                    "type": "integer",
+                    "example": 2
                 }
             }
         },
@@ -8806,6 +13334,31 @@ const docTemplate = `{
                 }
             }
         },
+        "models.UpdateMilestoneInput": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "example": "Updated instructions."
+                },
+                "due_date": {
+                    "type": "string",
+                    "example": "2026-07-07T23:59:00Z"
+                },
+                "is_final": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "order_index": {
+                    "type": "integer",
+                    "example": 2
+                },
+                "title": {
+                    "type": "string",
+                    "example": "Topic Approval (Revised)"
+                }
+            }
+        },
         "models.UpdateModuleInput": {
             "type": "object",
             "properties": {
@@ -8862,6 +13415,147 @@ const docTemplate = `{
                 "title": {
                     "type": "string",
                     "example": "Updated title"
+                }
+            }
+        },
+        "models.UpdateProjectInput": {
+            "type": "object",
+            "properties": {
+                "allowed_submission_types": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "[\"file\"]"
+                    ]
+                },
+                "batch_short_id": {
+                    "type": "string",
+                    "example": "use GET /batches to pick a real short_id"
+                },
+                "category": {
+                    "type": "string",
+                    "enum": [
+                        "individual",
+                        "group",
+                        "module",
+                        "capstone",
+                        "internship",
+                        "final_course"
+                    ],
+                    "example": "group"
+                },
+                "evaluation_criteria": {
+                    "type": "string",
+                    "example": "Updated rubric."
+                },
+                "expected_deliverables": {
+                    "type": "string",
+                    "example": "Updated deliverables."
+                },
+                "final_deadline": {
+                    "type": "string",
+                    "example": "2026-08-20T23:59:00Z"
+                },
+                "is_team_project": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "max_marks": {
+                    "type": "integer",
+                    "example": 250
+                },
+                "module_short_id": {
+                    "type": "string",
+                    "example": ""
+                },
+                "problem_statement": {
+                    "type": "string",
+                    "example": "Updated brief."
+                },
+                "reference_files": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "[\"https://cdn.example.com/brief-v2.pdf\"]"
+                    ]
+                },
+                "requirements": {
+                    "type": "string",
+                    "example": "Updated requirements."
+                },
+                "start_date": {
+                    "type": "string",
+                    "example": "2026-07-05"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "draft",
+                        "active",
+                        "closed"
+                    ],
+                    "example": "closed"
+                },
+                "title": {
+                    "type": "string",
+                    "example": "E-Commerce Capstone — Extended"
+                }
+            }
+        },
+        "models.UpdateQuestionInput": {
+            "type": "object"
+        },
+        "models.UpdateResourceInput": {
+            "type": "object",
+            "properties": {
+                "batch_short_id": {
+                    "type": "string",
+                    "example": ""
+                },
+                "description": {
+                    "type": "string",
+                    "example": "Updated description"
+                },
+                "expires_at": {
+                    "type": "string",
+                    "example": "2027-01-01T00:00:00Z"
+                },
+                "is_downloadable": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "module_short_id": {
+                    "type": "string",
+                    "example": ""
+                },
+                "resource_type": {
+                    "type": "string",
+                    "enum": [
+                        "pdf",
+                        "document",
+                        "video",
+                        "link",
+                        "image",
+                        "code",
+                        "other"
+                    ],
+                    "example": "video"
+                },
+                "session_short_id": {
+                    "type": "string",
+                    "example": ""
+                },
+                "title": {
+                    "type": "string",
+                    "example": "Updated title"
+                },
+                "url": {
+                    "type": "string",
+                    "example": "https://cdn.example.com/new-file.pdf"
                 }
             }
         },

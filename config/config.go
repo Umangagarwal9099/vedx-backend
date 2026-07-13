@@ -13,24 +13,23 @@ type Config struct {
 	JWT      JWTConfig
 	Storage  StorageConfig
 	Zoom     ZoomConfig
-	SMTP     SMTPConfig
+	Resend   ResendConfig
 }
 
-// SMTPConfig holds credentials for sending transactional email (session
-// confirmations/reminders, batch start reminders). Optional: when unset,
-// Configured() returns false and email sending is skipped rather than failing
-// the parent operation.
-type SMTPConfig struct {
-	Host      string
-	Port      int
-	Username  string
-	Password  string
+// ResendConfig holds credentials for sending transactional email (session
+// confirmations/reminders, batch start reminders) via Resend's HTTP API.
+// Raw SMTP is deliberately not used here — outbound SMTP ports are blocked or
+// silently dropped on Render (and many other PaaS hosts), while HTTPS never
+// is. Optional: when unset, Configured() returns false and email sending is
+// skipped rather than failing the parent operation.
+type ResendConfig struct {
+	APIKey    string
 	FromEmail string
 	FromName  string
 }
 
-func (s SMTPConfig) Configured() bool {
-	return s.Host != "" && s.Username != "" && s.Password != "" && s.FromEmail != ""
+func (r ResendConfig) Configured() bool {
+	return r.APIKey != "" && r.FromEmail != ""
 }
 
 type StorageConfig struct {
@@ -152,13 +151,10 @@ func Load() (*Config, error) {
 			ClientSecret:       get("ZOOM_CLIENT_SECRET", ""),
 			WebhookSecretToken: get("ZOOM_WEBHOOK_SECRET_TOKEN", ""),
 		},
-		SMTP: SMTPConfig{
-			Host:      get("SMTP_HOST", "smtp.gmail.com"),
-			Port:      getInt("SMTP_PORT", 587),
-			Username:  get("SMTP_USERNAME", ""),
-			Password:  get("SMTP_PASSWORD", ""),
-			FromEmail: get("SMTP_FROM_EMAIL", ""),
-			FromName:  get("SMTP_FROM_NAME", "Vedex"),
+		Resend: ResendConfig{
+			APIKey:    get("RESEND_API_KEY", ""),
+			FromEmail: get("RESEND_FROM_EMAIL", ""),
+			FromName:  get("RESEND_FROM_NAME", "Vedex"),
 		},
 	}
 
