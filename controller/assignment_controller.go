@@ -152,6 +152,9 @@ func (ctrl *AssignmentController) GetByShortID(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "assignment not found"})
 		return
 	}
+	if !checkBatchAccess(c, ctrl.batchRepo, a.BatchShortID) {
+		return
+	}
 	c.JSON(http.StatusOK, a)
 }
 
@@ -172,6 +175,19 @@ func (ctrl *AssignmentController) GetByShortID(c *gin.Context) {
 //	@Router			/assignments/{short_id} [patch]
 func (ctrl *AssignmentController) Update(c *gin.Context) {
 	shortID := c.Param("short_id")
+
+	existing, err := ctrl.assignmentRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch assignment"})
+		return
+	}
+	if existing == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "assignment not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, existing.BatchShortID) {
+		return
+	}
 
 	var input models.UpdateAssignmentInput
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -214,6 +230,20 @@ func (ctrl *AssignmentController) Update(c *gin.Context) {
 //	@Router			/assignments/{short_id} [delete]
 func (ctrl *AssignmentController) Delete(c *gin.Context) {
 	shortID := c.Param("short_id")
+
+	existing, err := ctrl.assignmentRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch assignment"})
+		return
+	}
+	if existing == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "assignment not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, existing.BatchShortID) {
+		return
+	}
+
 	if err := ctrl.assignmentRepo.Delete(c.Request.Context(), shortID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "assignment not found"})
@@ -306,6 +336,16 @@ func (ctrl *AssignmentController) GetMySubmission(c *gin.Context) {
 //	@Router			/assignments/{short_id}/submissions [get]
 func (ctrl *AssignmentController) GetAllSubmissions(c *gin.Context) {
 	shortID := c.Param("short_id")
+
+	assignment, err := ctrl.assignmentRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil || assignment == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "assignment not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, assignment.BatchShortID) {
+		return
+	}
+
 	submissions, err := ctrl.assignmentRepo.FindAllSubmissions(c.Request.Context(), shortID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch submissions"})
@@ -336,6 +376,15 @@ func (ctrl *AssignmentController) GetAllSubmissions(c *gin.Context) {
 func (ctrl *AssignmentController) GradeSubmission(c *gin.Context) {
 	shortID := c.Param("short_id")
 	submissionShortID := c.Param("submission_short_id")
+
+	assignment, err := ctrl.assignmentRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil || assignment == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "assignment not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, assignment.BatchShortID) {
+		return
+	}
 
 	var input models.GradeSubmissionInput
 	if err := c.ShouldBindJSON(&input); err != nil {

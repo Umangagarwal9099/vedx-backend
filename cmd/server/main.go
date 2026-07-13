@@ -11,6 +11,7 @@ import (
 
 	"github.com/joho/godotenv"
 	"github.com/umangagarwal/vedx-backend/config"
+	"github.com/umangagarwal/vedx-backend/controller"
 	"github.com/umangagarwal/vedx-backend/db"
 	"github.com/umangagarwal/vedx-backend/docs"
 	"github.com/umangagarwal/vedx-backend/repository"
@@ -94,6 +95,28 @@ func main() {
 		repository.NewUserRepository(pool),
 		emailSvc,
 		cfg.App.Timezone,
+	)
+
+	// Background: remind students shortly before a scheduled exam starts.
+	go scheduler.RunExamStartReminders(
+		reminderCtx,
+		repository.NewAssessmentRepository(pool),
+		repository.NewBatchRepository(pool),
+		repository.NewNotificationRepository(pool),
+	)
+
+	// Background: force-submit exam attempts whose deadline has passed —
+	// the server-side enforcement that makes auto_submit/duration actually
+	// end an exam, instead of relying on the student's browser to call submit.
+	go scheduler.RunExamAttemptSweep(
+		reminderCtx,
+		controller.NewExamAttemptController(
+			repository.NewExamAttemptRepository(pool),
+			repository.NewAssessmentRepository(pool),
+			repository.NewQuestionBankRepository(pool),
+			repository.NewBatchRepository(pool),
+			repository.NewNotificationRepository(pool),
+		),
 	)
 
 	r := router.New(pool, cfg)

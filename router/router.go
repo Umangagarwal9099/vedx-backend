@@ -71,7 +71,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	resourceCtrl         := controller.NewResourceController(resourceRepo)
 	projectCtrl          := controller.NewProjectController(projectRepo, batchRepo, notificationRepo)
 	questionBankCtrl     := controller.NewQuestionBankController(questionBankRepo)
-	examAttemptCtrl      := controller.NewExamAttemptController(examAttemptRepo, assessmentRepo, questionBankRepo)
+	examAttemptCtrl      := controller.NewExamAttemptController(examAttemptRepo, assessmentRepo, questionBankRepo, batchRepo, notificationRepo)
 
 	v1 := r.Group("/api/v1")
 	{
@@ -247,15 +247,18 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				banners.DELETE("/:short_id", adminOrAbove, bannerCtrl.Delete)
 			}
 
-			// Assessments — only super_admin / team_lead may create, edit, or delete.
+			// Assessments — mentors are the ones who actually run these for their
+			// batches, so create/edit/delete is staffOrAbove (same as Assignments/
+			// Projects/Resources), not admin-only.
 			// Also doubles as the real exam engine: question links + timed attempts.
 			assessments := protected.Group("/assessments")
 			{
-				assessments.POST("",             adminOrAbove, assessmentCtrl.Create)
+				assessments.POST("",             staffOrAbove, assessmentCtrl.Create)
 				assessments.GET("",              assessmentCtrl.GetAll)
 				assessments.GET("/:short_id",    assessmentCtrl.GetByShortID)
-				assessments.PATCH("/:short_id",  adminOrAbove, assessmentCtrl.Update)
-				assessments.DELETE("/:short_id", adminOrAbove, assessmentCtrl.Delete)
+				assessments.PATCH("/:short_id",  staffOrAbove, assessmentCtrl.Update)
+				assessments.DELETE("/:short_id", staffOrAbove, assessmentCtrl.Delete)
+				assessments.POST("/:short_id/cancel", staffOrAbove, examAttemptCtrl.CancelAssessment)
 
 				// Question links — attach/reorder/detach bank questions on an assessment
 				assessments.POST("/:short_id/questions",                            staffOrAbove, assessmentCtrl.AttachQuestion)
@@ -271,6 +274,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				assessments.POST("/:short_id/attempts/:attempt_short_id/answers",   examAttemptCtrl.SubmitAnswer)
 				assessments.POST("/:short_id/attempts/:attempt_short_id/submit",    examAttemptCtrl.SubmitAttempt)
 				assessments.PATCH("/:short_id/attempts/:attempt_short_id/answers/:question_short_id/grade", staffOrAbove, examAttemptCtrl.GradeAnswer)
+				assessments.POST("/:short_id/reattempts", staffOrAbove, examAttemptCtrl.GrantReattempt)
 			}
 
 			// Question bank — private/course/global visibility; staff manage, everyone reads what they can see

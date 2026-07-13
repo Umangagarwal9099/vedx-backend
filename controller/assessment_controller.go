@@ -163,6 +163,9 @@ func (ctrl *AssessmentController) GetByShortID(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "assessment not found"})
 		return
 	}
+	if !checkBatchAccess(c, ctrl.batchRepo, a.BatchShortID) {
+		return
+	}
 	c.JSON(http.StatusOK, a)
 }
 
@@ -183,6 +186,19 @@ func (ctrl *AssessmentController) GetByShortID(c *gin.Context) {
 //	@Router			/assessments/{short_id} [patch]
 func (ctrl *AssessmentController) Update(c *gin.Context) {
 	shortID := c.Param("short_id")
+
+	existing, err := ctrl.assessmentRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch assessment"})
+		return
+	}
+	if existing == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "assessment not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, existing.BatchShortID) {
+		return
+	}
 
 	var input models.UpdateAssessmentInput
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -226,6 +242,19 @@ func (ctrl *AssessmentController) Update(c *gin.Context) {
 //	@Router			/assessments/{short_id} [delete]
 func (ctrl *AssessmentController) Delete(c *gin.Context) {
 	shortID := c.Param("short_id")
+
+	existing, err := ctrl.assessmentRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch assessment"})
+		return
+	}
+	if existing == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "assessment not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, existing.BatchShortID) {
+		return
+	}
 
 	if err := ctrl.assessmentRepo.Delete(c.Request.Context(), shortID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

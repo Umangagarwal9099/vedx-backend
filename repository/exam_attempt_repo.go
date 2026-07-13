@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -23,7 +24,7 @@ func NewExamAttemptRepository(pool *pgxpool.Pool) *ExamAttemptRepository {
 const attemptBaseSelect = `
 	SELECT ea.id, ea.short_id, a.short_id,
 	       ea.student_id, CONCAT(u.first_name, ' ', u.last_name),
-	       ea.attempt_number, ea.started_at, ea.submitted_at, ea.auto_submitted,
+	       ea.attempt_number, ea.started_at, ea.ends_at, ea.submitted_at, ea.auto_submitted,
 	       ea.status::TEXT, ea.total_score, ea.max_score, ea.passed
 	FROM exam_attempts ea
 	JOIN assessments a ON ea.assessment_id = a.id
@@ -34,7 +35,7 @@ func scanAttempt(row pgx.Row) (models.ExamAttempt, error) {
 	err := row.Scan(
 		&a.ID, &a.ShortID, &a.AssessmentShortID,
 		&a.StudentID, &a.StudentName,
-		&a.AttemptNumber, &a.StartedAt, &a.SubmittedAt, &a.AutoSubmitted,
+		&a.AttemptNumber, &a.StartedAt, &a.EndsAt, &a.SubmittedAt, &a.AutoSubmitted,
 		&a.Status, &a.TotalScore, &a.MaxScore, &a.Passed,
 	)
 	return a, err
@@ -49,7 +50,7 @@ func (r *ExamAttemptRepository) FindInProgressAttempt(ctx context.Context, asses
 	return &a, err
 }
 
-func (r *ExamAttemptRepository) CreateAttempt(ctx context.Context, assessmentShortID, studentID string, attemptNumber, maxScore int, questionOrder []string) (*models.ExamAttempt, error) {
+func (r *ExamAttemptRepository) CreateAttempt(ctx context.Context, assessmentShortID, studentID string, attemptNumber, maxScore int, questionOrder []string, startedAt time.Time, endsAt *time.Time) (*models.ExamAttempt, error) {
 	for attempt := 0; attempt < 3; attempt++ {
 		shortID := util.GenerateShortID()
 
@@ -57,14 +58,14 @@ func (r *ExamAttemptRepository) CreateAttempt(ctx context.Context, assessmentSho
 			WITH ins AS (
 				INSERT INTO exam_attempts (
 					short_id, assessment_id, student_id, attempt_number,
-					started_at, status, max_score, question_order
+					started_at, ends_at, status, max_score, question_order
 				)
-				SELECT $1, a.id, $2, $3, NOW(), 'in_progress', $4, $5
-				FROM assessments a WHERE a.short_id = $6 AND a.deleted_at IS NULL
+				SELECT $1, a.id, $2, $3, $4, $5, 'in_progress', $6, $7
+				FROM assessments a WHERE a.short_id = $8 AND a.deleted_at IS NULL
 				RETURNING *
 			)
 			%s WHERE ea.id = (SELECT id FROM ins)`, attemptBaseSelect),
-			shortID, studentID, attemptNumber, maxScore, questionOrder, assessmentShortID,
+			shortID, studentID, attemptNumber, startedAt, endsAt, maxScore, questionOrder, assessmentShortID,
 		))
 		if err == nil {
 			return &a, nil
@@ -138,6 +139,79 @@ func (r *ExamAttemptRepository) FindAllAttempts(ctx context.Context, assessmentS
 		out = append(out, a)
 	}
 	return out, rows.Err()
+}
+
+// FindExpiredInProgress returns every attempt still "in_progress" whose
+// computed deadline has already passed — the set the auto-submit sweep acts on.
+func (r *ExamAttemptRepository) FindExpiredInProgress(ctx context.Context) ([]models.ExamAttempt, error) {
+	q := attemptBaseSelect + " WHERE ea.status = 'in_progress' AND ea.ends_at IS NOT NULL AND ea.ends_at < NOW()"
+	rows, err := r.pool.Query(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.ExamAttempt
+	for rows.Next() {
+		a, err := scanAttempt(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// CancelAssessmentAttempts flips every in-progress attempt at an assessment to
+// "cancelled" — used when an admin/mentor cancels the assessment itself.
+func (r *ExamAttemptRepository) CancelAssessmentAttempts(ctx context.Context, assessmentShortID string) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE exam_attempts SET status = 'cancelled', updated_at = NOW()
+		WHERE status = 'in_progress'
+		  AND assessment_id = (SELECT id FROM assessments WHERE short_id = $1)`,
+		assessmentShortID,
+	)
+	return err
+}
+
+// CountReattemptGrants returns how many extra attempts have been granted to a
+// student for an assessment — added on top of the assessment's max_attempts.
+func (r *ExamAttemptRepository) CountReattemptGrants(ctx context.Context, assessmentShortID, studentID string) (int, error) {
+	var n int
+	err := r.pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM exam_reattempt_grants g
+		JOIN assessments a ON g.assessment_id = a.id
+		WHERE a.short_id = $1 AND g.student_id = $2`,
+		assessmentShortID, studentID,
+	).Scan(&n)
+	return n, err
+}
+
+// CreateReattemptGrant records a granted reattempt. Append-only — it never
+// touches the student's past attempt rows.
+func (r *ExamAttemptRepository) CreateReattemptGrant(ctx context.Context, assessmentShortID, studentID, grantedBy, reason string, newAttemptNumber int) (*models.ReattemptGrant, error) {
+	for attempt := 0; attempt < 3; attempt++ {
+		shortID := util.GenerateShortID()
+		var g models.ReattemptGrant
+		err := r.pool.QueryRow(ctx, `
+			INSERT INTO exam_reattempt_grants (
+				short_id, assessment_id, student_id, granted_by, reason, new_attempt_number
+			)
+			SELECT $1, a.id, $2, $3, NULLIF($4,''), $5
+			FROM assessments a WHERE a.short_id = $6 AND a.deleted_at IS NULL
+			RETURNING short_id, $6, student_id, granted_by, COALESCE(reason,''), new_attempt_number, created_at`,
+			shortID, studentID, grantedBy, reason, newAttemptNumber, assessmentShortID,
+		).Scan(&g.ShortID, &g.AssessmentShortID, &g.StudentID, &g.GrantedBy, &g.Reason, &g.NewAttemptNumber, &g.CreatedAt)
+		if err == nil {
+			return &g, nil
+		}
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			continue
+		}
+		return nil, fmt.Errorf("insert reattempt grant: %w", err)
+	}
+	return nil, fmt.Errorf("could not generate a unique short ID after 3 attempts")
 }
 
 func (r *ExamAttemptRepository) MarkSubmitted(ctx context.Context, attemptShortID string, autoSubmitted bool) error {

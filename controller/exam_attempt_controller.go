@@ -1,8 +1,11 @@
 package controller
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"hash/fnv"
+	"log"
 	"math/rand"
 	"net/http"
 	"sort"
@@ -19,10 +22,35 @@ type ExamAttemptController struct {
 	attemptRepo      *repository.ExamAttemptRepository
 	assessmentRepo   *repository.AssessmentRepository
 	questionBankRepo *repository.QuestionBankRepository
+	batchRepo        *repository.BatchRepository
+	notificationRepo *repository.NotificationRepository
 }
 
-func NewExamAttemptController(attemptRepo *repository.ExamAttemptRepository, assessmentRepo *repository.AssessmentRepository, questionBankRepo *repository.QuestionBankRepository) *ExamAttemptController {
-	return &ExamAttemptController{attemptRepo: attemptRepo, assessmentRepo: assessmentRepo, questionBankRepo: questionBankRepo}
+func NewExamAttemptController(attemptRepo *repository.ExamAttemptRepository, assessmentRepo *repository.AssessmentRepository, questionBankRepo *repository.QuestionBankRepository, batchRepo *repository.BatchRepository, notificationRepo *repository.NotificationRepository) *ExamAttemptController {
+	return &ExamAttemptController{attemptRepo: attemptRepo, assessmentRepo: assessmentRepo, questionBankRepo: questionBankRepo, batchRepo: batchRepo, notificationRepo: notificationRepo}
+}
+
+// computeEndsAt derives an attempt's hard deadline: the earlier of the
+// assessment's own end_at and startedAt+duration_minutes. Either bound may be
+// absent (static/untimed assessments) — if both are absent there's no
+// deadline, and the attempt is never auto-submitted.
+func computeEndsAt(startedAt time.Time, assessment *models.Assessment) *time.Time {
+	var durationEnd *time.Time
+	if assessment.DurationMinutes != nil && *assessment.DurationMinutes > 0 {
+		t := startedAt.Add(time.Duration(*assessment.DurationMinutes) * time.Minute)
+		durationEnd = &t
+	}
+	switch {
+	case assessment.EndAt != nil && durationEnd != nil:
+		if assessment.EndAt.Before(*durationEnd) {
+			return assessment.EndAt
+		}
+		return durationEnd
+	case assessment.EndAt != nil:
+		return assessment.EndAt
+	default:
+		return durationEnd
+	}
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -170,6 +198,11 @@ func (ctrl *ExamAttemptController) StartAttempt(c *gin.Context) {
 		return
 	}
 
+	if assessment.CancelledAt != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "this assessment has been cancelled"})
+		return
+	}
+
 	now := time.Now()
 	if assessment.StartAt != nil && now.Before(*assessment.StartAt) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "this assessment has not started yet"})
@@ -196,7 +229,15 @@ func (ctrl *ExamAttemptController) StartAttempt(c *gin.Context) {
 			hasPassed = true
 		}
 	}
-	if hasPassed && !assessment.AllowAttemptsAfterPassing {
+
+	grantCount, err := ctrl.attemptRepo.CountReattemptGrants(c.Request.Context(), assessmentShortID, studentID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not check reattempt grants"})
+		return
+	}
+	// A granted reattempt is an explicit staff override — it lifts the
+	// already-passed block and extends the attempt ceiling by one each.
+	if hasPassed && !assessment.AllowAttemptsAfterPassing && grantCount == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "you've already passed this assessment"})
 		return
 	}
@@ -204,6 +245,7 @@ func (ctrl *ExamAttemptController) StartAttempt(c *gin.Context) {
 	if maxAttempts <= 0 {
 		maxAttempts = 1
 	}
+	maxAttempts += grantCount
 	if len(pastAttempts) >= maxAttempts {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "maximum attempts reached"})
 		return
@@ -229,7 +271,8 @@ func (ctrl *ExamAttemptController) StartAttempt(c *gin.Context) {
 		shuffleStrings(order)
 	}
 
-	attempt, err := ctrl.attemptRepo.CreateAttempt(c.Request.Context(), assessmentShortID, studentID, len(pastAttempts)+1, maxScore, order)
+	endsAt := computeEndsAt(now, assessment)
+	attempt, err := ctrl.attemptRepo.CreateAttempt(c.Request.Context(), assessmentShortID, studentID, len(pastAttempts)+1, maxScore, order, now, endsAt)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not start attempt: " + err.Error()})
 		return
@@ -293,6 +336,20 @@ func (ctrl *ExamAttemptController) respondAttemptDetail(c *gin.Context, attempt 
 func (ctrl *ExamAttemptController) SubmitAnswer(c *gin.Context) {
 	attemptShortID := c.Param("attempt_short_id")
 
+	attempt, err := ctrl.attemptRepo.FindAttemptByShortID(c.Request.Context(), attemptShortID)
+	if err != nil || attempt == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "attempt not found"})
+		return
+	}
+	if attempt.Status != "in_progress" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "attempt is no longer in progress"})
+		return
+	}
+	if attempt.EndsAt != nil && time.Now().After(*attempt.EndsAt) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "time is up for this attempt"})
+		return
+	}
+
 	var input models.SubmitAnswerInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -342,7 +399,7 @@ func (ctrl *ExamAttemptController) SubmitAttempt(c *gin.Context) {
 		// already submitted — fall through to (re)grade idempotently
 	}
 
-	if err := ctrl.gradeObjectiveQuestions(c, attempt, assessment); err != nil {
+	if err := ctrl.GradeObjectiveQuestions(c.Request.Context(), attempt, assessment); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not grade attempt: " + err.Error()})
 		return
 	}
@@ -355,12 +412,17 @@ func (ctrl *ExamAttemptController) SubmitAttempt(c *gin.Context) {
 	ctrl.respondAttemptDetail(c, updated, false)
 }
 
-func (ctrl *ExamAttemptController) gradeObjectiveQuestions(c *gin.Context, attempt *models.ExamAttempt, assessment *models.Assessment) error {
-	questions, err := ctrl.questionBankRepo.GetQuestions(c.Request.Context(), attempt.AssessmentShortID)
+// GradeObjectiveQuestions auto-grades every objective answer in an attempt and,
+// if there are no manual (short_answer/descriptive/coding) questions, finalizes
+// the attempt's score and pass/fail immediately. Shared by the student-facing
+// SubmitAttempt handler and the auto-submit sweep (scheduler/exam_attempt_sweep.go),
+// which is why it takes a plain context.Context rather than a *gin.Context.
+func (ctrl *ExamAttemptController) GradeObjectiveQuestions(ctx context.Context, attempt *models.ExamAttempt, assessment *models.Assessment) error {
+	questions, err := ctrl.questionBankRepo.GetQuestions(ctx, attempt.AssessmentShortID)
 	if err != nil {
 		return err
 	}
-	answers, err := ctrl.attemptRepo.GetAnswers(c.Request.Context(), attempt.ShortID)
+	answers, err := ctrl.attemptRepo.GetAnswers(ctx, attempt.ShortID)
 	if err != nil {
 		return err
 	}
@@ -377,7 +439,7 @@ func (ctrl *ExamAttemptController) gradeObjectiveQuestions(c *gin.Context, attem
 		}
 		ans := answerByQuestion[q.ShortID] // zero value if unanswered — treated as incorrect/unattempted
 		isCorrect, marks := gradeObjectiveAnswer(q, ans, assessment.NegativeMarking)
-		if err := ctrl.attemptRepo.SetAnswerGrade(c.Request.Context(), attempt.ShortID, q.ShortID, &isCorrect, marks, ""); err != nil {
+		if err := ctrl.attemptRepo.SetAnswerGrade(ctx, attempt.ShortID, q.ShortID, &isCorrect, marks, ""); err != nil {
 			return err
 		}
 	}
@@ -386,12 +448,12 @@ func (ctrl *ExamAttemptController) gradeObjectiveQuestions(c *gin.Context, attem
 		return nil // leave status "submitted" — pending manual grading
 	}
 
-	total, err := ctrl.attemptRepo.SumMarks(c.Request.Context(), attempt.ShortID)
+	total, err := ctrl.attemptRepo.SumMarks(ctx, attempt.ShortID)
 	if err != nil {
 		return err
 	}
 	passed := attempt.MaxScore > 0 && float64(total)/float64(attempt.MaxScore)*100 >= assessment.PassingPercentage
-	return ctrl.attemptRepo.FinalizeAttempt(c.Request.Context(), attempt.ShortID, total, passed)
+	return ctrl.attemptRepo.FinalizeAttempt(ctx, attempt.ShortID, total, passed)
 }
 
 // GetMyAttempts godoc
@@ -460,6 +522,16 @@ func (ctrl *ExamAttemptController) GetAttempt(c *gin.Context) {
 //	@Router			/assessments/{short_id}/attempts [get]
 func (ctrl *ExamAttemptController) GetAllAttempts(c *gin.Context) {
 	assessmentShortID := c.Param("short_id")
+
+	assessment, err := ctrl.assessmentRepo.FindByShortID(c.Request.Context(), assessmentShortID)
+	if err != nil || assessment == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "assessment not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, assessment.BatchShortID) {
+		return
+	}
+
 	attempts, err := ctrl.attemptRepo.FindAllAttempts(c.Request.Context(), assessmentShortID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch attempts"})
@@ -491,6 +563,20 @@ func (ctrl *ExamAttemptController) GradeAnswer(c *gin.Context) {
 	attemptShortID := c.Param("attempt_short_id")
 	questionShortID := c.Param("question_short_id")
 
+	attempt, err := ctrl.attemptRepo.FindAttemptByShortID(c.Request.Context(), attemptShortID)
+	if err != nil || attempt == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "attempt not found"})
+		return
+	}
+	assessment, err := ctrl.assessmentRepo.FindByShortID(c.Request.Context(), attempt.AssessmentShortID)
+	if err != nil || assessment == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not resolve assessment"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, assessment.BatchShortID) {
+		return
+	}
+
 	var input models.GradeAnswerInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -516,11 +602,201 @@ func (ctrl *ExamAttemptController) GradeAnswer(c *gin.Context) {
 				total, err := ctrl.attemptRepo.SumMarks(c.Request.Context(), attemptShortID)
 				if err == nil {
 					passed := attempt.MaxScore > 0 && float64(total)/float64(attempt.MaxScore)*100 >= assessment.PassingPercentage
-					_ = ctrl.attemptRepo.FinalizeAttempt(c.Request.Context(), attemptShortID, total, passed)
+					if err := ctrl.attemptRepo.FinalizeAttempt(c.Request.Context(), attemptShortID, total, passed); err == nil {
+						ctrl.notifyResultReady(c.Request.Context(), attempt, assessment, c.GetString("user_id"))
+					}
 				}
 			}
 		}
 	}
 
+	c.Status(http.StatusNoContent)
+}
+
+// ── Notifications ────────────────────────────────────────────────────────────
+// ExamAttemptController previously had no notification triggers at all — these
+// four cover the attempt-lifecycle events the gap analysis flagged as missing:
+// auto-submitted, result ready, reattempt granted, exam cancelled.
+
+func (ctrl *ExamAttemptController) notifyResultReady(ctx context.Context, attempt *models.ExamAttempt, assessment *models.Assessment, actorID string) {
+	if err := ctrl.notificationRepo.NotifyUsers(ctx,
+		"Result ready: "+assessment.Name,
+		fmt.Sprintf("Your result for %q is ready.", assessment.Name),
+		"assessment_result", "assessment", assessment.ShortID, actorID,
+		[]string{attempt.StudentID},
+	); err != nil {
+		log.Printf("notify result ready: %v", err)
+	}
+}
+
+func (ctrl *ExamAttemptController) notifyAutoSubmitted(ctx context.Context, attempt *models.ExamAttempt, assessment *models.Assessment) {
+	if err := ctrl.notificationRepo.NotifyUsers(ctx,
+		"Time's up: "+assessment.Name,
+		fmt.Sprintf("Your time for %q ran out — your answers were submitted automatically.", assessment.Name),
+		"assessment_auto_submit", "assessment", assessment.ShortID, attempt.StudentID,
+		[]string{attempt.StudentID},
+	); err != nil {
+		log.Printf("notify auto-submitted: %v", err)
+	}
+}
+
+func (ctrl *ExamAttemptController) notifyReattemptGranted(ctx context.Context, assessment *models.Assessment, studentID, grantedBy string) {
+	if err := ctrl.notificationRepo.NotifyUsers(ctx,
+		"Reattempt granted: "+assessment.Name,
+		fmt.Sprintf("You've been granted another attempt at %q.", assessment.Name),
+		"assessment_reattempt", "assessment", assessment.ShortID, grantedBy,
+		[]string{studentID},
+	); err != nil {
+		log.Printf("notify reattempt granted: %v", err)
+	}
+}
+
+func (ctrl *ExamAttemptController) notifyCancelled(c *gin.Context, assessment *models.Assessment, actorID string) {
+	title := "Cancelled: " + assessment.Name
+	message := fmt.Sprintf("%q has been cancelled.", assessment.Name)
+
+	if assessment.BatchShortID != "" {
+		students, err := ctrl.batchRepo.GetStudents(c.Request.Context(), assessment.BatchShortID)
+		if err != nil {
+			log.Printf("fetch batch students for cancel notify: %v", err)
+		}
+		recipients := make([]string, 0, len(students))
+		for _, s := range students {
+			recipients = append(recipients, s.UserID)
+		}
+		if err := ctrl.notificationRepo.NotifyUsers(c.Request.Context(), title, message, "assessment_cancelled", "assessment", assessment.ShortID, actorID, recipients); err != nil {
+			log.Printf("notify cancelled (students): %v", err)
+		}
+		return
+	}
+	if err := ctrl.notificationRepo.NotifyRoles(c.Request.Context(), title, message, "assessment_cancelled", "assessment", assessment.ShortID, actorID, []string{"student"}); err != nil {
+		log.Printf("notify cancelled (broadcast): %v", err)
+	}
+}
+
+// ── Auto-submit sweep ────────────────────────────────────────────────────────
+
+// AutoSubmitExpired force-submits every attempt whose deadline has passed and
+// grades its objective answers, exactly as a manual submit would. Called on a
+// ticker by scheduler/exam_attempt_sweep.go — this is the piece that makes
+// auto_submit / duration_minutes actually enforce a deadline server-side,
+// instead of relying on the student's browser to call submit in time.
+func (ctrl *ExamAttemptController) AutoSubmitExpired(ctx context.Context) (int, error) {
+	expired, err := ctrl.attemptRepo.FindExpiredInProgress(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("find expired attempts: %w", err)
+	}
+
+	processed := 0
+	for i := range expired {
+		attempt := &expired[i]
+		if err := ctrl.attemptRepo.MarkSubmitted(ctx, attempt.ShortID, true); err != nil {
+			log.Printf("auto-submit: mark submitted %s: %v", attempt.ShortID, err)
+			continue
+		}
+		assessment, err := ctrl.assessmentRepo.FindByShortID(ctx, attempt.AssessmentShortID)
+		if err != nil || assessment == nil {
+			log.Printf("auto-submit: resolve assessment for %s: %v", attempt.ShortID, err)
+			continue
+		}
+		if err := ctrl.GradeObjectiveQuestions(ctx, attempt, assessment); err != nil {
+			log.Printf("auto-submit: grade %s: %v", attempt.ShortID, err)
+		}
+		ctrl.notifyAutoSubmitted(ctx, attempt, assessment)
+		processed++
+	}
+	return processed, nil
+}
+
+// ── Reattempt & cancel ───────────────────────────────────────────────────────
+
+// GrantReattempt godoc
+//
+//	@Summary		Grant a reattempt
+//	@Description	Grants a student one extra attempt beyond the assessment's max_attempts, or lets them retry after already passing. Previous attempts are untouched — this only raises the ceiling by one and records who granted it and why. Restricted to super_admin / team_lead / mentor (of a batch they manage).
+//	@Tags			exam-attempts
+//	@Accept			json
+//	@Produce		json
+//	@Param			short_id	path		string						true	"Assessment short ID"
+//	@Param			body		body		models.GrantReattemptInput	true	"Student and reason"
+//	@Success		201			{object}	models.ReattemptGrant
+//	@Failure		400			{object}	map[string]string	"Validation error"
+//	@Failure		404			{object}	map[string]string	"Assessment not found"
+//	@Failure		500			{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/assessments/{short_id}/reattempts [post]
+func (ctrl *ExamAttemptController) GrantReattempt(c *gin.Context) {
+	assessmentShortID := c.Param("short_id")
+
+	assessment, err := ctrl.assessmentRepo.FindByShortID(c.Request.Context(), assessmentShortID)
+	if err != nil || assessment == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "assessment not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, assessment.BatchShortID) {
+		return
+	}
+
+	var input models.GrantReattemptInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	pastAttempts, err := ctrl.attemptRepo.FindMyAttempts(c.Request.Context(), assessmentShortID, input.StudentID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not check previous attempts"})
+		return
+	}
+
+	grantedBy := c.GetString("user_id")
+	grant, err := ctrl.attemptRepo.CreateReattemptGrant(c.Request.Context(), assessmentShortID, input.StudentID, grantedBy, input.Reason, len(pastAttempts)+1)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not grant reattempt: " + err.Error()})
+		return
+	}
+
+	ctrl.notifyReattemptGranted(c.Request.Context(), assessment, input.StudentID, grantedBy)
+	c.JSON(http.StatusCreated, grant)
+}
+
+// CancelAssessment godoc
+//
+//	@Summary		Cancel an assessment
+//	@Description	Cancels an assessment — blocks any new attempt and marks every currently in-progress attempt as cancelled. Existing submitted/evaluated attempts are untouched. Restricted to super_admin / team_lead / mentor (of a batch they manage).
+//	@Tags			assessments
+//	@Produce		json
+//	@Param			short_id	path	string	true	"Assessment short ID"
+//	@Success		204			"No Content"
+//	@Failure		404			{object}	map[string]string	"Assessment not found"
+//	@Failure		500			{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/assessments/{short_id}/cancel [post]
+func (ctrl *ExamAttemptController) CancelAssessment(c *gin.Context) {
+	assessmentShortID := c.Param("short_id")
+
+	assessment, err := ctrl.assessmentRepo.FindByShortID(c.Request.Context(), assessmentShortID)
+	if err != nil || assessment == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "assessment not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, assessment.BatchShortID) {
+		return
+	}
+
+	actorID := c.GetString("user_id")
+	if err := ctrl.assessmentRepo.Cancel(c.Request.Context(), assessmentShortID, actorID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "already cancelled, or assessment not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not cancel assessment"})
+		return
+	}
+	if err := ctrl.attemptRepo.CancelAssessmentAttempts(c.Request.Context(), assessmentShortID); err != nil {
+		log.Printf("cancel in-progress attempts for %s: %v", assessmentShortID, err)
+	}
+
+	ctrl.notifyCancelled(c, assessment, actorID)
 	c.Status(http.StatusNoContent)
 }

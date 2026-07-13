@@ -100,8 +100,11 @@ func (r *QuestionBankRepository) Create(ctx context.Context, in models.CreateQue
 		}
 
 		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			continue
+		if errors.As(err, &pgErr) {
+			if pgErr.Code == "23505" {
+				continue
+			}
+			return nil, fmt.Errorf("insert question: %s (column=%s, detail=%s)", pgErr.Message, pgErr.ColumnName, pgErr.Detail)
 		}
 		return nil, fmt.Errorf("insert question: %w", err)
 	}
