@@ -174,6 +174,10 @@ definitions:
         type: string
       batch_short_id:
         type: string
+      cancelled_at:
+        type: string
+      cancelled_by:
+        type: string
       created_at:
         type: string
       created_by:
@@ -346,6 +350,15 @@ definitions:
     properties:
       assignment_short_id:
         type: string
+      assignment_title:
+        description: |-
+          AssignmentTitle/BatchShortID/BatchNumber are only populated by the
+          cross-assignment workspace listing (FindAllSubmissionsForMentor).
+        type: string
+      batch_number:
+        type: string
+      batch_short_id:
+        type: string
       content:
         type: string
       created_at:
@@ -381,6 +394,25 @@ definitions:
       updated_at:
         type: string
     type: object
+  models.AtRiskStudent:
+    properties:
+      attendance_percentage:
+        type: number
+      current_streak:
+        type: integer
+      days_inactive:
+        type: integer
+      final_score:
+        type: number
+      reasons:
+        items:
+          type: string
+        type: array
+      student_id:
+        type: string
+      student_name:
+        type: string
+    type: object
   models.AttachQuestionInput:
     properties:
       marks_override:
@@ -397,12 +429,23 @@ definitions:
     type: object
   models.AttemptDetail:
     properties:
+      assessment_name:
+        description: |-
+          AssessmentName/BatchShortID/BatchNumber are only populated by the
+          cross-assessment workspace listing (FindAllAttemptsForMentor).
+        type: string
       assessment_short_id:
         type: string
       attempt_number:
         type: integer
       auto_submitted:
         type: boolean
+      batch_number:
+        type: string
+      batch_short_id:
+        type: string
+      ends_at:
+        type: string
       id:
         type: string
       max_score:
@@ -418,7 +461,7 @@ definitions:
       started_at:
         type: string
       status:
-        description: in_progress | submitted | evaluated
+        description: in_progress | submitted | evaluated | cancelled
         type: string
       student_id:
         type: string
@@ -455,6 +498,55 @@ definitions:
         type: string
       question_type:
         type: string
+      short_id:
+        type: string
+    type: object
+  models.AttendanceRecordInput:
+    properties:
+      notes:
+        type: string
+      status:
+        enum:
+        - present
+        - absent
+        - late
+        - excused
+        type: string
+      student_id:
+        type: string
+    required:
+    - status
+    - student_id
+    type: object
+  models.AuditLogEntry:
+    properties:
+      action:
+        type: string
+      actor_id:
+        type: string
+      actor_name:
+        type: string
+      batch_id:
+        type: string
+      batch_number:
+        type: string
+      batch_short_id:
+        type: string
+      created_at:
+        type: string
+      entity_id:
+        type: string
+      entity_label:
+        type: string
+      entity_short_id:
+        type: string
+      entity_type:
+        type: string
+      id:
+        type: string
+      metadata:
+        additionalProperties: true
+        type: object
       short_id:
         type: string
     type: object
@@ -517,11 +609,22 @@ definitions:
         type: string
       is_active:
         type: boolean
+      max_students:
+        type: integer
       module:
         type: string
+      score_weight_assignments:
+        type: integer
+      score_weight_exams:
+        type: integer
+      score_weight_projects:
+        type: integer
       short_id:
         type: string
       start_date:
+        type: string
+      status:
+        description: draft | upcoming | active | completed | cancelled | archived
         type: string
       student_count:
         type: integer
@@ -573,6 +676,80 @@ definitions:
         type: string
       updated_at:
         type: string
+    type: object
+  models.BulkMarkAttendanceInput:
+    properties:
+      records:
+        items:
+          $ref: '#/definitions/models.AttendanceRecordInput'
+        type: array
+    required:
+    - records
+    type: object
+  models.CategoryScore:
+    properties:
+      earned_marks:
+        type: number
+      max_marks:
+        type: number
+      percentage:
+        type: number
+    type: object
+  models.Certificate:
+    properties:
+      batch_id:
+        type: string
+      batch_number:
+        type: string
+      batch_short_id:
+        type: string
+      certificate_number:
+        type: string
+      course_id:
+        type: string
+      course_name:
+        type: string
+      created_at:
+        type: string
+      final_rank:
+        type: integer
+      final_score:
+        type: number
+      id:
+        type: string
+      issued_at:
+        type: string
+      issued_by:
+        type: string
+      revoked_at:
+        type: string
+      short_id:
+        type: string
+      student_id:
+        type: string
+      student_name:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.CertificateVerification:
+    properties:
+      batch_number:
+        type: string
+      certificate_number:
+        type: string
+      course_name:
+        type: string
+      final_rank:
+        type: integer
+      final_score:
+        type: number
+      issued_at:
+        type: string
+      student_name:
+        type: string
+      valid:
+        type: boolean
     type: object
   models.CodingExample:
     properties:
@@ -943,11 +1120,24 @@ definitions:
       end_date:
         example: "2024-06-15"
         type: string
+      max_students:
+        example: 30
+        type: integer
       module:
         example: Module 1
         type: string
       start_date:
         example: "2024-01-15"
+        type: string
+      status:
+        enum:
+        - draft
+        - upcoming
+        - active
+        - completed
+        - cancelled
+        - archived
+        example: draft
         type: string
       student_ids:
         example:
@@ -1587,6 +1777,51 @@ definitions:
     required:
     - name
     type: object
+  models.DashboardSession:
+    properties:
+      batch_number:
+        type: string
+      end_time:
+        type: string
+      mentor_name:
+        type: string
+      name:
+        type: string
+      present_count:
+        type: integer
+      short_id:
+        type: string
+      start_time:
+        type: string
+      total_count:
+        type: integer
+    type: object
+  models.DashboardStats:
+    properties:
+      active_batches:
+        type: integer
+      active_students:
+        type: integer
+      avg_attendance_rate_7d:
+        type: number
+      certificates_issued_30d:
+        type: integer
+      enrollment_trend_30d:
+        items:
+          $ref: '#/definitions/models.EnrollmentTrendPoint'
+        type: array
+      sessions_today:
+        items:
+          $ref: '#/definitions/models.DashboardSession'
+        type: array
+    type: object
+  models.EnrollmentTrendPoint:
+    properties:
+      count:
+        type: integer
+      date:
+        type: string
+    type: object
   models.Event:
     properties:
       categories:
@@ -1632,12 +1867,23 @@ definitions:
     type: object
   models.ExamAttempt:
     properties:
+      assessment_name:
+        description: |-
+          AssessmentName/BatchShortID/BatchNumber are only populated by the
+          cross-assessment workspace listing (FindAllAttemptsForMentor).
+        type: string
       assessment_short_id:
         type: string
       attempt_number:
         type: integer
       auto_submitted:
         type: boolean
+      batch_number:
+        type: string
+      batch_short_id:
+        type: string
+      ends_at:
+        type: string
       id:
         type: string
       max_score:
@@ -1649,7 +1895,7 @@ definitions:
       started_at:
         type: string
       status:
-        description: in_progress | submitted | evaluated
+        description: in_progress | submitted | evaluated | cancelled
         type: string
       student_id:
         type: string
@@ -1805,11 +2051,53 @@ definitions:
     required:
     - marks
     type: object
+  models.GrantReattemptInput:
+    properties:
+      reason:
+        example: Missed the window due to a technical issue.
+        type: string
+      student_id:
+        example: use GET /assessments/{id}/attempts to find a student_id
+        type: string
+    required:
+    - student_id
+    type: object
+  models.MarkAttendanceInput:
+    properties:
+      notes:
+        type: string
+      status:
+        enum:
+        - present
+        - absent
+        - late
+        - excused
+        type: string
+    required:
+    - status
+    type: object
   models.MarkReadInput:
     properties:
       is_read:
         example: true
         type: boolean
+    type: object
+  models.MaterialSummary:
+    properties:
+      enable_downloads:
+        type: boolean
+      file_url:
+        type: string
+      is_active:
+        type: boolean
+      is_prerequisite:
+        type: boolean
+      material_name:
+        type: string
+      material_type:
+        type: string
+      short_id:
+        type: string
     type: object
   models.MaterialType:
     enum:
@@ -1867,6 +2155,15 @@ definitions:
       watch_time_minutes:
         type: integer
     type: object
+  models.ModuleScheduleEntry:
+    properties:
+      module_name:
+        type: string
+      module_short_id:
+        type: string
+      release_date:
+        type: string
+    type: object
   models.ModuleSection:
     properties:
       created_at:
@@ -1891,6 +2188,36 @@ definitions:
         type: string
       updated_at:
         type: string
+    type: object
+  models.ModuleWithSections:
+    properties:
+      is_active:
+        type: boolean
+      is_released:
+        description: |-
+          IsReleased/ReleaseDate are only populated by the batch-scoped curriculum
+          endpoint (GET /batches/{short_id}/curriculum) — nil when this struct is
+          returned by the plain course-level curriculum endpoint, which has no
+          batch context to schedule against.
+        type: boolean
+      max_view_duration:
+        type: string
+      module_branch:
+        type: string
+      module_name:
+        type: string
+      order_index:
+        type: integer
+      release_date:
+        type: string
+      sections:
+        items:
+          $ref: '#/definitions/models.SectionSummary'
+        type: array
+      short_id:
+        type: string
+      watch_time_minutes:
+        type: integer
     type: object
   models.Notification:
     properties:
@@ -1934,6 +2261,29 @@ definitions:
       title:
         type: string
       type:
+        type: string
+    type: object
+  models.ProfileDetails:
+    properties:
+      bio:
+        type: string
+      education:
+        type: string
+      github_url:
+        type: string
+      linkedin_url:
+        type: string
+      location:
+        type: string
+      phone:
+        type: string
+      skills:
+        items:
+          type: string
+        type: array
+      updated_at:
+        type: string
+      user_id:
         type: string
     type: object
   models.Project:
@@ -2083,6 +2433,10 @@ definitions:
     type: object
   models.ProjectSubmission:
     properties:
+      batch_number:
+        type: string
+      batch_short_id:
+        type: string
       content:
         type: string
       created_at:
@@ -2100,6 +2454,13 @@ definitions:
       marks:
         type: integer
       milestone_short_id:
+        type: string
+      milestone_title:
+        type: string
+      project_title:
+        description: |-
+          ProjectTitle/MilestoneTitle/BatchShortID/BatchNumber are only populated
+          by the cross-project workspace listing (FindAllSubmissionsForMentor).
         type: string
       short_id:
         type: string
@@ -2210,6 +2571,23 @@ definitions:
       text:
         type: string
     type: object
+  models.ReattemptGrant:
+    properties:
+      assessment_short_id:
+        type: string
+      created_at:
+        type: string
+      granted_by:
+        type: string
+      new_attempt_number:
+        type: integer
+      reason:
+        type: string
+      short_id:
+        type: string
+      student_id:
+        type: string
+    type: object
   models.RecordingListItem:
     properties:
       name:
@@ -2312,6 +2690,23 @@ definitions:
       updated_at:
         type: string
     type: object
+  models.SectionSummary:
+    properties:
+      is_active:
+        type: boolean
+      is_prerequisite:
+        type: boolean
+      materials:
+        items:
+          $ref: '#/definitions/models.MaterialSummary'
+        type: array
+      section_name:
+        type: string
+      short_description:
+        type: string
+      short_id:
+        type: string
+    type: object
   models.Session:
     properties:
       batch_id:
@@ -2348,8 +2743,12 @@ definitions:
         type: string
       name:
         type: string
+      recording_available_from:
+        type: string
       recording_url:
         type: string
+      recording_visible:
+        type: boolean
       send_confirmation_email:
         type: boolean
       session_date:
@@ -2380,6 +2779,68 @@ definitions:
         description: host token — stripped for students in the controller
         type: string
     type: object
+  models.SessionAttendance:
+    properties:
+      batch_id:
+        type: string
+      batch_number:
+        type: string
+      batch_short_id:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      marked_at:
+        type: string
+      marked_by:
+        type: string
+      notes:
+        type: string
+      session_date:
+        type: string
+      session_id:
+        type: string
+      session_name:
+        type: string
+      session_short_id:
+        type: string
+      short_id:
+        type: string
+      status:
+        type: string
+      student_id:
+        type: string
+      student_name:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.SessionAttendanceReport:
+    properties:
+      absent:
+        type: integer
+      attendance_percentage:
+        type: number
+      batch_number:
+        type: string
+      batch_short_id:
+        type: string
+      excused:
+        type: integer
+      late:
+        type: integer
+      present:
+        type: integer
+      session_date:
+        type: string
+      session_name:
+        type: string
+      session_short_id:
+        type: string
+      total:
+        type: integer
+    type: object
   models.SessionJoinInfo:
     properties:
       end_time:
@@ -2398,6 +2859,14 @@ definitions:
         type: string
       zoom_join_url:
         type: string
+    type: object
+  models.SetModuleScheduleInput:
+    properties:
+      release_date:
+        example: "2026-08-01"
+        type: string
+    required:
+    - release_date
     type: object
   models.StarterCode:
     additionalProperties:
@@ -2419,6 +2888,117 @@ definitions:
         type: array
       text_answer:
         type: string
+    type: object
+  models.StudentAttendanceSummary:
+    properties:
+      absent:
+        type: integer
+      attendance_percentage:
+        type: number
+      batch_id:
+        type: string
+      batch_number:
+        type: string
+      batch_short_id:
+        type: string
+      excused:
+        type: integer
+      late:
+        type: integer
+      present:
+        type: integer
+      student_id:
+        type: string
+      student_name:
+        type: string
+      total_sessions:
+        type: integer
+    type: object
+  models.StudentEnrollment:
+    properties:
+      access_end_date:
+        type: string
+      access_start_date:
+        type: string
+      batch_id:
+        type: string
+      batch_number:
+        type: string
+      batch_short_id:
+        type: string
+      completion_percentage:
+        type: number
+      course_id:
+        type: string
+      course_name:
+        type: string
+      course_short_id:
+        type: string
+      created_at:
+        type: string
+      created_by:
+        type: string
+      enrollment_date:
+        type: string
+      enrollment_type:
+        description: direct | invited | transferred
+        type: string
+      final_rank:
+        type: integer
+      final_score:
+        type: number
+      id:
+        type: string
+      is_late_enrollment:
+        type: boolean
+      short_id:
+        type: string
+      status:
+        type: string
+      student_id:
+        type: string
+      student_name:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.StudentScoreBreakdown:
+    properties:
+      assignments:
+        $ref: '#/definitions/models.CategoryScore'
+      batch_id:
+        type: string
+      batch_number:
+        type: string
+      batch_short_id:
+        type: string
+      exams:
+        $ref: '#/definitions/models.CategoryScore'
+      final_score:
+        type: number
+      projects:
+        $ref: '#/definitions/models.CategoryScore'
+      rank:
+        type: integer
+      student_id:
+        type: string
+      student_name:
+        type: string
+    type: object
+  models.StudentStreak:
+    properties:
+      current_streak:
+        type: integer
+      last_active_date:
+        type: string
+      longest_streak:
+        type: integer
+      student_id:
+        type: string
+      student_name:
+        type: string
+      total_active_days:
+        type: integer
     type: object
   models.Submission:
     properties:
@@ -2506,6 +3086,14 @@ definitions:
         type: array
     required:
     - answers
+    type: object
+  models.TransferStudentInput:
+    properties:
+      to_batch_short_id:
+        example: use GET /batches to pick a real short_id
+        type: string
+    required:
+    - to_batch_short_id
     type: object
   models.UpdateAnnouncementInput:
     properties:
@@ -2703,11 +3291,24 @@ definitions:
       is_active:
         example: false
         type: boolean
+      max_students:
+        example: 30
+        type: integer
       module:
         example: Module 2
         type: string
       start_date:
         example: "2024-02-01"
+        type: string
+      status:
+        enum:
+        - draft
+        - upcoming
+        - active
+        - completed
+        - cancelled
+        - archived
+        example: completed
         type: string
     type: object
   models.UpdateBlogInput:
@@ -2819,6 +3420,23 @@ definitions:
         type: array
       thumbnail:
         type: string
+    type: object
+  models.UpdateEnrollmentStatusInput:
+    properties:
+      status:
+        enum:
+        - invited
+        - enrolled
+        - active
+        - on_hold
+        - completed
+        - dropped
+        - transferred
+        - removed
+        example: on_hold
+        type: string
+    required:
+    - status
     type: object
   models.UpdateEventInput:
     properties:
@@ -3006,6 +3624,25 @@ definitions:
         example: Updated title
         type: string
     type: object
+  models.UpdateProfileDetailsInput:
+    properties:
+      bio:
+        type: string
+      education:
+        type: string
+      github_url:
+        type: string
+      linkedin_url:
+        type: string
+      location:
+        type: string
+      phone:
+        type: string
+      skills:
+        items:
+          type: string
+        type: array
+    type: object
   models.UpdateProjectInput:
     properties:
       allowed_submission_types:
@@ -3111,6 +3748,24 @@ definitions:
         example: https://cdn.example.com/new-file.pdf
         type: string
     type: object
+  models.UpdateScoreWeightsInput:
+    properties:
+      assignments_weight:
+        example: 40
+        maximum: 100
+        minimum: 0
+        type: integer
+      exams_weight:
+        example: 40
+        maximum: 100
+        minimum: 0
+        type: integer
+      projects_weight:
+        example: 20
+        maximum: 100
+        minimum: 0
+        type: integer
+    type: object
   models.UpdateSessionInput:
     properties:
       batch_short_id:
@@ -3140,6 +3795,12 @@ definitions:
       name:
         example: React Hooks Deep Dive — Part 2
         type: string
+      recording_available_from:
+        example: "2026-08-01T00:00:00Z"
+        type: string
+      recording_visible:
+        example: false
+        type: boolean
       send_confirmation_email:
         example: false
         type: boolean
@@ -3167,6 +3828,9 @@ definitions:
       first_name:
         example: John
         type: string
+      is_active:
+        example: false
+        type: boolean
       last_name:
         example: Doe
         type: string
@@ -3836,6 +4500,40 @@ paths:
       summary: List my attempts
       tags:
       - exam-attempts
+  /assessments/{short_id}/cancel:
+    post:
+      description: Cancels an assessment — blocks any new attempt and marks every
+        currently in-progress attempt as cancelled. Existing submitted/evaluated attempts
+        are untouched. Restricted to super_admin / team_lead / mentor (of a batch
+        they manage).
+      parameters:
+      - description: Assessment short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Assessment not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Cancel an assessment
+      tags:
+      - assessments
   /assessments/{short_id}/questions:
     get:
       description: Returns every question attached to an assessment, in display order.
@@ -3994,6 +4692,56 @@ paths:
       summary: Update attached question
       tags:
       - assessments
+  /assessments/{short_id}/reattempts:
+    post:
+      consumes:
+      - application/json
+      description: Grants a student one extra attempt beyond the assessment's max_attempts,
+        or lets them retry after already passing. Previous attempts are untouched
+        — this only raises the ceiling by one and records who granted it and why.
+        Restricted to super_admin / team_lead / mentor (of a batch they manage).
+      parameters:
+      - description: Assessment short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Student and reason
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.GrantReattemptInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.ReattemptGrant'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Assessment not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Grant a reattempt
+      tags:
+      - exam-attempts
   /assignments:
     get:
       description: Returns assignments scoped to the caller's role — students see
@@ -4337,6 +5085,79 @@ paths:
       summary: Get my submission
       tags:
       - assignments
+  /attendance/reports:
+    get:
+      description: Returns a rollup per session (across every batch, most recent first)
+        — mentors see only sessions in batches they manage; team_lead/super_admin
+        see everything. Only sessions with at least one marked record appear.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.SessionAttendanceReport'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get cross-batch attendance reports
+      tags:
+      - attendance
+  /audit-logs:
+    get:
+      description: Returns the 500 most recent audit log entries, newest first. Supports
+        optional filtering by batch_short_id, entity_type, action, and actor_id. Restricted
+        to super_admin / team_lead.
+      parameters:
+      - description: Filter by batch short ID
+        in: query
+        name: batch_short_id
+        type: string
+      - description: Filter by entity type (batch, session, assignment, ...)
+        in: query
+        name: entity_type
+        type: string
+      - description: Filter by action (create, update, delete, grade, ...)
+        in: query
+        name: action
+        type: string
+      - description: Filter by actor user ID
+        in: query
+        name: actor_id
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.AuditLogEntry'
+            type: array
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Browse the audit log
+      tags:
+      - audit-log
   /auth/login:
     post:
       consumes:
@@ -4749,6 +5570,226 @@ paths:
       summary: Update batch
       tags:
       - batches
+  /batches/{short_id}/at-risk:
+    get:
+      description: Flags students with low attendance (<60%), a low final score (<40%,
+        only once they have graded work), or no activity in 7+ days (only once the
+        batch has been running that long). Only returns students who tripped at least
+        one flag.
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.AtRiskStudent'
+            type: array
+        "404":
+          description: Batch not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a batch's at-risk students
+      tags:
+      - engagement
+  /batches/{short_id}/attendance-summary:
+    get:
+      description: Returns every enrolled student's attendance rollup (present/absent/late/excused
+        counts and percentage) across every held session of the batch.
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.StudentAttendanceSummary'
+            type: array
+        "404":
+          description: Batch not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a batch's attendance summary
+      tags:
+      - attendance
+  /batches/{short_id}/audit-log:
+    get:
+      description: Returns the 500 most recent audit log entries for one batch, newest
+        first. Restricted to super_admin / team_lead / mentor (mentor scoped to batches
+        they manage).
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.AuditLogEntry'
+            type: array
+        "404":
+          description: Batch not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a batch's audit trail
+      tags:
+      - audit-log
+  /batches/{short_id}/certificates:
+    get:
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Certificate'
+            type: array
+        "404":
+          description: Batch not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List a batch's issued certificates
+      tags:
+      - certificates
+  /batches/{short_id}/curriculum:
+    get:
+      description: Returns the batch's course curriculum, annotating every module
+        with is_released and (if scheduled) release_date. A module with no configured
+        schedule is always released. Students don't see sections/materials for a module
+        that isn't released yet.
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.ModuleWithSections'
+            type: array
+        "404":
+          description: Batch not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a batch's curriculum (with module release status)
+      tags:
+      - curriculum
+  /batches/{short_id}/leaderboard:
+    get:
+      description: Computes every enrolled student's weighted final score (assignments
+        + exams + projects, per the batch's configured weights) and rank, persists
+        it, and returns the sorted leaderboard.
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.StudentScoreBreakdown'
+            type: array
+        "404":
+          description: Batch not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a batch's leaderboard
+      tags:
+      - scores
   /batches/{short_id}/me/fees:
     get:
       description: Returns the logged-in user's own fees_paid status for a batch —
@@ -4780,6 +5821,129 @@ paths:
       summary: Get my fee-payment status for a batch
       tags:
       - batches
+  /batches/{short_id}/modules/{module_short_id}/schedule:
+    delete:
+      description: Removes a module's release schedule for this batch, reverting it
+        to "released from day one". Restricted to super_admin / team_lead / mentor.
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Module short ID
+        in: path
+        name: module_short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Batch, module, or schedule not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Unschedule a module's release for a batch
+      tags:
+      - curriculum
+    patch:
+      consumes:
+      - application/json
+      description: Sets (or updates) the date a module becomes visible to this batch's
+        students. Restricted to super_admin / team_lead / mentor.
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Module short ID
+        in: path
+        name: module_short_id
+        required: true
+        type: string
+      - description: Release date
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.SetModuleScheduleInput'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Batch or module not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Schedule a module's release for a batch
+      tags:
+      - curriculum
+  /batches/{short_id}/modules/schedule:
+    get:
+      description: Returns every module that has a configured release date for this
+        batch.
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.ModuleScheduleEntry'
+            type: array
+        "404":
+          description: Batch not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List a batch's module release schedule
+      tags:
+      - curriculum
   /batches/{short_id}/recordings:
     get:
       description: Student-facing view of every recorded session in a batch. If the
@@ -4810,6 +5974,53 @@ paths:
       summary: List a batch's session recordings
       tags:
       - sessions
+  /batches/{short_id}/score-weights:
+    patch:
+      consumes:
+      - application/json
+      description: Sets how much each category (assignments/exams/projects) contributes
+        to the batch's final score and leaderboard ranking. The three weights must
+        sum to 100. Restricted to super_admin / team_lead.
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Category weights (must sum to 100)
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateScoreWeightsInput'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Validation error or weights don't sum to 100
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Batch not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Set a batch's score weights
+      tags:
+      - scores
   /batches/{short_id}/sessions:
     get:
       description: Returns all non-deleted sessions scheduled for a batch, ordered
@@ -4874,7 +6085,9 @@ paths:
       - application/json
       description: Enroll one or more students into a batch by user ID. Only users
         with role=student are matched; students already enrolled are left unchanged.
-        Restricted to super_admin / team_lead.
+        Rejected if the batch is at capacity, or if any student already holds an active
+        enrollment in another batch of the same course. Restricted to super_admin
+        / team_lead.
       parameters:
       - description: Batch short ID
         in: path
@@ -4897,7 +6110,14 @@ paths:
               type: integer
             type: object
         "400":
-          description: Validation error
+          description: Validation error, batch full, or already active in another
+            batch of this course
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Batch not found
           schema:
             additionalProperties:
               type: string
@@ -4948,6 +6168,100 @@ paths:
       security:
       - BearerAuth: []
       summary: Remove student from batch
+      tags:
+      - batches
+  /batches/{short_id}/students/{user_id}/certificate:
+    post:
+      description: Issues (or re-issues) a completion certificate for a student in
+        a batch, snapshotting their final score/rank at issuance time. Requires the
+        student to have an enrollment record in this batch. Restricted to super_admin
+        / team_lead / mentor.
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Student user ID
+        in: path
+        name: user_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Certificate'
+        "404":
+          description: Batch not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error, or no enrollment found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Issue a certificate
+      tags:
+      - certificates
+  /batches/{short_id}/students/{user_id}/enrollment:
+    patch:
+      consumes:
+      - application/json
+      description: Changes a student's enrollment status within a batch (e.g. on_hold,
+        completed, dropped) without touching their roster membership — use DELETE
+        .../students/{user_id} to actually remove them. Restricted to super_admin
+        / team_lead / mentor.
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Student user ID (UUID)
+        in: path
+        name: user_id
+        required: true
+        type: string
+      - description: New status
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateEnrollmentStatusInput'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Batch or enrollment not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update a student's enrollment status
       tags:
       - batches
   /batches/{short_id}/students/{user_id}/fees:
@@ -5005,6 +6319,59 @@ paths:
       security:
       - BearerAuth: []
       summary: Set a student's fee-payment status
+      tags:
+      - batches
+  /batches/{short_id}/students/{user_id}/transfer:
+    post:
+      consumes:
+      - application/json
+      description: Moves a student from this batch to a different batch of the SAME
+        course (schedule conflict, batch merge, etc). Their old enrollment is marked
+        "transferred" and kept for history; a new "active" enrollment is created for
+        the destination batch. Restricted to super_admin / team_lead.
+      parameters:
+      - description: Source batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Student user ID (UUID)
+        in: path
+        name: user_id
+        required: true
+        type: string
+      - description: Destination batch
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.TransferStudentInput'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Validation error, different course, or destination batch full
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Batch not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Transfer a student to another batch
       tags:
       - batches
   /batches/filter:
@@ -5239,6 +6606,88 @@ paths:
       summary: Update blog
       tags:
       - blogs
+  /certificates:
+    get:
+      description: Returns every issued certificate, newest first — mentors see only
+        certificates for batches they manage; team_lead/super_admin see everything.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Certificate'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List every issued certificate
+      tags:
+      - certificates
+  /certificates/{short_id}:
+    delete:
+      description: Soft-revokes a certificate (kept for history; fails verification
+        afterward). Restricted to super_admin / team_lead.
+      parameters:
+      - description: Certificate short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Certificate not found or already revoked
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Revoke a certificate
+      tags:
+      - certificates
+  /certificates/verify/{certificate_number}:
+    get:
+      description: Unauthenticated lookup by certificate number, for third parties
+        to verify authenticity. Always returns 200 — check the "valid" field.
+      parameters:
+      - description: Certificate number
+        in: path
+        name: certificate_number
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.CertificateVerification'
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Verify a certificate (public)
+      tags:
+      - certificates
   /coding-questions:
     get:
       description: Returns all active, non-deleted coding questions ordered by creation
@@ -5901,6 +7350,30 @@ paths:
       summary: Search courses
       tags:
       - courses
+  /dashboard/stats:
+    get:
+      description: Real, computed-from-live-data summary for the admin home screen
+        — active batches/students, today's sessions with attendance, certificates
+        issued in the last 30 days, average attendance this week, and a 30-day enrollment
+        trend. Restricted to super_admin / team_lead.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.DashboardStats'
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Admin dashboard stats
+      tags:
+      - dashboard
   /events:
     get:
       description: Returns all non-deleted events ordered newest first. Use query
@@ -8499,6 +9972,142 @@ paths:
       summary: Update session
       tags:
       - sessions
+  /sessions/{short_id}/attendance:
+    get:
+      description: Returns the batch roster alongside whatever attendance has been
+        marked so far for this session. Students not yet marked simply won't appear
+        in "attendance" — the caller treats them as unmarked, not absent.
+      parameters:
+      - description: Session short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: roster[] and attendance[]
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Session not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get attendance for a session
+      tags:
+      - attendance
+  /sessions/{short_id}/attendance/{student_id}:
+    patch:
+      consumes:
+      - application/json
+      description: Updates a single student's attendance for one session without resubmitting
+        the whole roster. Restricted to super_admin / team_lead / mentor.
+      parameters:
+      - description: Session short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Student user ID
+        in: path
+        name: student_id
+        required: true
+        type: string
+      - description: Status
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.MarkAttendanceInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.SessionAttendance'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Session not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Mark one student's attendance for a session
+      tags:
+      - attendance
+  /sessions/{short_id}/attendance/bulk:
+    post:
+      consumes:
+      - application/json
+      description: Marks (or re-marks) attendance for every student listed in the
+        request for one session — this is what the "take attendance" screen submits.
+        Restricted to super_admin / team_lead / mentor.
+      parameters:
+      - description: Session short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Per-student attendance
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.BulkMarkAttendanceInput'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Session not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Mark attendance for a whole session
+      tags:
+      - attendance
   /sessions/by-token/{token}:
     get:
       description: Public, unauthenticated lookup of a session by its share token
@@ -8593,6 +10202,57 @@ paths:
       summary: List all submissions (admin/mentor)
       tags:
       - submissions
+  /submissions/assessments:
+    get:
+      description: Returns every submitted or evaluated exam attempt across every
+        assessment, newest first — mentors see only attempts in batches they manage
+        (plus any global assessments); team_lead/super_admin see everything. Powers
+        the unified Submissions workspace.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.ExamAttempt'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List every submitted/evaluated exam attempt (cross-assessment)
+      tags:
+      - assessments
+  /submissions/assignments:
+    get:
+      description: Returns every assignment submission across every assignment, newest
+        first — mentors see only submissions in batches they manage; team_lead/super_admin
+        see everything. Powers the unified Submissions workspace.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.AssignmentSubmission'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List every assignment submission (cross-assignment)
+      tags:
+      - assignments
   /submissions/me:
     get:
       description: Returns all submissions made by the authenticated user across all
@@ -8617,6 +10277,31 @@ paths:
       summary: Get current user's submissions
       tags:
       - submissions
+  /submissions/projects:
+    get:
+      description: Returns every project-milestone submission across every project,
+        newest first — mentors see only submissions in batches they manage; team_lead/super_admin
+        see everything. Powers the unified Submissions workspace.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.ProjectSubmission'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List every project-milestone submission (cross-project)
+      tags:
+      - projects
   /submissions/question/{short_id}:
     get:
       description: Returns all submissions by the authenticated user for the given
@@ -9131,6 +10816,232 @@ paths:
       summary: Update user
       tags:
       - users
+  /users/{id}/attendance-history:
+    get:
+      description: Returns every attendance record ever marked for a student, newest
+        first — the session-by-session log behind "My Attendance".
+      parameters:
+      - description: Student user ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.SessionAttendance'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a student's attendance history
+      tags:
+      - attendance
+  /users/{id}/attendance-summary:
+    get:
+      description: Returns one student's attendance rollup per batch, across every
+        batch they've ever been added to.
+      parameters:
+      - description: Student user ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.StudentAttendanceSummary'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a student's attendance summary
+      tags:
+      - attendance
+  /users/{id}/batches:
+    get:
+      description: Returns every batch a given student is enrolled in. Restricted
+        to super_admin / team_lead / mentor — for a mentor/employee to view a student's
+        real enrollment on their profile page.
+      parameters:
+      - description: Student user ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Batch'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List a student's batches
+      tags:
+      - batches
+  /users/{id}/certificates:
+    get:
+      parameters:
+      - description: Student user ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Certificate'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List a student's certificates
+      tags:
+      - certificates
+  /users/{id}/enrollments:
+    get:
+      description: Returns every enrollment a student has ever had — one per (course,
+        batch) — newest first. This is the real, per-course enrollment history backing
+        a student's multi-course dashboard. Restricted to super_admin / team_lead
+        / mentor, or the student themselves.
+      parameters:
+      - description: Student user ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.StudentEnrollment'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List a student's enrollments
+      tags:
+      - batches
+  /users/{id}/profile-details:
+    get:
+      description: Returns the bio/location/education/skills/social-link fields for
+        a user's profile page, plus their current phone. Self, or super_admin/team_lead.
+      parameters:
+      - description: User ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ProfileDetails'
+        "404":
+          description: User not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get profile details
+      tags:
+      - profile
+    patch:
+      consumes:
+      - application/json
+      description: Partially update a user's bio/location/education/skills/social
+        links (and phone, which writes through to the users table). Self, or super_admin/team_lead.
+      parameters:
+      - description: User ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Fields to update (all optional)
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateProfileDetailsInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ProfileDetails'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update profile details
+      tags:
+      - profile
   /users/{id}/role:
     patch:
       consumes:
@@ -9179,6 +11090,64 @@ paths:
       summary: Change user role
       tags:
       - users
+  /users/{id}/score-breakdown:
+    get:
+      description: Returns one student's score breakdown (assignments/exams/projects/final
+        score) per batch, across every batch they've ever been added to.
+      parameters:
+      - description: Student user ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.StudentScoreBreakdown'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a student's score breakdown
+      tags:
+      - scores
+  /users/{id}/streak:
+    get:
+      description: '"Active" means the student submitted an assignment/project, attempted
+        an exam, or attended a session on that calendar day.'
+      parameters:
+      - description: Student user ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.StudentStreak'
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a student's activity streak
+      tags:
+      - engagement
   /users/deleted:
     get:
       description: Returns all soft-deleted users (where deleted_at is set).

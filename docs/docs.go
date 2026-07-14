@@ -950,6 +950,55 @@ const docTemplate = `{
                 }
             }
         },
+        "/assessments/{short_id}/cancel": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Cancels an assessment — blocks any new attempt and marks every currently in-progress attempt as cancelled. Existing submitted/evaluated attempts are untouched. Restricted to super_admin / team_lead / mentor (of a batch they manage).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "assessments"
+                ],
+                "summary": "Cancel an assessment",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Assessment short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Assessment not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/assessments/{short_id}/questions": {
             "get": {
                 "security": [
@@ -1167,6 +1216,79 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/assessments/{short_id}/reattempts": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Grants a student one extra attempt beyond the assessment's max_attempts, or lets them retry after already passing. Previous attempts are untouched — this only raises the ceiling by one and records who granted it and why. Restricted to super_admin / team_lead / mentor (of a batch they manage).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "exam-attempts"
+                ],
+                "summary": "Grant a reattempt",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Assessment short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Student and reason",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.GrantReattemptInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.ReattemptGrant"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Assessment not found",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -1680,6 +1802,115 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Submission not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/attendance/reports": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns a rollup per session (across every batch, most recent first) — mentors see only sessions in batches they manage; team_lead/super_admin see everything. Only sessions with at least one marked record appear.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "attendance"
+                ],
+                "summary": "Get cross-batch attendance reports",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.SessionAttendanceReport"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/audit-logs": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the 500 most recent audit log entries, newest first. Supports optional filtering by batch_short_id, entity_type, action, and actor_id. Restricted to super_admin / team_lead.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "audit-log"
+                ],
+                "summary": "Browse the audit log",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by batch short ID",
+                        "name": "batch_short_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by entity type (batch, session, assignment, ...)",
+                        "name": "entity_type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by action (create, update, delete, grade, ...)",
+                        "name": "action",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by actor user ID",
+                        "name": "actor_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.AuditLogEntry"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -2436,6 +2667,335 @@ const docTemplate = `{
                 }
             }
         },
+        "/batches/{short_id}/at-risk": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Flags students with low attendance (\u003c60%), a low final score (\u003c40%, only once they have graded work), or no activity in 7+ days (only once the batch has been running that long). Only returns students who tripped at least one flag.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "engagement"
+                ],
+                "summary": "Get a batch's at-risk students",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Batch short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.AtRiskStudent"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Batch not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/batches/{short_id}/attendance-summary": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns every enrolled student's attendance rollup (present/absent/late/excused counts and percentage) across every held session of the batch.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "attendance"
+                ],
+                "summary": "Get a batch's attendance summary",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Batch short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.StudentAttendanceSummary"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Batch not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/batches/{short_id}/audit-log": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the 500 most recent audit log entries for one batch, newest first. Restricted to super_admin / team_lead / mentor (mentor scoped to batches they manage).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "audit-log"
+                ],
+                "summary": "Get a batch's audit trail",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Batch short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.AuditLogEntry"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Batch not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/batches/{short_id}/certificates": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "certificates"
+                ],
+                "summary": "List a batch's issued certificates",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Batch short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.Certificate"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Batch not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/batches/{short_id}/curriculum": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the batch's course curriculum, annotating every module with is_released and (if scheduled) release_date. A module with no configured schedule is always released. Students don't see sections/materials for a module that isn't released yet.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "curriculum"
+                ],
+                "summary": "Get a batch's curriculum (with module release status)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Batch short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.ModuleWithSections"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Batch not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/batches/{short_id}/leaderboard": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Computes every enrolled student's weighted final score (assignments + exams + projects, per the batch's configured weights) and rank, persists it, and returns the sorted leaderboard.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "scores"
+                ],
+                "summary": "Get a batch's leaderboard",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Batch short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.StudentScoreBreakdown"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Batch not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/batches/{short_id}/me/fees": {
             "get": {
                 "security": [
@@ -2482,6 +3042,192 @@ const docTemplate = `{
                 }
             }
         },
+        "/batches/{short_id}/modules/schedule": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns every module that has a configured release date for this batch.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "curriculum"
+                ],
+                "summary": "List a batch's module release schedule",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Batch short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.ModuleScheduleEntry"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Batch not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/batches/{short_id}/modules/{module_short_id}/schedule": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Removes a module's release schedule for this batch, reverting it to \"released from day one\". Restricted to super_admin / team_lead / mentor.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "curriculum"
+                ],
+                "summary": "Unschedule a module's release for a batch",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Batch short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Module short ID",
+                        "name": "module_short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Batch, module, or schedule not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Sets (or updates) the date a module becomes visible to this batch's students. Restricted to super_admin / team_lead / mentor.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "curriculum"
+                ],
+                "summary": "Schedule a module's release for a batch",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Batch short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Module short ID",
+                        "name": "module_short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Release date",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.SetModuleScheduleInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Batch or module not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/batches/{short_id}/recordings": {
             "get": {
                 "security": [
@@ -2511,6 +3257,76 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/models.BatchRecordingsResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/batches/{short_id}/score-weights": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Sets how much each category (assignments/exams/projects) contributes to the batch's final score and leaderboard ranking. The three weights must sum to 100. Restricted to super_admin / team_lead.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "scores"
+                ],
+                "summary": "Set a batch's score weights",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Batch short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Category weights (must sum to 100)",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateScoreWeightsInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Validation error or weights don't sum to 100",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Batch not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "500": {
@@ -2620,7 +3436,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Enroll one or more students into a batch by user ID. Only users with role=student are matched; students already enrolled are left unchanged. Restricted to super_admin / team_lead.",
+                "description": "Enroll one or more students into a batch by user ID. Only users with role=student are matched; students already enrolled are left unchanged. Rejected if the batch is at capacity, or if any student already holds an active enrollment in another batch of the same course. Restricted to super_admin / team_lead.",
                 "consumes": [
                     "application/json"
                 ],
@@ -2660,7 +3476,16 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Validation error",
+                        "description": "Validation error, batch full, or already active in another batch of this course",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Batch not found",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -2717,6 +3542,142 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Student not enrolled in batch",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/batches/{short_id}/students/{user_id}/certificate": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Issues (or re-issues) a completion certificate for a student in a batch, snapshotting their final score/rank at issuance time. Requires the student to have an enrollment record in this batch. Restricted to super_admin / team_lead / mentor.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "certificates"
+                ],
+                "summary": "Issue a certificate",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Batch short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Student user ID",
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.Certificate"
+                        }
+                    },
+                    "404": {
+                        "description": "Batch not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error, or no enrollment found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/batches/{short_id}/students/{user_id}/enrollment": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Changes a student's enrollment status within a batch (e.g. on_hold, completed, dropped) without touching their roster membership — use DELETE .../students/{user_id} to actually remove them. Restricted to super_admin / team_lead / mentor.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "batches"
+                ],
+                "summary": "Update a student's enrollment status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Batch short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Student user ID (UUID)",
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "New status",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateEnrollmentStatusInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Batch or enrollment not found",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -2800,6 +3761,83 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Student not enrolled in batch",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/batches/{short_id}/students/{user_id}/transfer": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Moves a student from this batch to a different batch of the SAME course (schedule conflict, batch merge, etc). Their old enrollment is marked \"transferred\" and kept for history; a new \"active\" enrollment is created for the destination batch. Restricted to super_admin / team_lead.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "batches"
+                ],
+                "summary": "Transfer a student to another batch",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Source batch short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Student user ID (UUID)",
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Destination batch",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.TransferStudentInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Validation error, different course, or destination batch full",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Batch not found",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -3032,6 +4070,130 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Blog not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/certificates": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns every issued certificate, newest first — mentors see only certificates for batches they manage; team_lead/super_admin see everything.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "certificates"
+                ],
+                "summary": "List every issued certificate",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.Certificate"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/certificates/verify/{certificate_number}": {
+            "get": {
+                "description": "Unauthenticated lookup by certificate number, for third parties to verify authenticity. Always returns 200 — check the \"valid\" field.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "certificates"
+                ],
+                "summary": "Verify a certificate (public)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Certificate number",
+                        "name": "certificate_number",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.CertificateVerification"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/certificates/{short_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Soft-revokes a certificate (kept for history; fails verification afterward). Restricted to super_admin / team_lead.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "certificates"
+                ],
+                "summary": "Revoke a certificate",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Certificate short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Certificate not found or already revoked",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -4057,6 +5219,40 @@ const docTemplate = `{
                             "additionalProperties": {
                                 "type": "string"
                             }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/dashboard/stats": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Real, computed-from-live-data summary for the admin home screen — active batches/students, today's sessions with attendance, certificates issued in the last 30 days, average attendance this week, and a 30-day enrollment trend. Restricted to super_admin / team_lead.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "dashboard"
+                ],
+                "summary": "Admin dashboard stats",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.DashboardStats"
                         }
                     },
                     "500": {
@@ -8005,6 +9201,209 @@ const docTemplate = `{
                 }
             }
         },
+        "/sessions/{short_id}/attendance": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the batch roster alongside whatever attendance has been marked so far for this session. Students not yet marked simply won't appear in \"attendance\" — the caller treats them as unmarked, not absent.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "attendance"
+                ],
+                "summary": "Get attendance for a session",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Session short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "roster[] and attendance[]",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Session not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/sessions/{short_id}/attendance/bulk": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Marks (or re-marks) attendance for every student listed in the request for one session — this is what the \"take attendance\" screen submits. Restricted to super_admin / team_lead / mentor.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "attendance"
+                ],
+                "summary": "Mark attendance for a whole session",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Session short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Per-student attendance",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.BulkMarkAttendanceInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Session not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/sessions/{short_id}/attendance/{student_id}": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Updates a single student's attendance for one session without resubmitting the whole roster. Restricted to super_admin / team_lead / mentor.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "attendance"
+                ],
+                "summary": "Mark one student's attendance for a session",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Session short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Student user ID",
+                        "name": "student_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Status",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.MarkAttendanceInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.SessionAttendance"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Session not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/submissions": {
             "post": {
                 "security": [
@@ -8099,6 +9498,80 @@ const docTemplate = `{
                 }
             }
         },
+        "/submissions/assessments": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns every submitted or evaluated exam attempt across every assessment, newest first — mentors see only attempts in batches they manage (plus any global assessments); team_lead/super_admin see everything. Powers the unified Submissions workspace.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "assessments"
+                ],
+                "summary": "List every submitted/evaluated exam attempt (cross-assessment)",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.ExamAttempt"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/submissions/assignments": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns every assignment submission across every assignment, newest first — mentors see only submissions in batches they manage; team_lead/super_admin see everything. Powers the unified Submissions workspace.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "assignments"
+                ],
+                "summary": "List every assignment submission (cross-assignment)",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.AssignmentSubmission"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/submissions/me": {
             "get": {
                 "security": [
@@ -8121,6 +9594,43 @@ const docTemplate = `{
                             "type": "array",
                             "items": {
                                 "$ref": "#/definitions/models.Submission"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/submissions/projects": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns every project-milestone submission across every project, newest first — mentors see only submissions in batches they manage; team_lead/super_admin see everything. Powers the unified Submissions workspace.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "projects"
+                ],
+                "summary": "List every project-milestone submission (cross-project)",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.ProjectSubmission"
                             }
                         }
                     },
@@ -8999,6 +10509,349 @@ const docTemplate = `{
                 }
             }
         },
+        "/users/{id}/attendance-history": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns every attendance record ever marked for a student, newest first — the session-by-session log behind \"My Attendance\".",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "attendance"
+                ],
+                "summary": "Get a student's attendance history",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Student user ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.SessionAttendance"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{id}/attendance-summary": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns one student's attendance rollup per batch, across every batch they've ever been added to.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "attendance"
+                ],
+                "summary": "Get a student's attendance summary",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Student user ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.StudentAttendanceSummary"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{id}/batches": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns every batch a given student is enrolled in. Restricted to super_admin / team_lead / mentor — for a mentor/employee to view a student's real enrollment on their profile page.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "batches"
+                ],
+                "summary": "List a student's batches",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Student user ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.Batch"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{id}/certificates": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "certificates"
+                ],
+                "summary": "List a student's certificates",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Student user ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.Certificate"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{id}/enrollments": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns every enrollment a student has ever had — one per (course, batch) — newest first. This is the real, per-course enrollment history backing a student's multi-course dashboard. Restricted to super_admin / team_lead / mentor, or the student themselves.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "batches"
+                ],
+                "summary": "List a student's enrollments",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Student user ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.StudentEnrollment"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{id}/profile-details": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the bio/location/education/skills/social-link fields for a user's profile page, plus their current phone. Self, or super_admin/team_lead.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "profile"
+                ],
+                "summary": "Get profile details",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.ProfileDetails"
+                        }
+                    },
+                    "404": {
+                        "description": "User not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Partially update a user's bio/location/education/skills/social links (and phone, which writes through to the users table). Self, or super_admin/team_lead.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "profile"
+                ],
+                "summary": "Update profile details",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to update (all optional)",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateProfileDetailsInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.ProfileDetails"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/users/{id}/role": {
             "patch": {
                 "security": [
@@ -9058,6 +10911,95 @@ const docTemplate = `{
                             "additionalProperties": {
                                 "type": "string"
                             }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{id}/score-breakdown": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns one student's score breakdown (assignments/exams/projects/final score) per batch, across every batch they've ever been added to.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "scores"
+                ],
+                "summary": "Get a student's score breakdown",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Student user ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.StudentScoreBreakdown"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{id}/streak": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "\"Active\" means the student submitted an assignment/project, attempted an exam, or attended a session on that calendar day.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "engagement"
+                ],
+                "summary": "Get a student's activity streak",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Student user ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.StudentStreak"
                         }
                     },
                     "500": {
@@ -9361,6 +11303,12 @@ const docTemplate = `{
                 "batch_short_id": {
                     "type": "string"
                 },
+                "cancelled_at": {
+                    "type": "string"
+                },
+                "cancelled_by": {
+                    "type": "string"
+                },
                 "created_at": {
                     "type": "string"
                 },
@@ -9617,6 +11565,16 @@ const docTemplate = `{
                 "assignment_short_id": {
                     "type": "string"
                 },
+                "assignment_title": {
+                    "description": "AssignmentTitle/BatchShortID/BatchNumber are only populated by the\ncross-assignment workspace listing (FindAllSubmissionsForMentor).",
+                    "type": "string"
+                },
+                "batch_number": {
+                    "type": "string"
+                },
+                "batch_short_id": {
+                    "type": "string"
+                },
                 "content": {
                     "type": "string"
                 },
@@ -9669,6 +11627,35 @@ const docTemplate = `{
                 }
             }
         },
+        "models.AtRiskStudent": {
+            "type": "object",
+            "properties": {
+                "attendance_percentage": {
+                    "type": "number"
+                },
+                "current_streak": {
+                    "type": "integer"
+                },
+                "days_inactive": {
+                    "type": "integer"
+                },
+                "final_score": {
+                    "type": "number"
+                },
+                "reasons": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "student_id": {
+                    "type": "string"
+                },
+                "student_name": {
+                    "type": "string"
+                }
+            }
+        },
         "models.AttachQuestionInput": {
             "type": "object",
             "required": [
@@ -9692,6 +11679,10 @@ const docTemplate = `{
         "models.AttemptDetail": {
             "type": "object",
             "properties": {
+                "assessment_name": {
+                    "description": "AssessmentName/BatchShortID/BatchNumber are only populated by the\ncross-assessment workspace listing (FindAllAttemptsForMentor).",
+                    "type": "string"
+                },
                 "assessment_short_id": {
                     "type": "string"
                 },
@@ -9700,6 +11691,15 @@ const docTemplate = `{
                 },
                 "auto_submitted": {
                     "type": "boolean"
+                },
+                "batch_number": {
+                    "type": "string"
+                },
+                "batch_short_id": {
+                    "type": "string"
+                },
+                "ends_at": {
+                    "type": "string"
                 },
                 "id": {
                     "type": "string"
@@ -9723,7 +11723,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "status": {
-                    "description": "in_progress | submitted | evaluated",
+                    "description": "in_progress | submitted | evaluated | cancelled",
                     "type": "string"
                 },
                 "student_id": {
@@ -9778,6 +11778,78 @@ const docTemplate = `{
                 },
                 "question_type": {
                     "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.AttendanceRecordInput": {
+            "type": "object",
+            "required": [
+                "status",
+                "student_id"
+            ],
+            "properties": {
+                "notes": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "present",
+                        "absent",
+                        "late",
+                        "excused"
+                    ]
+                },
+                "student_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.AuditLogEntry": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string"
+                },
+                "actor_id": {
+                    "type": "string"
+                },
+                "actor_name": {
+                    "type": "string"
+                },
+                "batch_id": {
+                    "type": "string"
+                },
+                "batch_number": {
+                    "type": "string"
+                },
+                "batch_short_id": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "entity_id": {
+                    "type": "string"
+                },
+                "entity_label": {
+                    "type": "string"
+                },
+                "entity_short_id": {
+                    "type": "string"
+                },
+                "entity_type": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "metadata": {
+                    "type": "object",
+                    "additionalProperties": true
                 },
                 "short_id": {
                     "type": "string"
@@ -9873,13 +11945,29 @@ const docTemplate = `{
                 "is_active": {
                     "type": "boolean"
                 },
+                "max_students": {
+                    "type": "integer"
+                },
                 "module": {
                     "type": "string"
+                },
+                "score_weight_assignments": {
+                    "type": "integer"
+                },
+                "score_weight_exams": {
+                    "type": "integer"
+                },
+                "score_weight_projects": {
+                    "type": "integer"
                 },
                 "short_id": {
                     "type": "string"
                 },
                 "start_date": {
+                    "type": "string"
+                },
+                "status": {
+                    "description": "draft | upcoming | active | completed | cancelled | archived",
                     "type": "string"
                 },
                 "student_count": {
@@ -9957,6 +12045,119 @@ const docTemplate = `{
                 },
                 "updated_at": {
                     "type": "string"
+                }
+            }
+        },
+        "models.BulkMarkAttendanceInput": {
+            "type": "object",
+            "required": [
+                "records"
+            ],
+            "properties": {
+                "records": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.AttendanceRecordInput"
+                    }
+                }
+            }
+        },
+        "models.CategoryScore": {
+            "type": "object",
+            "properties": {
+                "earned_marks": {
+                    "type": "number"
+                },
+                "max_marks": {
+                    "type": "number"
+                },
+                "percentage": {
+                    "type": "number"
+                }
+            }
+        },
+        "models.Certificate": {
+            "type": "object",
+            "properties": {
+                "batch_id": {
+                    "type": "string"
+                },
+                "batch_number": {
+                    "type": "string"
+                },
+                "batch_short_id": {
+                    "type": "string"
+                },
+                "certificate_number": {
+                    "type": "string"
+                },
+                "course_id": {
+                    "type": "string"
+                },
+                "course_name": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "final_rank": {
+                    "type": "integer"
+                },
+                "final_score": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "issued_at": {
+                    "type": "string"
+                },
+                "issued_by": {
+                    "type": "string"
+                },
+                "revoked_at": {
+                    "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "student_id": {
+                    "type": "string"
+                },
+                "student_name": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.CertificateVerification": {
+            "type": "object",
+            "properties": {
+                "batch_number": {
+                    "type": "string"
+                },
+                "certificate_number": {
+                    "type": "string"
+                },
+                "course_name": {
+                    "type": "string"
+                },
+                "final_rank": {
+                    "type": "integer"
+                },
+                "final_score": {
+                    "type": "number"
+                },
+                "issued_at": {
+                    "type": "string"
+                },
+                "student_name": {
+                    "type": "string"
+                },
+                "valid": {
+                    "type": "boolean"
                 }
             }
         },
@@ -10487,6 +12688,10 @@ const docTemplate = `{
                     "type": "string",
                     "example": "2024-06-15"
                 },
+                "max_students": {
+                    "type": "integer",
+                    "example": 30
+                },
                 "module": {
                     "type": "string",
                     "example": "Module 1"
@@ -10494,6 +12699,18 @@ const docTemplate = `{
                 "start_date": {
                     "type": "string",
                     "example": "2024-01-15"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "draft",
+                        "upcoming",
+                        "active",
+                        "completed",
+                        "cancelled",
+                        "archived"
+                    ],
+                    "example": "draft"
                 },
                 "student_ids": {
                     "type": "array",
@@ -11356,6 +13573,75 @@ const docTemplate = `{
                 }
             }
         },
+        "models.DashboardSession": {
+            "type": "object",
+            "properties": {
+                "batch_number": {
+                    "type": "string"
+                },
+                "end_time": {
+                    "type": "string"
+                },
+                "mentor_name": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "present_count": {
+                    "type": "integer"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "start_time": {
+                    "type": "string"
+                },
+                "total_count": {
+                    "type": "integer"
+                }
+            }
+        },
+        "models.DashboardStats": {
+            "type": "object",
+            "properties": {
+                "active_batches": {
+                    "type": "integer"
+                },
+                "active_students": {
+                    "type": "integer"
+                },
+                "avg_attendance_rate_7d": {
+                    "type": "number"
+                },
+                "certificates_issued_30d": {
+                    "type": "integer"
+                },
+                "enrollment_trend_30d": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.EnrollmentTrendPoint"
+                    }
+                },
+                "sessions_today": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.DashboardSession"
+                    }
+                }
+            }
+        },
+        "models.EnrollmentTrendPoint": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "date": {
+                    "type": "string"
+                }
+            }
+        },
         "models.Event": {
             "type": "object",
             "properties": {
@@ -11424,6 +13710,10 @@ const docTemplate = `{
         "models.ExamAttempt": {
             "type": "object",
             "properties": {
+                "assessment_name": {
+                    "description": "AssessmentName/BatchShortID/BatchNumber are only populated by the\ncross-assessment workspace listing (FindAllAttemptsForMentor).",
+                    "type": "string"
+                },
                 "assessment_short_id": {
                     "type": "string"
                 },
@@ -11432,6 +13722,15 @@ const docTemplate = `{
                 },
                 "auto_submitted": {
                     "type": "boolean"
+                },
+                "batch_number": {
+                    "type": "string"
+                },
+                "batch_short_id": {
+                    "type": "string"
+                },
+                "ends_at": {
+                    "type": "string"
                 },
                 "id": {
                     "type": "string"
@@ -11449,7 +13748,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "status": {
-                    "description": "in_progress | submitted | evaluated",
+                    "description": "in_progress | submitted | evaluated | cancelled",
                     "type": "string"
                 },
                 "student_id": {
@@ -11682,12 +13981,74 @@ const docTemplate = `{
                 }
             }
         },
+        "models.GrantReattemptInput": {
+            "type": "object",
+            "required": [
+                "student_id"
+            ],
+            "properties": {
+                "reason": {
+                    "type": "string",
+                    "example": "Missed the window due to a technical issue."
+                },
+                "student_id": {
+                    "type": "string",
+                    "example": "use GET /assessments/{id}/attempts to find a student_id"
+                }
+            }
+        },
+        "models.MarkAttendanceInput": {
+            "type": "object",
+            "required": [
+                "status"
+            ],
+            "properties": {
+                "notes": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "present",
+                        "absent",
+                        "late",
+                        "excused"
+                    ]
+                }
+            }
+        },
         "models.MarkReadInput": {
             "type": "object",
             "properties": {
                 "is_read": {
                     "type": "boolean",
                     "example": true
+                }
+            }
+        },
+        "models.MaterialSummary": {
+            "type": "object",
+            "properties": {
+                "enable_downloads": {
+                    "type": "boolean"
+                },
+                "file_url": {
+                    "type": "string"
+                },
+                "is_active": {
+                    "type": "boolean"
+                },
+                "is_prerequisite": {
+                    "type": "boolean"
+                },
+                "material_name": {
+                    "type": "string"
+                },
+                "material_type": {
+                    "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
                 }
             }
         },
@@ -11763,6 +14124,20 @@ const docTemplate = `{
                 }
             }
         },
+        "models.ModuleScheduleEntry": {
+            "type": "object",
+            "properties": {
+                "module_name": {
+                    "type": "string"
+                },
+                "module_short_id": {
+                    "type": "string"
+                },
+                "release_date": {
+                    "type": "string"
+                }
+            }
+        },
         "models.ModuleSection": {
             "type": "object",
             "properties": {
@@ -11798,6 +14173,45 @@ const docTemplate = `{
                 },
                 "updated_at": {
                     "type": "string"
+                }
+            }
+        },
+        "models.ModuleWithSections": {
+            "type": "object",
+            "properties": {
+                "is_active": {
+                    "type": "boolean"
+                },
+                "is_released": {
+                    "description": "IsReleased/ReleaseDate are only populated by the batch-scoped curriculum\nendpoint (GET /batches/{short_id}/curriculum) — nil when this struct is\nreturned by the plain course-level curriculum endpoint, which has no\nbatch context to schedule against.",
+                    "type": "boolean"
+                },
+                "max_view_duration": {
+                    "type": "string"
+                },
+                "module_branch": {
+                    "type": "string"
+                },
+                "module_name": {
+                    "type": "string"
+                },
+                "order_index": {
+                    "type": "integer"
+                },
+                "release_date": {
+                    "type": "string"
+                },
+                "sections": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.SectionSummary"
+                    }
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "watch_time_minutes": {
+                    "type": "integer"
                 }
             }
         },
@@ -11864,6 +14278,41 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.ProfileDetails": {
+            "type": "object",
+            "properties": {
+                "bio": {
+                    "type": "string"
+                },
+                "education": {
+                    "type": "string"
+                },
+                "github_url": {
+                    "type": "string"
+                },
+                "linkedin_url": {
+                    "type": "string"
+                },
+                "location": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                },
+                "skills": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "user_id": {
                     "type": "string"
                 }
             }
@@ -12088,6 +14537,12 @@ const docTemplate = `{
         "models.ProjectSubmission": {
             "type": "object",
             "properties": {
+                "batch_number": {
+                    "type": "string"
+                },
+                "batch_short_id": {
+                    "type": "string"
+                },
                 "content": {
                     "type": "string"
                 },
@@ -12113,6 +14568,13 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "milestone_short_id": {
+                    "type": "string"
+                },
+                "milestone_title": {
+                    "type": "string"
+                },
+                "project_title": {
+                    "description": "ProjectTitle/MilestoneTitle/BatchShortID/BatchNumber are only populated\nby the cross-project workspace listing (FindAllSubmissionsForMentor).",
                     "type": "string"
                 },
                 "short_id": {
@@ -12277,6 +14739,32 @@ const docTemplate = `{
                 }
             }
         },
+        "models.ReattemptGrant": {
+            "type": "object",
+            "properties": {
+                "assessment_short_id": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "granted_by": {
+                    "type": "string"
+                },
+                "new_attempt_number": {
+                    "type": "integer"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "student_id": {
+                    "type": "string"
+                }
+            }
+        },
         "models.RecordingListItem": {
             "type": "object",
             "properties": {
@@ -12427,6 +14915,32 @@ const docTemplate = `{
                 }
             }
         },
+        "models.SectionSummary": {
+            "type": "object",
+            "properties": {
+                "is_active": {
+                    "type": "boolean"
+                },
+                "is_prerequisite": {
+                    "type": "boolean"
+                },
+                "materials": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.MaterialSummary"
+                    }
+                },
+                "section_name": {
+                    "type": "string"
+                },
+                "short_description": {
+                    "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                }
+            }
+        },
         "models.Session": {
             "type": "object",
             "properties": {
@@ -12481,8 +14995,14 @@ const docTemplate = `{
                 "name": {
                     "type": "string"
                 },
+                "recording_available_from": {
+                    "type": "string"
+                },
                 "recording_url": {
                     "type": "string"
+                },
+                "recording_visible": {
+                    "type": "boolean"
                 },
                 "send_confirmation_email": {
                     "type": "boolean"
@@ -12529,6 +15049,100 @@ const docTemplate = `{
                 }
             }
         },
+        "models.SessionAttendance": {
+            "type": "object",
+            "properties": {
+                "batch_id": {
+                    "type": "string"
+                },
+                "batch_number": {
+                    "type": "string"
+                },
+                "batch_short_id": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "marked_at": {
+                    "type": "string"
+                },
+                "marked_by": {
+                    "type": "string"
+                },
+                "notes": {
+                    "type": "string"
+                },
+                "session_date": {
+                    "type": "string"
+                },
+                "session_id": {
+                    "type": "string"
+                },
+                "session_name": {
+                    "type": "string"
+                },
+                "session_short_id": {
+                    "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "student_id": {
+                    "type": "string"
+                },
+                "student_name": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.SessionAttendanceReport": {
+            "type": "object",
+            "properties": {
+                "absent": {
+                    "type": "integer"
+                },
+                "attendance_percentage": {
+                    "type": "number"
+                },
+                "batch_number": {
+                    "type": "string"
+                },
+                "batch_short_id": {
+                    "type": "string"
+                },
+                "excused": {
+                    "type": "integer"
+                },
+                "late": {
+                    "type": "integer"
+                },
+                "present": {
+                    "type": "integer"
+                },
+                "session_date": {
+                    "type": "string"
+                },
+                "session_name": {
+                    "type": "string"
+                },
+                "session_short_id": {
+                    "type": "string"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
         "models.SessionJoinInfo": {
             "type": "object",
             "properties": {
@@ -12555,6 +15169,18 @@ const docTemplate = `{
                 },
                 "zoom_join_url": {
                     "type": "string"
+                }
+            }
+        },
+        "models.SetModuleScheduleInput": {
+            "type": "object",
+            "required": [
+                "release_date"
+            ],
+            "properties": {
+                "release_date": {
+                    "type": "string",
+                    "example": "2026-08-01"
                 }
             }
         },
@@ -12587,6 +15213,174 @@ const docTemplate = `{
                 },
                 "text_answer": {
                     "type": "string"
+                }
+            }
+        },
+        "models.StudentAttendanceSummary": {
+            "type": "object",
+            "properties": {
+                "absent": {
+                    "type": "integer"
+                },
+                "attendance_percentage": {
+                    "type": "number"
+                },
+                "batch_id": {
+                    "type": "string"
+                },
+                "batch_number": {
+                    "type": "string"
+                },
+                "batch_short_id": {
+                    "type": "string"
+                },
+                "excused": {
+                    "type": "integer"
+                },
+                "late": {
+                    "type": "integer"
+                },
+                "present": {
+                    "type": "integer"
+                },
+                "student_id": {
+                    "type": "string"
+                },
+                "student_name": {
+                    "type": "string"
+                },
+                "total_sessions": {
+                    "type": "integer"
+                }
+            }
+        },
+        "models.StudentEnrollment": {
+            "type": "object",
+            "properties": {
+                "access_end_date": {
+                    "type": "string"
+                },
+                "access_start_date": {
+                    "type": "string"
+                },
+                "batch_id": {
+                    "type": "string"
+                },
+                "batch_number": {
+                    "type": "string"
+                },
+                "batch_short_id": {
+                    "type": "string"
+                },
+                "completion_percentage": {
+                    "type": "number"
+                },
+                "course_id": {
+                    "type": "string"
+                },
+                "course_name": {
+                    "type": "string"
+                },
+                "course_short_id": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "enrollment_date": {
+                    "type": "string"
+                },
+                "enrollment_type": {
+                    "description": "direct | invited | transferred",
+                    "type": "string"
+                },
+                "final_rank": {
+                    "type": "integer"
+                },
+                "final_score": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_late_enrollment": {
+                    "type": "boolean"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "student_id": {
+                    "type": "string"
+                },
+                "student_name": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.StudentScoreBreakdown": {
+            "type": "object",
+            "properties": {
+                "assignments": {
+                    "$ref": "#/definitions/models.CategoryScore"
+                },
+                "batch_id": {
+                    "type": "string"
+                },
+                "batch_number": {
+                    "type": "string"
+                },
+                "batch_short_id": {
+                    "type": "string"
+                },
+                "exams": {
+                    "$ref": "#/definitions/models.CategoryScore"
+                },
+                "final_score": {
+                    "type": "number"
+                },
+                "projects": {
+                    "$ref": "#/definitions/models.CategoryScore"
+                },
+                "rank": {
+                    "type": "integer"
+                },
+                "student_id": {
+                    "type": "string"
+                },
+                "student_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.StudentStreak": {
+            "type": "object",
+            "properties": {
+                "current_streak": {
+                    "type": "integer"
+                },
+                "last_active_date": {
+                    "type": "string"
+                },
+                "longest_streak": {
+                    "type": "integer"
+                },
+                "student_id": {
+                    "type": "string"
+                },
+                "student_name": {
+                    "type": "string"
+                },
+                "total_active_days": {
+                    "type": "integer"
                 }
             }
         },
@@ -12715,6 +15509,18 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/models.AnswerInput"
                     }
+                }
+            }
+        },
+        "models.TransferStudentInput": {
+            "type": "object",
+            "required": [
+                "to_batch_short_id"
+            ],
+            "properties": {
+                "to_batch_short_id": {
+                    "type": "string",
+                    "example": "use GET /batches to pick a real short_id"
                 }
             }
         },
@@ -12987,6 +15793,10 @@ const docTemplate = `{
                     "type": "boolean",
                     "example": false
                 },
+                "max_students": {
+                    "type": "integer",
+                    "example": 30
+                },
                 "module": {
                     "type": "string",
                     "example": "Module 2"
@@ -12994,6 +15804,18 @@ const docTemplate = `{
                 "start_date": {
                     "type": "string",
                     "example": "2024-02-01"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "draft",
+                        "upcoming",
+                        "active",
+                        "completed",
+                        "cancelled",
+                        "archived"
+                    ],
+                    "example": "completed"
                 }
             }
         },
@@ -13154,6 +15976,28 @@ const docTemplate = `{
                 },
                 "thumbnail": {
                     "type": "string"
+                }
+            }
+        },
+        "models.UpdateEnrollmentStatusInput": {
+            "type": "object",
+            "required": [
+                "status"
+            ],
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "invited",
+                        "enrolled",
+                        "active",
+                        "on_hold",
+                        "completed",
+                        "dropped",
+                        "transferred",
+                        "removed"
+                    ],
+                    "example": "on_hold"
                 }
             }
         },
@@ -13418,6 +16262,35 @@ const docTemplate = `{
                 }
             }
         },
+        "models.UpdateProfileDetailsInput": {
+            "type": "object",
+            "properties": {
+                "bio": {
+                    "type": "string"
+                },
+                "education": {
+                    "type": "string"
+                },
+                "github_url": {
+                    "type": "string"
+                },
+                "linkedin_url": {
+                    "type": "string"
+                },
+                "location": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                },
+                "skills": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
         "models.UpdateProjectInput": {
             "type": "object",
             "properties": {
@@ -13559,6 +16432,29 @@ const docTemplate = `{
                 }
             }
         },
+        "models.UpdateScoreWeightsInput": {
+            "type": "object",
+            "properties": {
+                "assignments_weight": {
+                    "type": "integer",
+                    "maximum": 100,
+                    "minimum": 0,
+                    "example": 40
+                },
+                "exams_weight": {
+                    "type": "integer",
+                    "maximum": 100,
+                    "minimum": 0,
+                    "example": 40
+                },
+                "projects_weight": {
+                    "type": "integer",
+                    "maximum": 100,
+                    "minimum": 0,
+                    "example": 20
+                }
+            }
+        },
         "models.UpdateSessionInput": {
             "type": "object",
             "properties": {
@@ -13598,6 +16494,14 @@ const docTemplate = `{
                     "type": "string",
                     "example": "React Hooks Deep Dive — Part 2"
                 },
+                "recording_available_from": {
+                    "type": "string",
+                    "example": "2026-08-01T00:00:00Z"
+                },
+                "recording_visible": {
+                    "type": "boolean",
+                    "example": false
+                },
                 "send_confirmation_email": {
                     "type": "boolean",
                     "example": false
@@ -13635,6 +16539,10 @@ const docTemplate = `{
                 "first_name": {
                     "type": "string",
                     "example": "John"
+                },
+                "is_active": {
+                    "type": "boolean",
+                    "example": false
                 },
                 "last_name": {
                     "type": "string",
