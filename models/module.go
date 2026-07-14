@@ -32,6 +32,12 @@ type ModuleWithSections struct {
 	IsActive         bool             `json:"is_active"`
 	OrderIndex       int              `json:"order_index"`
 	Sections         []SectionSummary `json:"sections"`
+	// IsReleased/ReleaseDate are only populated by the batch-scoped curriculum
+	// endpoint (GET /batches/{short_id}/curriculum) — nil when this struct is
+	// returned by the plain course-level curriculum endpoint, which has no
+	// batch context to schedule against.
+	IsReleased  *bool   `json:"is_released,omitempty"`
+	ReleaseDate *string `json:"release_date,omitempty"`
 }
 
 type AssignModuleInput struct {

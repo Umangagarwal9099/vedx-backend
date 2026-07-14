@@ -24,10 +24,11 @@ type ExamAttemptController struct {
 	questionBankRepo *repository.QuestionBankRepository
 	batchRepo        *repository.BatchRepository
 	notificationRepo *repository.NotificationRepository
+	auditLogRepo     *repository.AuditLogRepository
 }
 
-func NewExamAttemptController(attemptRepo *repository.ExamAttemptRepository, assessmentRepo *repository.AssessmentRepository, questionBankRepo *repository.QuestionBankRepository, batchRepo *repository.BatchRepository, notificationRepo *repository.NotificationRepository) *ExamAttemptController {
-	return &ExamAttemptController{attemptRepo: attemptRepo, assessmentRepo: assessmentRepo, questionBankRepo: questionBankRepo, batchRepo: batchRepo, notificationRepo: notificationRepo}
+func NewExamAttemptController(attemptRepo *repository.ExamAttemptRepository, assessmentRepo *repository.AssessmentRepository, questionBankRepo *repository.QuestionBankRepository, batchRepo *repository.BatchRepository, notificationRepo *repository.NotificationRepository, auditLogRepo *repository.AuditLogRepository) *ExamAttemptController {
+	return &ExamAttemptController{attemptRepo: attemptRepo, assessmentRepo: assessmentRepo, questionBankRepo: questionBankRepo, batchRepo: batchRepo, notificationRepo: notificationRepo, auditLogRepo: auditLogRepo}
 }
 
 // computeEndsAt derives an attempt's hard deadline: the earlier of the
@@ -284,6 +285,28 @@ func (ctrl *ExamAttemptController) StartAttempt(c *gin.Context) {
 	})
 }
 
+// checkAttemptAccess enforces that only the student who owns this attempt, or
+// staff with access to its batch (mentor/employee scoped via checkBatchAccess,
+// super_admin/team_lead unrestricted), may view or act on it. Without this,
+// any authenticated student could read or mutate another student's attempt
+// just by guessing/enumerating its short_id.
+func (ctrl *ExamAttemptController) checkAttemptAccess(c *gin.Context, attempt *models.ExamAttempt) bool {
+	role := c.GetString("role")
+	if role == string(models.RoleStudent) {
+		if attempt.StudentID != c.GetString("user_id") {
+			c.JSON(http.StatusForbidden, gin.H{"error": "you can only access your own attempt"})
+			return false
+		}
+		return true
+	}
+	assessment, err := ctrl.assessmentRepo.FindByShortID(c.Request.Context(), attempt.AssessmentShortID)
+	if err != nil || assessment == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not resolve assessment"})
+		return false
+	}
+	return checkBatchAccess(c, ctrl.batchRepo, assessment.BatchShortID)
+}
+
 // respondAttemptDetail builds and returns the full detail view for an attempt.
 func (ctrl *ExamAttemptController) respondAttemptDetail(c *gin.Context, attempt *models.ExamAttempt, notFoundIfMissing bool) {
 	assessment, err := ctrl.assessmentRepo.FindByShortID(c.Request.Context(), attempt.AssessmentShortID)
@@ -341,6 +364,9 @@ func (ctrl *ExamAttemptController) SubmitAnswer(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "attempt not found"})
 		return
 	}
+	if !ctrl.checkAttemptAccess(c, attempt) {
+		return
+	}
 	if attempt.Status != "in_progress" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "attempt is no longer in progress"})
 		return
@@ -382,6 +408,9 @@ func (ctrl *ExamAttemptController) SubmitAttempt(c *gin.Context) {
 	attempt, err := ctrl.attemptRepo.FindAttemptByShortID(c.Request.Context(), attemptShortID)
 	if err != nil || attempt == nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "attempt not found"})
+		return
+	}
+	if !ctrl.checkAttemptAccess(c, attempt) {
 		return
 	}
 
@@ -506,6 +535,9 @@ func (ctrl *ExamAttemptController) GetAttempt(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "attempt not found"})
 		return
 	}
+	if !ctrl.checkAttemptAccess(c, attempt) {
+		return
+	}
 	ctrl.respondAttemptDetail(c, attempt, false)
 }
 
@@ -533,6 +565,34 @@ func (ctrl *ExamAttemptController) GetAllAttempts(c *gin.Context) {
 	}
 
 	attempts, err := ctrl.attemptRepo.FindAllAttempts(c.Request.Context(), assessmentShortID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch attempts"})
+		return
+	}
+	if attempts == nil {
+		attempts = []models.ExamAttempt{}
+	}
+	c.JSON(http.StatusOK, attempts)
+}
+
+// GetAllAttemptsGlobal godoc
+//
+//	@Summary		List every submitted/evaluated exam attempt (cross-assessment)
+//	@Description	Returns every submitted or evaluated exam attempt across every assessment, newest first — mentors see only attempts in batches they manage (plus any global assessments); team_lead/super_admin see everything. Powers the unified Submissions workspace.
+//	@Tags			assessments
+//	@Produce		json
+//	@Success		200	{array}		models.ExamAttempt
+//	@Failure		500	{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/submissions/assessments [get]
+func (ctrl *ExamAttemptController) GetAllAttemptsGlobal(c *gin.Context) {
+	mentorID := ""
+	role := c.GetString("role")
+	if role == string(models.RoleMentor) || role == string(models.RoleEmployee) {
+		mentorID = c.GetString("user_id")
+	}
+
+	attempts, err := ctrl.attemptRepo.FindAllAttemptsForMentor(c.Request.Context(), mentorID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch attempts"})
 		return
@@ -588,6 +648,13 @@ func (ctrl *ExamAttemptController) GradeAnswer(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not grade answer: " + err.Error()})
 		return
 	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "grade", EntityType: "exam_answer",
+		EntityShortID: attemptShortID, EntityLabel: assessment.Name,
+		BatchShortID: assessment.BatchShortID,
+		Metadata: map[string]interface{}{"question_short_id": questionShortID, "marks_awarded": input.MarksAwarded},
+	})
 
 	ungraded, err := ctrl.attemptRepo.CountUngradedAnswers(c.Request.Context(), attemptShortID)
 	if err != nil {
@@ -757,6 +824,14 @@ func (ctrl *ExamAttemptController) GrantReattempt(c *gin.Context) {
 	}
 
 	ctrl.notifyReattemptGranted(c.Request.Context(), assessment, input.StudentID, grantedBy)
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "grant_reattempt", EntityType: "exam_attempt",
+		EntityShortID: input.StudentID, EntityLabel: assessment.Name,
+		BatchShortID: assessment.BatchShortID,
+		Metadata: map[string]interface{}{"reason": input.Reason, "attempt_number": len(pastAttempts) + 1},
+	})
+
 	c.JSON(http.StatusCreated, grant)
 }
 
@@ -798,5 +873,12 @@ func (ctrl *ExamAttemptController) CancelAssessment(c *gin.Context) {
 	}
 
 	ctrl.notifyCancelled(c, assessment, actorID)
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "cancel", EntityType: "assessment",
+		EntityShortID: assessmentShortID, EntityLabel: assessment.Name,
+		BatchShortID: assessment.BatchShortID,
+	})
+
 	c.Status(http.StatusNoContent)
 }

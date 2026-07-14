@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -31,8 +32,9 @@ const batchBaseSelect = `
 	       COALESCE(CONCAT(am.first_name, ' ', am.last_name), ''),
 	       COALESCE(b.module, ''),
 	       b.start_date::TEXT, b.end_date::TEXT,
-	       b.is_active,
+	       b.is_active, b.status::TEXT, b.max_students,
 	       (SELECT COUNT(*) FROM batch_students bs WHERE bs.batch_id = b.id),
+	       b.score_weight_assignments, b.score_weight_exams, b.score_weight_projects,
 	       b.created_by, b.created_at, b.updated_at
 	FROM batches b
 	JOIN  courses c  ON b.course_id             = c.id  AND c.deleted_at  IS NULL
@@ -49,14 +51,15 @@ func (r *BatchRepository) Create(ctx context.Context, in models.CreateBatchInput
 			WITH ins AS (
 				INSERT INTO batches
 				  (short_id, batch_number, course_id, batch_manager_id,
-				   additional_manager_id, module, start_date, end_date, created_by)
+				   additional_manager_id, module, start_date, end_date, status, max_students, created_by)
 				VALUES (
 				  $1, $2,
 				  (SELECT id FROM courses WHERE short_id = $3 AND deleted_at IS NULL),
 				  $4::UUID,
 				  NULLIF($5,'')::UUID,
 				  NULLIF($6,''),
-				  $7::DATE, $8::DATE, $9
+				  $7::DATE, $8::DATE,
+				  COALESCE(NULLIF($9,'')::batch_status, 'draft'), $10, $11
 				)
 				RETURNING *
 			)
@@ -68,7 +71,8 @@ func (r *BatchRepository) Create(ctx context.Context, in models.CreateBatchInput
 			       COALESCE(CONCAT(am.first_name, ' ', am.last_name), ''),
 			       COALESCE(ins.module, ''),
 			       ins.start_date::TEXT, ins.end_date::TEXT,
-			       ins.is_active, 0,
+			       ins.is_active, ins.status::TEXT, ins.max_students, 0,
+			       ins.score_weight_assignments, ins.score_weight_exams, ins.score_weight_projects,
 			       ins.created_by, ins.created_at, ins.updated_at
 			FROM ins
 			JOIN  courses c  ON ins.course_id             = c.id
@@ -76,14 +80,16 @@ func (r *BatchRepository) Create(ctx context.Context, in models.CreateBatchInput
 			LEFT JOIN users am ON ins.additional_manager_id = am.id`,
 			shortID, in.BatchNumber, in.CourseShortID,
 			in.BatchManagerID, in.AdditionalManagerID, in.Module,
-			in.StartDate, in.EndDate, createdBy,
+			in.StartDate, in.EndDate, in.Status, in.MaxStudents, createdBy,
 		).Scan(
 			&b.ID, &b.ShortID, &b.BatchNumber,
 			&b.CourseID, &b.CourseName, &b.CourseShortID,
 			&b.BatchManagerID, &b.BatchManagerName,
 			&b.AdditionalManagerID, &b.AdditionalManagerName,
 			&b.Module, &b.StartDate, &b.EndDate,
-			&b.IsActive, &b.StudentCount, &b.CreatedBy, &b.CreatedAt, &b.UpdatedAt,
+			&b.IsActive, &b.Status, &b.MaxStudents, &b.StudentCount,
+			&b.ScoreWeightAssignments, &b.ScoreWeightExams, &b.ScoreWeightProjects,
+			&b.CreatedBy, &b.CreatedAt, &b.UpdatedAt,
 		)
 		if err == nil {
 			return &b, nil
@@ -103,6 +109,16 @@ func (r *BatchRepository) FindAll(ctx context.Context) ([]models.Batch, error) {
 	return r.scanBatches(ctx, q)
 }
 
+// FindAllForMentor returns non-deleted batches the given mentor manages
+// (batch_manager_id or additional_manager_id) — the row-level-scoped view
+// used for mentor/employee callers instead of FindAll.
+func (r *BatchRepository) FindAllForMentor(ctx context.Context, mentorID string) ([]models.Batch, error) {
+	q := batchBaseSelect + `
+		WHERE b.deleted_at IS NULL AND (b.batch_manager_id = $1 OR b.additional_manager_id = $1)
+		ORDER BY b.created_at DESC`
+	return r.scanBatches(ctx, q, mentorID)
+}
+
 // FindByShortID returns a single non-deleted batch.
 func (r *BatchRepository) FindByShortID(ctx context.Context, shortID string) (*models.Batch, error) {
 	q := batchBaseSelect + ` WHERE b.short_id = $1 AND b.deleted_at IS NULL LIMIT 1`
@@ -114,7 +130,9 @@ func (r *BatchRepository) FindByShortID(ctx context.Context, shortID string) (*m
 		&b.BatchManagerID, &b.BatchManagerName,
 		&b.AdditionalManagerID, &b.AdditionalManagerName,
 		&b.Module, &b.StartDate, &b.EndDate,
-		&b.IsActive, &b.StudentCount, &b.CreatedBy, &b.CreatedAt, &b.UpdatedAt,
+		&b.IsActive, &b.Status, &b.MaxStudents, &b.StudentCount,
+		&b.ScoreWeightAssignments, &b.ScoreWeightExams, &b.ScoreWeightProjects,
+		&b.CreatedBy, &b.CreatedAt, &b.UpdatedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
@@ -165,6 +183,11 @@ func (r *BatchRepository) Filter(ctx context.Context, f models.BatchFilter) ([]m
 		conditions = append(conditions, "b.is_active = TRUE")
 	} else if f.IsActive == "false" {
 		conditions = append(conditions, "b.is_active = FALSE")
+	}
+	if f.Status != "" {
+		conditions = append(conditions, fmt.Sprintf("b.status = $%d::batch_status", i))
+		args = append(args, f.Status)
+		i++
 	}
 
 	q := batchBaseSelect + " WHERE " + strings.Join(conditions, " AND ") + " ORDER BY b.created_at DESC"
@@ -229,6 +252,16 @@ func (r *BatchRepository) Update(ctx context.Context, shortID string, in models.
 		args = append(args, *in.IsActive)
 		i++
 	}
+	if in.Status != nil {
+		setClauses = append(setClauses, fmt.Sprintf("status = $%d::batch_status", i))
+		args = append(args, *in.Status)
+		i++
+	}
+	if in.MaxStudents != nil {
+		setClauses = append(setClauses, fmt.Sprintf("max_students = $%d", i))
+		args = append(args, *in.MaxStudents)
+		i++
+	}
 
 	if len(setClauses) == 0 {
 		return fmt.Errorf("no fields to update")
@@ -239,6 +272,24 @@ func (r *BatchRepository) Update(ctx context.Context, shortID string, in models.
 		strings.Join(setClauses, ", "),
 	)
 	result, err := r.pool.Exec(ctx, q, args...)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+// UpdateScoreWeights sets how much each category (assignments/exams/projects)
+// contributes to this batch's final score / leaderboard ranking.
+func (r *BatchRepository) UpdateScoreWeights(ctx context.Context, shortID string, in models.UpdateScoreWeightsInput) error {
+	result, err := r.pool.Exec(ctx, `
+		UPDATE batches SET
+			score_weight_assignments = $2, score_weight_exams = $3, score_weight_projects = $4
+		WHERE short_id = $1 AND deleted_at IS NULL`,
+		shortID, in.AssignmentsWeight, in.ExamsWeight, in.ProjectsWeight,
+	)
 	if err != nil {
 		return err
 	}
@@ -277,6 +328,94 @@ func (r *BatchRepository) AddStudents(ctx context.Context, batchShortID string, 
 		added = append(added, id)
 	}
 	return added, rows.Err()
+}
+
+// AddStudentsWithEnrollment bulk-enrolls students into a batch AND creates
+// their student_enrollments rows in a single transaction — batch_students and
+// student_enrollments are two hand-synced tables, and doing these as two
+// separate statements (as this used to work) meant a mid-way failure could
+// leave a student on the roster but invisible to enrollment/scoring/at-risk
+// queries, silently. Returns the IDs of students actually added to the roster.
+func (r *BatchRepository) AddStudentsWithEnrollment(
+	ctx context.Context,
+	batchShortID string,
+	studentIDs []string,
+	addedBy string,
+	courseID, batchID string,
+	isLateEnrollment bool,
+	accessStartDate *time.Time,
+	accessEndDate *time.Time,
+) ([]string, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	rows, err := tx.Query(ctx, `
+		INSERT INTO batch_students (batch_id, user_id, added_by)
+		SELECT b.id, u.id, $3
+		FROM batches b
+		CROSS JOIN unnest($2::uuid[]) AS uid(user_id)
+		JOIN users u ON u.id = uid.user_id AND u.deleted_at IS NULL AND u.role = 'student'
+		WHERE b.short_id = $1 AND b.deleted_at IS NULL
+		ON CONFLICT (batch_id, user_id) DO NOTHING
+		RETURNING user_id`,
+		batchShortID, studentIDs, addedBy,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("add students: %w", err)
+	}
+	var added []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		added = append(added, id)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	rows.Close()
+
+	for _, studentID := range added {
+		enrolled := false
+		for attempt := 0; attempt < 3 && !enrolled; attempt++ {
+			shortID := util.GenerateShortID()
+			_, err := tx.Exec(ctx, `
+				INSERT INTO student_enrollments (
+					short_id, student_id, course_id, batch_id, enrollment_type, status,
+					access_start_date, access_end_date, is_late_enrollment, created_by
+				)
+				VALUES ($1, $2::UUID, $3::UUID, $4::UUID, 'direct', 'active', $5, $6, $7, $8::UUID)
+				ON CONFLICT (student_id, batch_id) DO UPDATE SET
+					status = 'active', access_start_date = EXCLUDED.access_start_date,
+					access_end_date = EXCLUDED.access_end_date, is_late_enrollment = EXCLUDED.is_late_enrollment,
+					updated_at = NOW()`,
+				shortID, studentID, courseID, batchID, accessStartDate, accessEndDate, isLateEnrollment, addedBy,
+			)
+			if err == nil {
+				enrolled = true
+				continue
+			}
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+				continue
+			}
+			return nil, fmt.Errorf("insert enrollment for %s: %w", studentID, err)
+		}
+		if !enrolled {
+			return nil, fmt.Errorf("could not generate a unique short ID for %s after 3 attempts", studentID)
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return added, nil
 }
 
 // RemoveStudent removes a single student from a batch.
@@ -378,6 +517,23 @@ func (r *BatchRepository) IsFeesPaidByBatchShortID(ctx context.Context, batchSho
 	return paid, err
 }
 
+// IsStudentEnrolled reports whether userID is a member (any fee status) of
+// the batch identified by its short_id — used to let an enrolled student
+// view batch-wide read-only content (e.g. the leaderboard) that's otherwise
+// staff-only.
+func (r *BatchRepository) IsStudentEnrolled(ctx context.Context, batchShortID, userID string) (bool, error) {
+	var exists bool
+	err := r.pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM batch_students bs
+			JOIN batches b ON b.id = bs.batch_id
+			WHERE b.short_id = $1 AND b.deleted_at IS NULL AND bs.user_id = $2::uuid
+		)`,
+		batchShortID, userID,
+	).Scan(&exists)
+	return exists, err
+}
+
 // FindDueForStartReminder returns active batches starting on startDate
 // ("YYYY-MM-DD") that haven't had a start reminder sent yet.
 func (r *BatchRepository) FindDueForStartReminder(ctx context.Context, startDate string) ([]models.Batch, error) {
@@ -426,7 +582,9 @@ func (r *BatchRepository) scanBatches(ctx context.Context, q string, args ...int
 			&b.BatchManagerID, &b.BatchManagerName,
 			&b.AdditionalManagerID, &b.AdditionalManagerName,
 			&b.Module, &b.StartDate, &b.EndDate,
-			&b.IsActive, &b.StudentCount, &b.CreatedBy, &b.CreatedAt, &b.UpdatedAt,
+			&b.IsActive, &b.Status, &b.MaxStudents, &b.StudentCount,
+			&b.ScoreWeightAssignments, &b.ScoreWeightExams, &b.ScoreWeightProjects,
+			&b.CreatedBy, &b.CreatedAt, &b.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}

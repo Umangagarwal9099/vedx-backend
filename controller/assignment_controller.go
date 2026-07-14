@@ -16,10 +16,11 @@ type AssignmentController struct {
 	assignmentRepo   *repository.AssignmentRepository
 	batchRepo        *repository.BatchRepository
 	notificationRepo *repository.NotificationRepository
+	auditLogRepo     *repository.AuditLogRepository
 }
 
-func NewAssignmentController(assignmentRepo *repository.AssignmentRepository, batchRepo *repository.BatchRepository, notificationRepo *repository.NotificationRepository) *AssignmentController {
-	return &AssignmentController{assignmentRepo: assignmentRepo, batchRepo: batchRepo, notificationRepo: notificationRepo}
+func NewAssignmentController(assignmentRepo *repository.AssignmentRepository, batchRepo *repository.BatchRepository, notificationRepo *repository.NotificationRepository, auditLogRepo *repository.AuditLogRepository) *AssignmentController {
+	return &AssignmentController{assignmentRepo: assignmentRepo, batchRepo: batchRepo, notificationRepo: notificationRepo, auditLogRepo: auditLogRepo}
 }
 
 // CreateAssignment godoc
@@ -41,6 +42,9 @@ func (ctrl *AssignmentController) Create(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	if !checkBatchAccess(c, ctrl.batchRepo, input.BatchShortID) {
+		return
+	}
 
 	createdBy := c.GetString("user_id")
 
@@ -53,6 +57,12 @@ func (ctrl *AssignmentController) Create(c *gin.Context) {
 	if assignment.Status == "active" {
 		ctrl.notifyPublished(c, assignment, createdBy)
 	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "create", EntityType: "assignment",
+		EntityID: assignment.ID, EntityShortID: assignment.ShortID, EntityLabel: assignment.Title,
+		BatchShortID: assignment.BatchShortID,
+	})
 
 	c.JSON(http.StatusCreated, assignment)
 }
@@ -213,6 +223,13 @@ func (ctrl *AssignmentController) Update(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch updated assignment"})
 		return
 	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "update", EntityType: "assignment",
+		EntityID: a.ID, EntityShortID: a.ShortID, EntityLabel: a.Title,
+		BatchShortID: a.BatchShortID,
+	})
+
 	c.JSON(http.StatusOK, a)
 }
 
@@ -252,6 +269,13 @@ func (ctrl *AssignmentController) Delete(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not delete assignment"})
 		return
 	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "delete", EntityType: "assignment",
+		EntityID: existing.ID, EntityShortID: existing.ShortID, EntityLabel: existing.Title,
+		BatchShortID: existing.BatchShortID,
+	})
+
 	c.Status(http.StatusNoContent)
 }
 
@@ -357,6 +381,34 @@ func (ctrl *AssignmentController) GetAllSubmissions(c *gin.Context) {
 	c.JSON(http.StatusOK, submissions)
 }
 
+// GetAllSubmissionsGlobal godoc
+//
+//	@Summary		List every assignment submission (cross-assignment)
+//	@Description	Returns every assignment submission across every assignment, newest first — mentors see only submissions in batches they manage; team_lead/super_admin see everything. Powers the unified Submissions workspace.
+//	@Tags			assignments
+//	@Produce		json
+//	@Success		200	{array}		models.AssignmentSubmission
+//	@Failure		500	{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/submissions/assignments [get]
+func (ctrl *AssignmentController) GetAllSubmissionsGlobal(c *gin.Context) {
+	mentorID := ""
+	role := c.GetString("role")
+	if role == string(models.RoleMentor) || role == string(models.RoleEmployee) {
+		mentorID = c.GetString("user_id")
+	}
+
+	submissions, err := ctrl.assignmentRepo.FindAllSubmissionsForMentor(c.Request.Context(), mentorID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch submissions"})
+		return
+	}
+	if submissions == nil {
+		submissions = []models.AssignmentSubmission{}
+	}
+	c.JSON(http.StatusOK, submissions)
+}
+
 // GradeSubmission godoc
 //
 //	@Summary		Grade submission
@@ -402,6 +454,13 @@ func (ctrl *AssignmentController) GradeSubmission(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not grade submission"})
 		return
 	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "grade", EntityType: "assignment_submission",
+		EntityShortID: submissionShortID, EntityLabel: assignment.Title,
+		BatchShortID: assignment.BatchShortID,
+		Metadata: map[string]interface{}{"marks": input.Marks, "status": input.Status},
+	})
 
 	c.Status(http.StatusNoContent)
 }

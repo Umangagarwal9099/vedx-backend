@@ -81,6 +81,11 @@ type AssignmentSubmission struct {
 	ID                string     `json:"id"`
 	ShortID           string     `json:"short_id"`
 	AssignmentShortID string     `json:"assignment_short_id"`
+	// AssignmentTitle/BatchShortID/BatchNumber are only populated by the
+	// cross-assignment workspace listing (FindAllSubmissionsForMentor).
+	AssignmentTitle   string     `json:"assignment_title,omitempty"`
+	BatchShortID      string     `json:"batch_short_id,omitempty"`
+	BatchNumber       string     `json:"batch_number,omitempty"`
 	StudentID         string     `json:"student_id"`
 	StudentName       string     `json:"student_name,omitempty"`
 	StudentEmail      string     `json:"student_email,omitempty"`

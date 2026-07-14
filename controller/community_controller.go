@@ -17,11 +17,12 @@ type CommunityController struct {
 	communityRepo    *repository.CommunityRepository
 	notificationRepo *repository.NotificationRepository
 	userRepo         *repository.UserRepository
+	batchRepo        *repository.BatchRepository
 	emailSvc         *service.EmailService
 }
 
-func NewCommunityController(communityRepo *repository.CommunityRepository, notificationRepo *repository.NotificationRepository, userRepo *repository.UserRepository, emailSvc *service.EmailService) *CommunityController {
-	return &CommunityController{communityRepo: communityRepo, notificationRepo: notificationRepo, userRepo: userRepo, emailSvc: emailSvc}
+func NewCommunityController(communityRepo *repository.CommunityRepository, notificationRepo *repository.NotificationRepository, userRepo *repository.UserRepository, batchRepo *repository.BatchRepository, emailSvc *service.EmailService) *CommunityController {
+	return &CommunityController{communityRepo: communityRepo, notificationRepo: notificationRepo, userRepo: userRepo, batchRepo: batchRepo, emailSvc: emailSvc}
 }
 
 // CreateCommunity godoc
@@ -42,6 +43,9 @@ func (ctrl *CommunityController) Create(c *gin.Context) {
 	var input models.CreateCommunityInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, input.BatchShortID) {
 		return
 	}
 
@@ -137,9 +141,25 @@ func (ctrl *CommunityController) GetByShortID(c *gin.Context) {
 func (ctrl *CommunityController) Update(c *gin.Context) {
 	shortID := c.Param("short_id")
 
+	existing, err := ctrl.communityRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch community"})
+		return
+	}
+	if existing == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "community not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, existing.BatchShortID) {
+		return
+	}
+
 	var input models.UpdateCommunityInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if input.BatchShortID != nil && !checkBatchAccess(c, ctrl.batchRepo, *input.BatchShortID) {
 		return
 	}
 
@@ -180,6 +200,19 @@ func (ctrl *CommunityController) Update(c *gin.Context) {
 func (ctrl *CommunityController) Delete(c *gin.Context) {
 	shortID := c.Param("short_id")
 
+	existing, err := ctrl.communityRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch community"})
+		return
+	}
+	if existing == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "community not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, existing.BatchShortID) {
+		return
+	}
+
 	if err := ctrl.communityRepo.Delete(c.Request.Context(), shortID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "community not found"})
@@ -208,6 +241,19 @@ func (ctrl *CommunityController) Delete(c *gin.Context) {
 //	@Router			/communities/{short_id}/members [post]
 func (ctrl *CommunityController) AddMembers(c *gin.Context) {
 	shortID := c.Param("short_id")
+
+	existing, err := ctrl.communityRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch community"})
+		return
+	}
+	if existing == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "community not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, existing.BatchShortID) {
+		return
+	}
 
 	var input models.AddCommunityMembersInput
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -294,6 +340,19 @@ func (ctrl *CommunityController) GetMembers(c *gin.Context) {
 func (ctrl *CommunityController) RemoveMember(c *gin.Context) {
 	shortID := c.Param("short_id")
 	userID := c.Param("user_id")
+
+	existing, err := ctrl.communityRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch community"})
+		return
+	}
+	if existing == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "community not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, existing.BatchShortID) {
+		return
+	}
 
 	if err := ctrl.communityRepo.RemoveMember(c.Request.Context(), shortID, userID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

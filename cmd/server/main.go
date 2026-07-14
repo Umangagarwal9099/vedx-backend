@@ -105,6 +105,15 @@ func main() {
 		repository.NewNotificationRepository(pool),
 	)
 
+	// Background: remind enrolled students 24h before an assignment/project deadline.
+	go scheduler.RunDeadlineReminders(
+		reminderCtx,
+		repository.NewAssignmentRepository(pool),
+		repository.NewProjectRepository(pool),
+		repository.NewBatchRepository(pool),
+		repository.NewNotificationRepository(pool),
+	)
+
 	// Background: force-submit exam attempts whose deadline has passed —
 	// the server-side enforcement that makes auto_submit/duration actually
 	// end an exam, instead of relying on the student's browser to call submit.
@@ -116,6 +125,7 @@ func main() {
 			repository.NewQuestionBankRepository(pool),
 			repository.NewBatchRepository(pool),
 			repository.NewNotificationRepository(pool),
+			nil, // no gin.Context in this background sweep — nothing to attribute an actor to
 		),
 	)
 

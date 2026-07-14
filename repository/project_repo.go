@@ -159,6 +159,22 @@ func (r *ProjectRepository) FindAllForStudent(ctx context.Context, studentID str
 	return r.scanAll(ctx, q, studentID)
 }
 
+// FindDueForDeadlineReminder returns active projects whose final deadline
+// falls within the next 24 hours and haven't been reminded about yet.
+func (r *ProjectRepository) FindDueForDeadlineReminder(ctx context.Context) ([]models.Project, error) {
+	q := fmt.Sprintf(`%s
+		WHERE p.deleted_at IS NULL AND p.status = 'active' AND p.deadline_reminder_sent = FALSE
+		  AND p.final_deadline BETWEEN NOW() AND NOW() + INTERVAL '24 hours'
+		ORDER BY p.final_deadline ASC`, projectBaseSelect)
+	return r.scanAll(ctx, q)
+}
+
+// MarkDeadlineReminderSent flags a project so its deadline reminder fires once.
+func (r *ProjectRepository) MarkDeadlineReminderSent(ctx context.Context, id string) error {
+	_, err := r.pool.Exec(ctx, `UPDATE projects SET deadline_reminder_sent = TRUE WHERE id = $1::UUID`, id)
+	return err
+}
+
 func (r *ProjectRepository) FindByShortID(ctx context.Context, shortID string) (*models.Project, error) {
 	q := fmt.Sprintf("%s WHERE p.short_id = $1 AND p.deleted_at IS NULL", projectBaseSelect)
 	p, err := scanProject(r.pool.QueryRow(ctx, q, shortID))
@@ -665,6 +681,57 @@ func (r *ProjectRepository) FindAllSubmissions(ctx context.Context, milestoneSho
 	for rows.Next() {
 		s, err := scanProjectSubmission(rows)
 		if err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+// FindAllSubmissionsForMentor returns every project-milestone submission
+// across every project — or, when mentorID is non-empty, only those in
+// batches that mentor manages — newest first. This is the cross-project feed
+// behind the unified Submissions workspace.
+func (r *ProjectRepository) FindAllSubmissionsForMentor(ctx context.Context, mentorID string) ([]models.ProjectSubmission, error) {
+	q := `
+		SELECT ps.id, ps.short_id, pm.short_id, p.title, pm.title, b.short_id, b.batch_number,
+		       COALESCE(ps.student_id::TEXT, ''), COALESCE(CONCAT(su.first_name, ' ', su.last_name), ''),
+		       COALESCE(t.short_id, ''), COALESCE(t.name, ''),
+		       ps.submission_type::TEXT, COALESCE(ps.content,''), COALESCE(ps.file_url,''),
+		       ps.status::TEXT, ps.marks, COALESCE(ps.feedback,''),
+		       ps.submitted_at, ps.evaluated_at, COALESCE(ps.evaluated_by::TEXT,''),
+		       ps.created_at, ps.updated_at
+		FROM project_submissions ps
+		JOIN project_milestones pm ON ps.milestone_id = pm.id
+		JOIN projects p ON pm.project_id = p.id
+		JOIN batches  b ON p.batch_id     = b.id
+		LEFT JOIN users su ON ps.student_id = su.id AND su.deleted_at IS NULL
+		LEFT JOIN project_teams t ON ps.team_id = t.id`
+	args := []interface{}{}
+	if mentorID != "" {
+		q += ` WHERE b.batch_manager_id = $1 OR b.additional_manager_id = $1`
+		args = append(args, mentorID)
+	}
+	q += ` ORDER BY ps.submitted_at DESC LIMIT 500`
+
+	rows, err := r.pool.Query(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.ProjectSubmission
+	for rows.Next() {
+		var s models.ProjectSubmission
+		if err := rows.Scan(
+			&s.ID, &s.ShortID, &s.MilestoneShortID, &s.ProjectTitle, &s.MilestoneTitle, &s.BatchShortID, &s.BatchNumber,
+			&s.StudentID, &s.StudentName,
+			&s.TeamShortID, &s.TeamName,
+			&s.SubmissionType, &s.Content, &s.FileURL,
+			&s.Status, &s.Marks, &s.Feedback,
+			&s.SubmittedAt, &s.EvaluatedAt, &s.EvaluatedBy,
+			&s.CreatedAt, &s.UpdatedAt,
+		); err != nil {
 			return nil, err
 		}
 		out = append(out, s)

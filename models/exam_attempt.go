@@ -7,6 +7,11 @@ type ExamAttempt struct {
 	ID                string     `json:"id"`
 	ShortID           string     `json:"short_id"`
 	AssessmentShortID string     `json:"assessment_short_id"`
+	// AssessmentName/BatchShortID/BatchNumber are only populated by the
+	// cross-assessment workspace listing (FindAllAttemptsForMentor).
+	AssessmentName    string     `json:"assessment_name,omitempty"`
+	BatchShortID      string     `json:"batch_short_id,omitempty"`
+	BatchNumber       string     `json:"batch_number,omitempty"`
 	StudentID         string     `json:"student_id"`
 	StudentName       string     `json:"student_name,omitempty"`
 	AttemptNumber     int        `json:"attempt_number"`

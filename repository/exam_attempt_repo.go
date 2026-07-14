@@ -141,6 +141,51 @@ func (r *ExamAttemptRepository) FindAllAttempts(ctx context.Context, assessmentS
 	return out, rows.Err()
 }
 
+// FindAllAttemptsForMentor returns every submitted/evaluated exam attempt
+// across every assessment — or, when mentorID is non-empty, only those in
+// batches that mentor manages (global, batchless assessments always pass
+// through) — newest first. This is the cross-assessment feed behind the
+// unified Submissions workspace.
+func (r *ExamAttemptRepository) FindAllAttemptsForMentor(ctx context.Context, mentorID string) ([]models.ExamAttempt, error) {
+	q := `
+		SELECT ea.id, ea.short_id, a.short_id, a.name, COALESCE(b.short_id, ''), COALESCE(b.batch_number, ''),
+		       ea.student_id, CONCAT(u.first_name, ' ', u.last_name),
+		       ea.attempt_number, ea.started_at, ea.ends_at, ea.submitted_at, ea.auto_submitted,
+		       ea.status::TEXT, ea.total_score, ea.max_score, ea.passed
+		FROM exam_attempts ea
+		JOIN assessments a ON ea.assessment_id = a.id
+		JOIN users       u ON ea.student_id    = u.id AND u.deleted_at IS NULL
+		LEFT JOIN batches b ON a.batch_id = b.id
+		WHERE ea.status IN ('submitted', 'evaluated')`
+	args := []interface{}{}
+	if mentorID != "" {
+		q += ` AND (a.batch_id IS NULL OR b.batch_manager_id = $1 OR b.additional_manager_id = $1)`
+		args = append(args, mentorID)
+	}
+	q += ` ORDER BY ea.submitted_at DESC LIMIT 500`
+
+	rows, err := r.pool.Query(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.ExamAttempt
+	for rows.Next() {
+		var a models.ExamAttempt
+		if err := rows.Scan(
+			&a.ID, &a.ShortID, &a.AssessmentShortID, &a.AssessmentName, &a.BatchShortID, &a.BatchNumber,
+			&a.StudentID, &a.StudentName,
+			&a.AttemptNumber, &a.StartedAt, &a.EndsAt, &a.SubmittedAt, &a.AutoSubmitted,
+			&a.Status, &a.TotalScore, &a.MaxScore, &a.Passed,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
 // FindExpiredInProgress returns every attempt still "in_progress" whose
 // computed deadline has already passed — the set the auto-submit sweep acts on.
 func (r *ExamAttemptRepository) FindExpiredInProgress(ctx context.Context) ([]models.ExamAttempt, error) {
