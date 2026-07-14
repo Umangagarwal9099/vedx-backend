@@ -24,6 +24,7 @@ func NewCodingQuestionRepository(pool *pgxpool.Pool) *CodingQuestionRepository {
 
 const selectCodingQuestion = `
 	SELECT id, short_id, title, description, difficulty,
+	       COALESCE(subject, ''), COALESCE(subtopic, ''),
 	       topics, languages, constraints,
 	       examples, starter_code, test_cases,
 	       is_active, created_by, created_at, updated_at
@@ -36,6 +37,7 @@ func (r *CodingQuestionRepository) scanOne(row pgx.Row) (*models.CodingQuestion,
 
 	err := row.Scan(
 		&q.ID, &q.ShortID, &q.Title, &q.Description, &q.Difficulty,
+		&q.Subject, &q.Subtopic,
 		&topicsArr, &languagesArr, &constraintsArr,
 		&examplesRaw, &starterRaw, &testCasesRaw,
 		&q.IsActive, &q.CreatedBy, &q.CreatedAt, &q.UpdatedAt,
@@ -86,6 +88,7 @@ func (r *CodingQuestionRepository) scanMany(ctx context.Context, q string, args 
 
 		if err := rows.Scan(
 			&cq.ID, &cq.ShortID, &cq.Title, &cq.Description, &cq.Difficulty,
+			&cq.Subject, &cq.Subtopic,
 			&topicsArr, &languagesArr, &constraintsArr,
 			&examplesRaw, &starterRaw, &testCasesRaw,
 			&cq.IsActive, &cq.CreatedBy, &cq.CreatedAt, &cq.UpdatedAt,
@@ -126,9 +129,9 @@ func (r *CodingQuestionRepository) scanMany(ctx context.Context, q string, args 
 func (r *CodingQuestionRepository) Create(ctx context.Context, in models.CreateCodingQuestionInput, createdBy string) (*models.CodingQuestion, error) {
 	const q = `
 		INSERT INTO coding_questions
-		  (short_id, title, description, difficulty, topics, languages, constraints,
+		  (short_id, title, description, difficulty, subject, subtopic, topics, languages, constraints,
 		   examples, starter_code, test_cases, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		RETURNING ` + selectFields
 
 	topics := in.Topics
@@ -151,7 +154,7 @@ func (r *CodingQuestionRepository) Create(ctx context.Context, in models.CreateC
 	for attempt := 0; attempt < 3; attempt++ {
 		shortID := util.GenerateShortID()
 		row := r.pool.QueryRow(ctx, q,
-			shortID, in.Title, in.Description, in.Difficulty,
+			shortID, in.Title, in.Description, in.Difficulty, in.Subject, in.Subtopic,
 			topics, in.Languages, constraints,
 			examplesJSON, starterJSON, testCasesJSON,
 			createdBy,
@@ -216,6 +219,16 @@ func (r *CodingQuestionRepository) Update(ctx context.Context, shortID string, i
 	if in.Difficulty != nil {
 		setClauses = append(setClauses, fmt.Sprintf("difficulty = $%d", i))
 		args = append(args, *in.Difficulty)
+		i++
+	}
+	if in.Subject != nil {
+		setClauses = append(setClauses, fmt.Sprintf("subject = $%d", i))
+		args = append(args, *in.Subject)
+		i++
+	}
+	if in.Subtopic != nil {
+		setClauses = append(setClauses, fmt.Sprintf("subtopic = $%d", i))
+		args = append(args, *in.Subtopic)
 		i++
 	}
 	if in.Topics != nil {
@@ -291,6 +304,7 @@ func (r *CodingQuestionRepository) Delete(ctx context.Context, shortID string) e
 }
 
 const selectFields = `id, short_id, title, description, difficulty,
+	COALESCE(subject, ''), COALESCE(subtopic, ''),
 	topics, languages, constraints,
 	examples, starter_code, test_cases,
 	is_active, created_by, created_at, updated_at`

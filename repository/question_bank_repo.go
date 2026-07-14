@@ -25,7 +25,7 @@ func NewQuestionBankRepository(pool *pgxpool.Pool) *QuestionBankRepository {
 const questionBaseSelect = `
 	SELECT q.id, q.short_id, q.question_type::TEXT, COALESCE(q.question_text, ''),
 	       q.options, q.correct_option_ids, COALESCE(q.correct_text, ''), COALESCE(q.explanation, ''),
-	       q.marks, q.negative_marks, COALESCE(q.topic, ''), COALESCE(q.difficulty, ''),
+	       q.marks, q.negative_marks, COALESCE(q.subject, ''), COALESCE(q.topic, ''), COALESCE(q.subtopic, ''), COALESCE(q.difficulty, ''),
 	       COALESCE(cq.short_id, ''), COALESCE(cq.title, ''),
 	       q.visibility::TEXT, q.created_by, CONCAT(u.first_name, ' ', u.last_name),
 	       q.created_at, q.updated_at
@@ -39,7 +39,7 @@ func scanAssessmentQuestion(row pgx.Row) (models.Question, error) {
 	err := row.Scan(
 		&q.ID, &q.ShortID, &q.QuestionType, &q.QuestionText,
 		&optionsRaw, &q.CorrectOptionIDs, &q.CorrectText, &q.Explanation,
-		&q.Marks, &q.NegativeMarks, &q.Topic, &q.Difficulty,
+		&q.Marks, &q.NegativeMarks, &q.Subject, &q.Topic, &q.Subtopic, &q.Difficulty,
 		&q.CodingQuestionShortID, &q.CodingQuestionTitle,
 		&q.Visibility, &q.CreatedBy, &q.CreatedByName,
 		&q.CreatedAt, &q.UpdatedAt,
@@ -80,19 +80,19 @@ func (r *QuestionBankRepository) Create(ctx context.Context, in models.CreateQue
 			WITH ins AS (
 				INSERT INTO assessment_questions (
 					short_id, question_type, question_text, options, correct_option_ids,
-					correct_text, explanation, marks, negative_marks, topic, difficulty,
+					correct_text, explanation, marks, negative_marks, subject, topic, subtopic, difficulty,
 					coding_question_id, visibility, created_by
 				) VALUES (
 					$1, $2::assessment_question_type, NULLIF($3,''), $4, $5,
-					NULLIF($6,''), NULLIF($7,''), $8, $9, NULLIF($10,''), NULLIF($11,''),
-					(SELECT id FROM coding_questions WHERE short_id = NULLIF($12,'') AND deleted_at IS NULL),
-					$13::question_visibility, $14
+					NULLIF($6,''), NULLIF($7,''), $8, $9, NULLIF($10,''), NULLIF($11,''), NULLIF($12,''), NULLIF($13,''),
+					(SELECT id FROM coding_questions WHERE short_id = NULLIF($14,'') AND deleted_at IS NULL),
+					$15::question_visibility, $16
 				)
 				RETURNING *
 			)
 			%s WHERE q.id = (SELECT id FROM ins)`, questionBaseSelect),
 			shortID, in.QuestionType, in.QuestionText, optionsJSON, correctOptionIDs,
-			in.CorrectText, in.Explanation, in.Marks, in.NegativeMarks, in.Topic, in.Difficulty,
+			in.CorrectText, in.Explanation, in.Marks, in.NegativeMarks, in.Subject, in.Topic, in.Subtopic, in.Difficulty,
 			in.CodingQuestionShortID, visibilityOrDefault(in.Visibility), createdBy,
 		))
 		if err == nil {
@@ -154,9 +154,19 @@ func (r *QuestionBankRepository) FindAll(ctx context.Context, f models.QuestionF
 		args = append(args, f.QuestionType)
 		i++
 	}
+	if f.Subject != "" {
+		where = append(where, fmt.Sprintf("q.subject = $%d", i))
+		args = append(args, f.Subject)
+		i++
+	}
 	if f.Topic != "" {
 		where = append(where, fmt.Sprintf("q.topic ILIKE $%d", i))
 		args = append(args, "%"+f.Topic+"%")
+		i++
+	}
+	if f.Subtopic != "" {
+		where = append(where, fmt.Sprintf("q.subtopic = $%d", i))
+		args = append(args, f.Subtopic)
 		i++
 	}
 	if f.Difficulty != "" {
@@ -211,8 +221,14 @@ func (r *QuestionBankRepository) Update(ctx context.Context, shortID string, in 
 	if in.NegativeMarks != nil {
 		add("negative_marks = $%d", *in.NegativeMarks)
 	}
+	if in.Subject != nil {
+		add("subject = NULLIF($%d,'')", *in.Subject)
+	}
 	if in.Topic != nil {
 		add("topic = NULLIF($%d,'')", *in.Topic)
+	}
+	if in.Subtopic != nil {
+		add("subtopic = NULLIF($%d,'')", *in.Subtopic)
 	}
 	if in.Difficulty != nil {
 		add("difficulty = NULLIF($%d,'')", *in.Difficulty)
@@ -275,7 +291,7 @@ func (r *QuestionBankRepository) GetQuestions(ctx context.Context, assessmentSho
 		SELECT aql.order_index, aql.marks_override,
 		       q.id, q.short_id, q.question_type::TEXT, COALESCE(q.question_text, ''),
 		       q.options, q.correct_option_ids, COALESCE(q.correct_text, ''), COALESCE(q.explanation, ''),
-		       q.marks, q.negative_marks, COALESCE(q.topic, ''), COALESCE(q.difficulty, ''),
+		       q.marks, q.negative_marks, COALESCE(q.subject, ''), COALESCE(q.topic, ''), COALESCE(q.subtopic, ''), COALESCE(q.difficulty, ''),
 		       COALESCE(cq.short_id, ''), COALESCE(cq.title, ''),
 		       q.visibility::TEXT, q.created_by, CONCAT(u.first_name, ' ', u.last_name),
 		       q.created_at, q.updated_at
@@ -301,7 +317,7 @@ func (r *QuestionBankRepository) GetQuestions(ctx context.Context, assessmentSho
 			&aq.OrderIndex, &aq.MarksOverride,
 			&aq.ID, &aq.ShortID, &aq.QuestionType, &aq.QuestionText,
 			&optionsRaw, &aq.CorrectOptionIDs, &aq.CorrectText, &aq.Explanation,
-			&aq.Marks, &aq.NegativeMarks, &aq.Topic, &aq.Difficulty,
+			&aq.Marks, &aq.NegativeMarks, &aq.Subject, &aq.Topic, &aq.Subtopic, &aq.Difficulty,
 			&aq.CodingQuestionShortID, &aq.CodingQuestionTitle,
 			&aq.Visibility, &aq.CreatedBy, &aq.CreatedByName,
 			&aq.CreatedAt, &aq.UpdatedAt,
@@ -372,4 +388,49 @@ func (r *QuestionBankRepository) DetachQuestion(ctx context.Context, assessmentS
 		return pgx.ErrNoRows
 	}
 	return nil
+}
+
+// GetStats aggregates counts for one subject — total, by question_type, by
+// difficulty, and by topic — powering the subject browse cards.
+func (r *QuestionBankRepository) GetStats(ctx context.Context, subject string) (*models.QuestionBankStats, error) {
+	stats := &models.QuestionBankStats{
+		Subject:        subject,
+		ByQuestionType: map[string]int{},
+		ByDifficulty:   map[string]int{},
+	}
+
+	rows, err := r.pool.Query(ctx, `
+		SELECT question_type::TEXT, COALESCE(difficulty, ''), COALESCE(topic, ''), count(*)
+		FROM assessment_questions
+		WHERE subject = $1 AND deleted_at IS NULL
+		GROUP BY question_type, difficulty, topic`, subject)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	topicCounts := map[string]int{}
+	for rows.Next() {
+		var qType, difficulty, topic string
+		var count int
+		if err := rows.Scan(&qType, &difficulty, &topic, &count); err != nil {
+			return nil, err
+		}
+		stats.Total += count
+		stats.ByQuestionType[qType] += count
+		if difficulty != "" {
+			stats.ByDifficulty[difficulty] += count
+		}
+		if topic != "" {
+			topicCounts[topic] += count
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	for topic, count := range topicCounts {
+		stats.Topics = append(stats.Topics, models.TopicCount{Topic: topic, Count: count})
+	}
+	return stats, nil
 }

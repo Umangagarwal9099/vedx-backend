@@ -178,3 +178,43 @@ func (ctrl *QuestionBankController) Delete(c *gin.Context) {
 	}
 	c.Status(http.StatusNoContent)
 }
+
+// GetTaxonomy godoc
+//
+//	@Summary		Get question bank taxonomy
+//	@Description	Returns the fixed Subject -> Topic -> Subtopic reference tree used to drive the browse UI and cascading selects.
+//	@Tags			questions
+//	@Produce		json
+//	@Success		200	{array}	models.QuestionBankTaxonomy
+//	@Security		BearerAuth
+//	@Router			/question-bank/taxonomy [get]
+func (ctrl *QuestionBankController) GetTaxonomy(c *gin.Context) {
+	c.JSON(http.StatusOK, models.GetQuestionBankTaxonomy())
+}
+
+// GetStats godoc
+//
+//	@Summary		Get question bank stats for a subject
+//	@Description	Returns aggregate counts (total, by question_type, by difficulty, by topic) for the given subject.
+//	@Tags			questions
+//	@Produce		json
+//	@Param			subject	query		string	true	"Subject name, e.g. Python"
+//	@Success		200		{object}	models.QuestionBankStats
+//	@Failure		400		{object}	map[string]string	"Missing subject param"
+//	@Failure		500		{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/question-bank/stats [get]
+func (ctrl *QuestionBankController) GetStats(c *gin.Context) {
+	subject := c.Query("subject")
+	if subject == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "query param 'subject' is required"})
+		return
+	}
+
+	stats, err := ctrl.questionBankRepo.GetStats(c.Request.Context(), subject)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch stats"})
+		return
+	}
+	c.JSON(http.StatusOK, stats)
+}

@@ -23,6 +23,8 @@ type CodingQuestion struct {
 	Title       string           `json:"title"`
 	Description string           `json:"description"`
 	Difficulty  string           `json:"difficulty"`
+	Subject     string           `json:"subject,omitempty"`
+	Subtopic    string           `json:"subtopic,omitempty"`
 	Topics      []string         `json:"topics"`
 	Languages   []string         `json:"languages"`
 	Constraints []string         `json:"constraints"`
@@ -40,6 +42,8 @@ type CreateCodingQuestionInput struct {
 	Title       string           `json:"title"        binding:"required"`
 	Description string           `json:"description"  binding:"required"`
 	Difficulty  string           `json:"difficulty"   binding:"required"`
+	Subject     string           `json:"subject"`
+	Subtopic    string           `json:"subtopic"`
 	Topics      []string         `json:"topics"`
 	Languages   []string         `json:"languages"    binding:"required"`
 	Constraints []string         `json:"constraints"`
@@ -52,6 +56,8 @@ type UpdateCodingQuestionInput struct {
 	Title       *string          `json:"title"`
 	Description *string          `json:"description"`
 	Difficulty  *string          `json:"difficulty"`
+	Subject     *string          `json:"subject"`
+	Subtopic    *string          `json:"subtopic"`
 	Topics      []string         `json:"topics"`
 	Languages   []string         `json:"languages"`
 	Constraints []string         `json:"constraints"`

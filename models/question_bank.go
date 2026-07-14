@@ -24,7 +24,9 @@ type Question struct {
 	Explanation           string     `json:"explanation,omitempty"`
 	Marks                 int        `json:"marks"`
 	NegativeMarks         int        `json:"negative_marks"`
+	Subject               string     `json:"subject,omitempty"`
 	Topic                 string     `json:"topic,omitempty"`
+	Subtopic              string     `json:"subtopic,omitempty"`
 	Difficulty            string     `json:"difficulty,omitempty"` // easy | medium | hard
 	CodingQuestionShortID string     `json:"coding_question_short_id,omitempty"`
 	CodingQuestionTitle   string     `json:"coding_question_title,omitempty"`
@@ -49,7 +51,9 @@ type CreateQuestionInput struct {
 	Explanation           string           `json:"explanation"                                                                                                            example:"Goroutines are Go's lightweight concurrency primitive."`
 	Marks                 int              `json:"marks"                    binding:"required,min=1"                                                                     example:"5"`
 	NegativeMarks         int              `json:"negative_marks"                                                                                                         example:"1"`
+	Subject               string           `json:"subject"                                                                                                                example:"Python"`
 	Topic                 string           `json:"topic"                                                                                                                  example:"Concurrency"`
+	Subtopic              string           `json:"subtopic"                                                                                                               example:"Generators"`
 	Difficulty            string           `json:"difficulty"               binding:"omitempty,oneof=easy medium hard"                                                   example:"medium"`
 	CodingQuestionShortID string           `json:"coding_question_short_id"                                                                                               example:"use GET /coding-questions to pick a real short_id"`
 	Visibility            string           `json:"visibility"               binding:"omitempty,oneof=private course global"                                               example:"course"`
@@ -63,7 +67,9 @@ type UpdateQuestionInput struct {
 	Explanation           *string          `json:"explanation"              example:"Updated explanation"`
 	Marks                 *int             `json:"marks"                    example:"10"`
 	NegativeMarks         *int             `json:"negative_marks"           example:"2"`
+	Subject               *string          `json:"subject"                  example:"Python"`
 	Topic                 *string          `json:"topic"                    example:"Updated topic"`
+	Subtopic              *string          `json:"subtopic"                 example:"Generators"`
 	Difficulty            *string          `json:"difficulty"               binding:"omitempty,oneof=easy medium hard" example:"hard"`
 	CodingQuestionShortID *string          `json:"coding_question_short_id" example:""`
 	Visibility            *string          `json:"visibility"               binding:"omitempty,oneof=private course global" example:"global"`
@@ -72,7 +78,9 @@ type UpdateQuestionInput struct {
 // QuestionFilter holds query params for GET /questions.
 type QuestionFilter struct {
 	QuestionType string `form:"question_type"`
+	Subject      string `form:"subject"`
 	Topic        string `form:"topic"`
+	Subtopic     string `form:"subtopic"`
 	Difficulty   string `form:"difficulty"`
 }
 

@@ -375,6 +375,13 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				questions.DELETE("/:short_id", staffOrAbove, questionBankCtrl.Delete)
 			}
 
+			// Question bank taxonomy — Subject -> Topic -> Subtopic reference tree + per-subject stats
+			questionBank := protected.Group("/question-bank")
+			{
+				questionBank.GET("/taxonomy", questionBankCtrl.GetTaxonomy)
+				questionBank.GET("/stats", questionBankCtrl.GetStats)
+			}
+
 			// Communities — scoped to a batch. super_admin / team_lead / mentor manage them;
 			// any authenticated user can read.
 			communities := protected.Group("/communities")
