@@ -165,6 +165,22 @@ func (r *AssignmentRepository) FindAllForStudent(ctx context.Context, studentID 
 	return r.scanAll(ctx, q, studentID)
 }
 
+// FindDueForDeadlineReminder returns active assignments whose deadline falls
+// within the next 24 hours and haven't been reminded about yet.
+func (r *AssignmentRepository) FindDueForDeadlineReminder(ctx context.Context) ([]models.Assignment, error) {
+	q := fmt.Sprintf(`%s
+		WHERE a.deleted_at IS NULL AND a.status = 'active' AND a.deadline_reminder_sent = FALSE
+		  AND a.deadline BETWEEN NOW() AND NOW() + INTERVAL '24 hours'
+		ORDER BY a.deadline ASC`, assignmentBaseSelect)
+	return r.scanAll(ctx, q)
+}
+
+// MarkDeadlineReminderSent flags an assignment so its deadline reminder fires once.
+func (r *AssignmentRepository) MarkDeadlineReminderSent(ctx context.Context, id string) error {
+	_, err := r.pool.Exec(ctx, `UPDATE assignments SET deadline_reminder_sent = TRUE WHERE id = $1::UUID`, id)
+	return err
+}
+
 func (r *AssignmentRepository) FindByShortID(ctx context.Context, shortID string) (*models.Assignment, error) {
 	q := fmt.Sprintf("%s WHERE a.short_id = $1 AND a.deleted_at IS NULL", assignmentBaseSelect)
 	a, err := scanAssignment(r.pool.QueryRow(ctx, q, shortID))
@@ -283,7 +299,7 @@ func scanSubmission(row pgx.Row) (models.AssignmentSubmission, error) {
 // CreateOrResubmit inserts a student's submission for an assignment, or overwrites
 // an existing one that's in "resubmission_required" state. Returns an error if a
 // submission already exists in any other state (call this "already submitted").
-func (r *AssignmentRepository) CreateOrResubmit(ctx context.Context, assignmentShortID, studentID string, in models.CreateSubmissionInput) (*models.AssignmentSubmission, error) {
+func (r *AssignmentRepository) CreateOrResubmit(ctx context.Context, assignmentShortID, studentID string, in models.CreateAssignmentSubmissionInput) (*models.AssignmentSubmission, error) {
 	var existingStatus string
 	err := r.pool.QueryRow(ctx, `
 		SELECT asub.status::TEXT FROM assignment_submissions asub
@@ -365,6 +381,53 @@ func (r *AssignmentRepository) FindAllSubmissions(ctx context.Context, assignmen
 	for rows.Next() {
 		s, err := scanSubmission(rows)
 		if err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+// FindAllSubmissionsForMentor returns every assignment submission across
+// every assignment — or, when mentorID is non-empty, only those in batches
+// that mentor manages — newest first. This is the cross-assignment feed
+// behind the unified Submissions workspace.
+func (r *AssignmentRepository) FindAllSubmissionsForMentor(ctx context.Context, mentorID string) ([]models.AssignmentSubmission, error) {
+	q := `
+		SELECT asub.id, asub.short_id, a.short_id, a.title, b.short_id, b.batch_number,
+		       asub.student_id, CONCAT(u.first_name, ' ', u.last_name), u.email,
+		       asub.submission_type::TEXT, COALESCE(asub.content, ''), COALESCE(asub.file_url, ''),
+		       asub.status::TEXT, asub.marks, COALESCE(asub.feedback, ''),
+		       asub.submitted_at, asub.evaluated_at, COALESCE(asub.evaluated_by::TEXT, ''),
+		       asub.created_at, asub.updated_at
+		FROM assignment_submissions asub
+		JOIN assignments a ON asub.assignment_id = a.id
+		JOIN batches     b ON a.batch_id         = b.id
+		JOIN users       u ON asub.student_id    = u.id AND u.deleted_at IS NULL`
+	args := []interface{}{}
+	if mentorID != "" {
+		q += ` WHERE b.batch_manager_id = $1 OR b.additional_manager_id = $1`
+		args = append(args, mentorID)
+	}
+	q += ` ORDER BY asub.submitted_at DESC LIMIT 500`
+
+	rows, err := r.pool.Query(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.AssignmentSubmission
+	for rows.Next() {
+		var s models.AssignmentSubmission
+		if err := rows.Scan(
+			&s.ID, &s.ShortID, &s.AssignmentShortID, &s.AssignmentTitle, &s.BatchShortID, &s.BatchNumber,
+			&s.StudentID, &s.StudentName, &s.StudentEmail,
+			&s.SubmissionType, &s.Content, &s.FileURL,
+			&s.Status, &s.Marks, &s.Feedback,
+			&s.SubmittedAt, &s.EvaluatedAt, &s.EvaluatedBy,
+			&s.CreatedAt, &s.UpdatedAt,
+		); err != nil {
 			return nil, err
 		}
 		out = append(out, s)

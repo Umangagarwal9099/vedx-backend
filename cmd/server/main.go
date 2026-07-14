@@ -11,11 +11,13 @@ import (
 
 	"github.com/joho/godotenv"
 	"github.com/umangagarwal/vedx-backend/config"
+	"github.com/umangagarwal/vedx-backend/controller"
 	"github.com/umangagarwal/vedx-backend/db"
 	"github.com/umangagarwal/vedx-backend/docs"
 	"github.com/umangagarwal/vedx-backend/repository"
 	"github.com/umangagarwal/vedx-backend/router"
 	"github.com/umangagarwal/vedx-backend/scheduler"
+	"github.com/umangagarwal/vedx-backend/service"
 )
 
 //	@title			Vedex API
@@ -67,6 +69,11 @@ func main() {
 		}
 	}()
 
+	emailSvc := service.NewEmailService(cfg.Resend)
+	if !emailSvc.Configured() {
+		log.Println("Resend not configured — session/batch reminder and confirmation emails will be skipped")
+	}
+
 	// Background: fire a notification the moment a session's scheduled start time arrives.
 	reminderCtx, cancelReminders := context.WithCancel(context.Background())
 	defer cancelReminders()
@@ -75,7 +82,51 @@ func main() {
 		repository.NewSessionRepository(pool),
 		repository.NewBatchRepository(pool),
 		repository.NewNotificationRepository(pool),
+		repository.NewUserRepository(pool),
+		emailSvc,
 		cfg.App.Timezone,
+	)
+
+	// Background: remind students and the batch manager the day before a batch starts.
+	go scheduler.RunBatchReminders(
+		reminderCtx,
+		repository.NewBatchRepository(pool),
+		repository.NewNotificationRepository(pool),
+		repository.NewUserRepository(pool),
+		emailSvc,
+		cfg.App.Timezone,
+	)
+
+	// Background: remind students shortly before a scheduled exam starts.
+	go scheduler.RunExamStartReminders(
+		reminderCtx,
+		repository.NewAssessmentRepository(pool),
+		repository.NewBatchRepository(pool),
+		repository.NewNotificationRepository(pool),
+	)
+
+	// Background: remind enrolled students 24h before an assignment/project deadline.
+	go scheduler.RunDeadlineReminders(
+		reminderCtx,
+		repository.NewAssignmentRepository(pool),
+		repository.NewProjectRepository(pool),
+		repository.NewBatchRepository(pool),
+		repository.NewNotificationRepository(pool),
+	)
+
+	// Background: force-submit exam attempts whose deadline has passed —
+	// the server-side enforcement that makes auto_submit/duration actually
+	// end an exam, instead of relying on the student's browser to call submit.
+	go scheduler.RunExamAttemptSweep(
+		reminderCtx,
+		controller.NewExamAttemptController(
+			repository.NewExamAttemptRepository(pool),
+			repository.NewAssessmentRepository(pool),
+			repository.NewQuestionBankRepository(pool),
+			repository.NewBatchRepository(pool),
+			repository.NewNotificationRepository(pool),
+			nil, // no gin.Context in this background sweep — nothing to attribute an actor to
+		),
 	)
 
 	r := router.New(pool, cfg)

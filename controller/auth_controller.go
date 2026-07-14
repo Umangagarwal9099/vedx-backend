@@ -3,21 +3,29 @@ package controller
 import (
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/umangagarwal/vedx-backend/auth"
 	"github.com/umangagarwal/vedx-backend/models"
 	"github.com/umangagarwal/vedx-backend/repository"
+	"github.com/umangagarwal/vedx-backend/service"
+	"github.com/umangagarwal/vedx-backend/util"
 	"golang.org/x/crypto/bcrypt"
 )
 
+// otpExpiry is how long a forgot-password OTP stays valid after being issued.
+const otpExpiry = 5 * time.Minute
+
 type AuthController struct {
-	userRepo  *repository.UserRepository
-	jwtSecret string
+	userRepo   *repository.UserRepository
+	otpRepo    *repository.PasswordResetRepository
+	emailSvc   *service.EmailService
+	jwtSecret  string
 }
 
-func NewAuthController(userRepo *repository.UserRepository, jwtSecret string) *AuthController {
-	return &AuthController{userRepo: userRepo, jwtSecret: jwtSecret}
+func NewAuthController(userRepo *repository.UserRepository, otpRepo *repository.PasswordResetRepository, emailSvc *service.EmailService, jwtSecret string) *AuthController {
+	return &AuthController{userRepo: userRepo, otpRepo: otpRepo, emailSvc: emailSvc, jwtSecret: jwtSecret}
 }
 
 // ── Login ─────────────────────────────────────────────────────────────────────
@@ -164,4 +172,194 @@ func (ctrl *AuthController) Register(c *gin.Context) {
 		Message: "registration successful",
 		UserID:  userID,
 	})
+}
+
+// ── Change password (logged in, requires old password) ───────────────────────
+
+// ChangePasswordRequest carries the old and new password for an authenticated user.
+type ChangePasswordRequest struct {
+	OldPassword string `json:"old_password" binding:"required"         example:"secret123"`
+	NewPassword string `json:"new_password" binding:"required,min=8"   example:"NewSecret@123"`
+}
+
+// ChangePassword godoc
+//
+//	@Summary		Change password
+//	@Description	Change the logged-in user's password. Requires the current password.
+//	@Tags			auth
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body		ChangePasswordRequest	true	"Old and new password"
+//	@Success		200		{object}	map[string]string	"Password changed"
+//	@Failure		400		{object}	map[string]string	"Validation error"
+//	@Failure		401		{object}	map[string]string	"Incorrect current password"
+//	@Failure		500		{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/auth/change-password [post]
+func (ctrl *AuthController) ChangePassword(c *gin.Context) {
+	var req ChangePasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	userID := c.GetString("user_id")
+
+	currentHash, err := ctrl.userRepo.FindPasswordHashByID(c.Request.Context(), userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(currentHash), []byte(req.OldPassword)); err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "current password is incorrect"})
+		return
+	}
+
+	newHash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+
+	if err := ctrl.userRepo.UpdatePassword(c.Request.Context(), userID, string(newHash)); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not update password"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "password changed successfully"})
+}
+
+// ── Forgot password (public, sends an OTP by email) ───────────────────────────
+
+// ForgotPasswordRequest carries the email to send a reset OTP to.
+type ForgotPasswordRequest struct {
+	Email string `json:"email" binding:"required,email" example:"user@example.com"`
+}
+
+// ForgotPassword godoc
+//
+//	@Summary		Forgot password — request OTP
+//	@Description	Sends a 6-digit OTP to the given email if it belongs to a registered account. Always returns 200, whether or not the email is registered, to avoid leaking which emails have accounts. The OTP expires after 5 minutes.
+//	@Tags			auth
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body		ForgotPasswordRequest	true	"Account email"
+//	@Success		200		{object}	map[string]string	"OTP sent if the email is registered"
+//	@Failure		400		{object}	map[string]string	"Validation error"
+//	@Failure		500		{object}	map[string]string	"Internal server error"
+//	@Router			/auth/forgot-password [post]
+func (ctrl *AuthController) ForgotPassword(c *gin.Context) {
+	var req ForgotPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+
+	const genericResponse = "if that email is registered, an OTP has been sent"
+
+	user, err := ctrl.userRepo.FindByEmail(c.Request.Context(), req.Email)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+	if user == nil {
+		// Same response as the success path — don't reveal whether the email is registered.
+		c.JSON(http.StatusOK, gin.H{"message": genericResponse})
+		return
+	}
+
+	otp := util.GenerateOTP()
+	otpHash, err := bcrypt.GenerateFromPassword([]byte(otp), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+
+	if err := ctrl.otpRepo.CreateOTP(c.Request.Context(), user.ID, string(otpHash), time.Now().Add(otpExpiry)); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+
+	if ctrl.emailSvc.Configured() {
+		subject, html := service.ForgotPasswordOTPEmail(otp)
+		ctrl.emailSvc.SendAsync(user.Email, subject, html)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": genericResponse})
+}
+
+// ── Reset password with OTP (public) ──────────────────────────────────────────
+
+// ResetPasswordRequest carries the email, OTP, and new password for the forgot-password flow.
+type ResetPasswordRequest struct {
+	Email       string `json:"email"        binding:"required,email"     example:"user@example.com"`
+	OTP         string `json:"otp"          binding:"required,len=6"     example:"042913"`
+	NewPassword string `json:"new_password" binding:"required,min=8"     example:"NewSecret@123"`
+}
+
+// ResetPassword godoc
+//
+//	@Summary		Reset password with OTP
+//	@Description	Verifies the OTP emailed via /auth/forgot-password and sets a new password. The OTP is single-use and expires 5 minutes after being issued.
+//	@Tags			auth
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body		ResetPasswordRequest	true	"Email, OTP, and new password"
+//	@Success		200		{object}	map[string]string	"Password reset"
+//	@Failure		400		{object}	map[string]string	"Invalid or expired OTP / validation error"
+//	@Failure		500		{object}	map[string]string	"Internal server error"
+//	@Router			/auth/reset-password [post]
+func (ctrl *AuthController) ResetPassword(c *gin.Context) {
+	var req ResetPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+
+	const invalidOTPMsg = "invalid or expired OTP"
+
+	user, err := ctrl.userRepo.FindByEmail(c.Request.Context(), req.Email)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+	if user == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": invalidOTPMsg})
+		return
+	}
+
+	record, err := ctrl.otpRepo.FindLatestOTP(c.Request.Context(), user.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+	if record == nil || record.UsedAt != nil || time.Now().After(record.ExpiresAt) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": invalidOTPMsg})
+		return
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(record.OTPHash), []byte(req.OTP)); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": invalidOTPMsg})
+		return
+	}
+
+	newHash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+
+	if err := ctrl.userRepo.UpdatePassword(c.Request.Context(), user.ID, string(newHash)); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not update password"})
+		return
+	}
+
+	if err := ctrl.otpRepo.MarkOTPUsed(c.Request.Context(), record.ID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "password reset successfully"})
 }

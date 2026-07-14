@@ -11,6 +11,7 @@ import (
 
 	"github.com/umangagarwal/vedx-backend/models"
 	"github.com/umangagarwal/vedx-backend/repository"
+	"github.com/umangagarwal/vedx-backend/service"
 )
 
 // RunSessionReminders polls every minute for sessions whose scheduled start time
@@ -23,6 +24,8 @@ func RunSessionReminders(
 	sessionRepo *repository.SessionRepository,
 	batchRepo *repository.BatchRepository,
 	notificationRepo *repository.NotificationRepository,
+	userRepo *repository.UserRepository,
+	emailSvc *service.EmailService,
 	timezone string,
 ) {
 	loc, err := time.LoadLocation(timezone)
@@ -39,7 +42,7 @@ func RunSessionReminders(
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			processDueReminders(ctx, sessionRepo, batchRepo, notificationRepo, loc)
+			processDueReminders(ctx, sessionRepo, batchRepo, notificationRepo, userRepo, emailSvc, loc)
 		}
 	}
 }
@@ -49,6 +52,8 @@ func processDueReminders(
 	sessionRepo *repository.SessionRepository,
 	batchRepo *repository.BatchRepository,
 	notificationRepo *repository.NotificationRepository,
+	userRepo *repository.UserRepository,
+	emailSvc *service.EmailService,
 	loc *time.Location,
 ) {
 	const layout = "2006-01-02 15:04:05"
@@ -93,6 +98,26 @@ func processDueReminders(
 			[]string{string(models.RoleTeamLead), string(models.RoleSuperAdmin)},
 		); err != nil {
 			log.Printf("scheduler: notify reminder (team_lead/super_admin) for session %s: %v", session.ShortID, err)
+		}
+
+		if emailSvc.Configured() {
+			joinLink := session.ZoomJoinURL
+			if joinLink == "" && session.ShareToken != "" {
+				joinLink = "/sessions/join/" + session.ShareToken
+			}
+			subject, html := service.SessionReminderEmail(session.Name, session.BatchNumber, joinLink)
+
+			for _, s := range students {
+				if s.Email == "" {
+					continue
+				}
+				emailSvc.SendAsync(s.Email, subject, html)
+			}
+			if mentor, err := userRepo.FindByID(ctx, session.MentorID); err != nil {
+				log.Printf("scheduler: fetch mentor for reminder email: %v", err)
+			} else if mentor != nil && mentor.Email != "" {
+				emailSvc.SendAsync(mentor.Email, subject, html)
+			}
 		}
 
 		if err := sessionRepo.MarkReminderSent(ctx, session.ID); err != nil {

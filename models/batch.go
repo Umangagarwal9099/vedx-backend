@@ -17,7 +17,12 @@ type Batch struct {
 	StartDate             string     `json:"start_date"`
 	EndDate               string     `json:"end_date"`
 	IsActive              bool       `json:"is_active"`
+	Status                string     `json:"status"` // draft | upcoming | active | completed | cancelled | archived
+	MaxStudents           *int       `json:"max_students,omitempty"`
 	StudentCount          int        `json:"student_count"`
+	ScoreWeightAssignments int       `json:"score_weight_assignments"`
+	ScoreWeightExams       int       `json:"score_weight_exams"`
+	ScoreWeightProjects    int       `json:"score_weight_projects"`
 	CreatedBy             string     `json:"created_by"`
 	CreatedAt             time.Time  `json:"created_at"`
 	UpdatedAt             time.Time  `json:"updated_at"`
@@ -34,6 +39,8 @@ type CreateBatchInput struct {
 	Module              string   `json:"module"                                  example:"Module 1"`
 	StartDate           string   `json:"start_date"            binding:"required" example:"2024-01-15"`
 	EndDate             string   `json:"end_date"              binding:"required" example:"2024-06-15"`
+	Status              string   `json:"status"                                  binding:"omitempty,oneof=draft upcoming active completed cancelled archived" example:"draft"`
+	MaxStudents         *int     `json:"max_students"                            example:"30"`
 	StudentIDs          []string `json:"student_ids"                             example:"[\"11111111-1111-1111-1111-111111111111\"]"`
 }
 
@@ -48,6 +55,8 @@ type UpdateBatchInput struct {
 	StartDate           *string `json:"start_date"            example:"2024-02-01"`
 	EndDate             *string `json:"end_date"              example:"2024-07-01"`
 	IsActive            *bool   `json:"is_active"             example:"false"`
+	Status              *string `json:"status"                binding:"omitempty,oneof=draft upcoming active completed cancelled archived" example:"completed"`
+	MaxStudents         *int    `json:"max_students"          example:"30"`
 }
 
 // BatchFilter holds query params for GET /batches/filter.
@@ -59,6 +68,7 @@ type BatchFilter struct {
 	StartDate     string `form:"start_date"`
 	EndDate       string `form:"end_date"`
 	IsActive      string `form:"is_active"` // "true" | "false" | ""
+	Status        string `form:"status"`    // draft | upcoming | active | completed | cancelled | archived
 }
 
 // BatchStudent represents a single student's enrollment in a batch.
@@ -82,4 +92,13 @@ type AddBatchStudentsInput struct {
 // used to grant or revoke access to that batch's session recordings.
 type UpdateFeesPaidInput struct {
 	FeesPaid *bool `json:"fees_paid" binding:"required" example:"true"`
+}
+
+// UpdateScoreWeightsInput sets how much each category contributes to a
+// batch's final score / leaderboard ranking. The three weights must sum to
+// 100 — validated by the controller, since that check spans all three fields.
+type UpdateScoreWeightsInput struct {
+	AssignmentsWeight int `json:"assignments_weight" binding:"min=0,max=100" example:"40"`
+	ExamsWeight       int `json:"exams_weight"       binding:"min=0,max=100" example:"40"`
+	ProjectsWeight    int `json:"projects_weight"    binding:"min=0,max=100" example:"20"`
 }

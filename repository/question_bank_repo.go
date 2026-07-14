@@ -33,7 +33,7 @@ const questionBaseSelect = `
 	JOIN users u ON q.created_by = u.id AND u.deleted_at IS NULL
 	LEFT JOIN coding_questions cq ON q.coding_question_id = cq.id AND cq.deleted_at IS NULL`
 
-func scanQuestion(row pgx.Row) (models.Question, error) {
+func scanAssessmentQuestion(row pgx.Row) (models.Question, error) {
 	var q models.Question
 	var optionsRaw []byte
 	err := row.Scan(
@@ -76,7 +76,7 @@ func (r *QuestionBankRepository) Create(ctx context.Context, in models.CreateQue
 	for attempt := 0; attempt < 3; attempt++ {
 		shortID := util.GenerateShortID()
 
-		q, err := scanQuestion(r.pool.QueryRow(ctx, fmt.Sprintf(`
+		q, err := scanAssessmentQuestion(r.pool.QueryRow(ctx, fmt.Sprintf(`
 			WITH ins AS (
 				INSERT INTO assessment_questions (
 					short_id, question_type, question_text, options, correct_option_ids,
@@ -100,8 +100,11 @@ func (r *QuestionBankRepository) Create(ctx context.Context, in models.CreateQue
 		}
 
 		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			continue
+		if errors.As(err, &pgErr) {
+			if pgErr.Code == "23505" {
+				continue
+			}
+			return nil, fmt.Errorf("insert question: %s (column=%s, detail=%s)", pgErr.Message, pgErr.ColumnName, pgErr.Detail)
 		}
 		return nil, fmt.Errorf("insert question: %w", err)
 	}
@@ -124,7 +127,7 @@ func (r *QuestionBankRepository) scanAll(ctx context.Context, q string, args ...
 
 	var out []models.Question
 	for rows.Next() {
-		item, err := scanQuestion(rows)
+		item, err := scanAssessmentQuestion(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -168,7 +171,7 @@ func (r *QuestionBankRepository) FindAll(ctx context.Context, f models.QuestionF
 
 func (r *QuestionBankRepository) FindByShortID(ctx context.Context, shortID string) (*models.Question, error) {
 	q := fmt.Sprintf("%s WHERE q.short_id = $1 AND q.deleted_at IS NULL", questionBaseSelect)
-	item, err := scanQuestion(r.pool.QueryRow(ctx, q, shortID))
+	item, err := scanAssessmentQuestion(r.pool.QueryRow(ctx, q, shortID))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}

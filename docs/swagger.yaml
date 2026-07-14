@@ -1,5 +1,18 @@
 basePath: /api/v1
 definitions:
+  controller.ChangePasswordRequest:
+    properties:
+      new_password:
+        example: NewSecret@123
+        minLength: 8
+        type: string
+      old_password:
+        example: secret123
+        type: string
+    required:
+    - new_password
+    - old_password
+    type: object
   controller.ChangeRoleRequest:
     properties:
       role:
@@ -12,6 +25,14 @@ definitions:
         type: string
     required:
     - role
+    type: object
+  controller.ForgotPasswordRequest:
+    properties:
+      email:
+        example: user@example.com
+        type: string
+    required:
+    - email
     type: object
   controller.HealthResponse:
     properties:
@@ -86,6 +107,23 @@ definitions:
         example: 550e8400-e29b-41d4-a716-446655440000
         type: string
     type: object
+  controller.ResetPasswordRequest:
+    properties:
+      email:
+        example: user@example.com
+        type: string
+      new_password:
+        example: NewSecret@123
+        minLength: 8
+        type: string
+      otp:
+        example: "042913"
+        type: string
+    required:
+    - email
+    - new_password
+    - otp
+    type: object
   models.AddBatchStudentsInput:
     properties:
       student_ids:
@@ -109,6 +147,18 @@ definitions:
         type: array
     required:
     - user_ids
+    type: object
+  models.AddTeamMembersInput:
+    properties:
+      student_ids:
+        example:
+        - '["11111111-1111-1111-1111-111111111111"]'
+        items:
+          type: string
+        minItems: 1
+        type: array
+    required:
+    - student_ids
     type: object
   models.Announcement:
     properties:
@@ -156,6 +206,16 @@ definitions:
     properties:
       allow_attempts_after_passing:
         type: boolean
+      auto_submit:
+        type: boolean
+      batch_number:
+        type: string
+      batch_short_id:
+        type: string
+      cancelled_at:
+        type: string
+      cancelled_by:
+        type: string
       created_at:
         type: string
       created_by:
@@ -163,6 +223,10 @@ definitions:
       deleted_at:
         type: string
       description:
+        type: string
+      duration_minutes:
+        type: integer
+      end_at:
         type: string
       file_url:
         type: string
@@ -172,21 +236,356 @@ definitions:
         type: string
       is_active:
         type: boolean
+      max_attempts:
+        type: integer
       name:
         type: string
+      negative_marking:
+        type: boolean
       passing_percentage:
         type: number
+      question_count:
+        type: integer
+      randomize_options:
+        type: boolean
+      randomize_questions:
+        type: boolean
+      requires_proctoring:
+        type: boolean
       result_declaration:
         type: string
       result_display:
         type: string
       short_id:
         type: string
+      show_correct_answers:
+        type: boolean
+      start_at:
+        type: string
       thumbnail:
         type: string
       total_marks:
         type: integer
       updated_at:
+        type: string
+    type: object
+  models.AssessmentQuestion:
+    properties:
+      coding_question_short_id:
+        type: string
+      coding_question_title:
+        type: string
+      correct_option_ids:
+        items:
+          type: string
+        type: array
+      correct_text:
+        type: string
+      created_at:
+        type: string
+      created_by:
+        type: string
+      created_by_name:
+        type: string
+      deleted_at:
+        type: string
+      difficulty:
+        description: easy | medium | hard
+        type: string
+      explanation:
+        type: string
+      id:
+        type: string
+      marks:
+        type: integer
+      marks_override:
+        type: integer
+      negative_marks:
+        type: integer
+      options:
+        items:
+          $ref: '#/definitions/models.QuestionOption'
+        type: array
+      order_index:
+        type: integer
+      question_text:
+        type: string
+      question_type:
+        description: mcq | multi_select | true_false | fill_blank | short_answer |
+          descriptive | coding
+        type: string
+      short_id:
+        type: string
+      topic:
+        type: string
+      updated_at:
+        type: string
+      visibility:
+        description: private | course | global
+        type: string
+    type: object
+  models.Assignment:
+    properties:
+      allowed_file_formats:
+        items:
+          type: string
+        type: array
+      allowed_submission_types:
+        items:
+          type: string
+        type: array
+      batch_id:
+        type: string
+      batch_number:
+        type: string
+      batch_short_id:
+        type: string
+      created_at:
+        type: string
+      created_by:
+        type: string
+      created_by_name:
+        type: string
+      deadline:
+        type: string
+      deleted_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      late_penalty_percent:
+        type: integer
+      late_submission_allowed:
+        type: boolean
+      max_file_size_mb:
+        type: integer
+      max_marks:
+        type: integer
+      module_name:
+        type: string
+      module_short_id:
+        type: string
+      pending_review_count:
+        type: integer
+      session_name:
+        type: string
+      session_short_id:
+        type: string
+      short_id:
+        type: string
+      status:
+        description: draft | active | closed
+        type: string
+      submission_count:
+        type: integer
+      title:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.AssignmentSubmission:
+    properties:
+      assignment_short_id:
+        type: string
+      assignment_title:
+        description: |-
+          AssignmentTitle/BatchShortID/BatchNumber are only populated by the
+          cross-assignment workspace listing (FindAllSubmissionsForMentor).
+        type: string
+      batch_number:
+        type: string
+      batch_short_id:
+        type: string
+      content:
+        type: string
+      created_at:
+        type: string
+      evaluated_at:
+        type: string
+      evaluated_by:
+        type: string
+      feedback:
+        type: string
+      file_url:
+        type: string
+      id:
+        type: string
+      marks:
+        type: integer
+      short_id:
+        type: string
+      status:
+        description: submitted | late | evaluated | resubmission_required
+        type: string
+      student_email:
+        type: string
+      student_id:
+        type: string
+      student_name:
+        type: string
+      submission_type:
+        description: link | text | file
+        type: string
+      submitted_at:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.AtRiskStudent:
+    properties:
+      attendance_percentage:
+        type: number
+      current_streak:
+        type: integer
+      days_inactive:
+        type: integer
+      final_score:
+        type: number
+      reasons:
+        items:
+          type: string
+        type: array
+      student_id:
+        type: string
+      student_name:
+        type: string
+    type: object
+  models.AttachQuestionInput:
+    properties:
+      marks_override:
+        example: 10
+        type: integer
+      order_index:
+        example: 1
+        type: integer
+      question_short_id:
+        example: use GET /questions to pick a real short_id
+        type: string
+    required:
+    - question_short_id
+    type: object
+  models.AttemptDetail:
+    properties:
+      assessment_name:
+        description: |-
+          AssessmentName/BatchShortID/BatchNumber are only populated by the
+          cross-assessment workspace listing (FindAllAttemptsForMentor).
+        type: string
+      assessment_short_id:
+        type: string
+      attempt_number:
+        type: integer
+      auto_submitted:
+        type: boolean
+      batch_number:
+        type: string
+      batch_short_id:
+        type: string
+      ends_at:
+        type: string
+      id:
+        type: string
+      max_score:
+        type: integer
+      passed:
+        type: boolean
+      questions:
+        items:
+          $ref: '#/definitions/models.AttemptQuestionView'
+        type: array
+      short_id:
+        type: string
+      started_at:
+        type: string
+      status:
+        description: in_progress | submitted | evaluated | cancelled
+        type: string
+      student_id:
+        type: string
+      student_name:
+        type: string
+      submitted_at:
+        type: string
+      total_score:
+        type: integer
+    type: object
+  models.AttemptQuestionView:
+    properties:
+      coding_question_short_id:
+        type: string
+      coding_question_title:
+        type: string
+      correct_option_ids:
+        items:
+          type: string
+        type: array
+      correct_text:
+        type: string
+      explanation:
+        type: string
+      marks:
+        type: integer
+      my_answer:
+        $ref: '#/definitions/models.StudentAnswer'
+      options:
+        items:
+          $ref: '#/definitions/models.QuestionOption'
+        type: array
+      question_text:
+        type: string
+      question_type:
+        type: string
+      short_id:
+        type: string
+    type: object
+  models.AttendanceRecordInput:
+    properties:
+      notes:
+        type: string
+      status:
+        enum:
+        - present
+        - absent
+        - late
+        - excused
+        type: string
+      student_id:
+        type: string
+    required:
+    - status
+    - student_id
+    type: object
+  models.AuditLogEntry:
+    properties:
+      action:
+        type: string
+      actor_id:
+        type: string
+      actor_name:
+        type: string
+      batch_id:
+        type: string
+      batch_number:
+        type: string
+      batch_short_id:
+        type: string
+      created_at:
+        type: string
+      entity_id:
+        type: string
+      entity_label:
+        type: string
+      entity_short_id:
+        type: string
+      entity_type:
+        type: string
+      id:
+        type: string
+      metadata:
+        additionalProperties: true
+        type: object
+      short_id:
         type: string
     type: object
   models.Banner:
@@ -248,11 +647,22 @@ definitions:
         type: string
       is_active:
         type: boolean
+      max_students:
+        type: integer
       module:
         type: string
+      score_weight_assignments:
+        type: integer
+      score_weight_exams:
+        type: integer
+      score_weight_projects:
+        type: integer
       short_id:
         type: string
       start_date:
+        type: string
+      status:
+        description: draft | upcoming | active | completed | cancelled | archived
         type: string
       student_count:
         type: integer
@@ -304,6 +714,80 @@ definitions:
         type: string
       updated_at:
         type: string
+    type: object
+  models.BulkMarkAttendanceInput:
+    properties:
+      records:
+        items:
+          $ref: '#/definitions/models.AttendanceRecordInput'
+        type: array
+    required:
+    - records
+    type: object
+  models.CategoryScore:
+    properties:
+      earned_marks:
+        type: number
+      max_marks:
+        type: number
+      percentage:
+        type: number
+    type: object
+  models.Certificate:
+    properties:
+      batch_id:
+        type: string
+      batch_number:
+        type: string
+      batch_short_id:
+        type: string
+      certificate_number:
+        type: string
+      course_id:
+        type: string
+      course_name:
+        type: string
+      created_at:
+        type: string
+      final_rank:
+        type: integer
+      final_score:
+        type: number
+      id:
+        type: string
+      issued_at:
+        type: string
+      issued_by:
+        type: string
+      revoked_at:
+        type: string
+      short_id:
+        type: string
+      student_id:
+        type: string
+      student_name:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.CertificateVerification:
+    properties:
+      batch_number:
+        type: string
+      certificate_number:
+        type: string
+      course_name:
+        type: string
+      final_rank:
+        type: integer
+      final_score:
+        type: number
+      issued_at:
+        type: string
+      student_name:
+        type: string
+      valid:
+        type: boolean
     type: object
   models.CodingExample:
     properties:
@@ -474,8 +958,20 @@ definitions:
       allow_attempts_after_passing:
         example: false
         type: boolean
+      auto_submit:
+        example: true
+        type: boolean
+      batch_short_id:
+        example: use GET /batches to pick a real short_id, or omit for global visibility
+        type: string
       description:
         example: Test your knowledge of Go basics.
+        type: string
+      duration_minutes:
+        example: 60
+        type: integer
+      end_at:
+        example: "2026-07-15T11:00:00Z"
         type: string
       file_url:
         example: https://cdn.example.com/file.pdf
@@ -483,14 +979,29 @@ definitions:
       general_instructions:
         example: Read all questions carefully before answering.
         type: string
+      max_attempts:
+        example: 1
+        type: integer
       name:
         example: Golang Fundamentals Quiz
         type: string
+      negative_marking:
+        example: false
+        type: boolean
       passing_percentage:
         example: 60
         maximum: 100
         minimum: 0
         type: number
+      randomize_options:
+        example: true
+        type: boolean
+      randomize_questions:
+        example: true
+        type: boolean
+      requires_proctoring:
+        example: false
+        type: boolean
       result_declaration:
         enum:
         - manual
@@ -502,6 +1013,12 @@ definitions:
         - marks_and_status
         - status_only
         example: marks_and_status
+        type: string
+      show_correct_answers:
+        example: false
+        type: boolean
+      start_at:
+        example: "2026-07-15T09:00:00Z"
         type: string
       thumbnail:
         example: https://cdn.example.com/thumbnail.jpg
@@ -516,6 +1033,85 @@ definitions:
     - result_declaration
     - result_display
     - total_marks
+    type: object
+  models.CreateAssignmentInput:
+    properties:
+      allowed_file_formats:
+        example:
+        - '[".pdf"'
+        - '".zip"]'
+        items:
+          type: string
+        type: array
+      allowed_submission_types:
+        example:
+        - '["file"'
+        - '"link"]'
+        items:
+          type: string
+        minItems: 1
+        type: array
+      batch_short_id:
+        example: use GET /batches to pick a real short_id
+        type: string
+      deadline:
+        example: "2026-07-15T23:59:00Z"
+        type: string
+      description:
+        example: Implement a LinkedList from scratch and submit your source file.
+        type: string
+      late_penalty_percent:
+        example: 10
+        type: integer
+      late_submission_allowed:
+        example: true
+        type: boolean
+      max_file_size_mb:
+        example: 25
+        type: integer
+      max_marks:
+        example: 100
+        minimum: 1
+        type: integer
+      module_short_id:
+        example: use GET /modules to pick a real short_id
+        type: string
+      session_short_id:
+        example: use GET /sessions to pick a real short_id
+        type: string
+      status:
+        enum:
+        - draft
+        - active
+        example: active
+        type: string
+      title:
+        example: Java Collections Assignment
+        type: string
+    required:
+    - allowed_submission_types
+    - batch_short_id
+    - deadline
+    - max_marks
+    - title
+    type: object
+  models.CreateAssignmentSubmissionInput:
+    properties:
+      content:
+        example: https://github.com/student/repo
+        type: string
+      file_url:
+        example: https://cdn.example.com/submission.pdf
+        type: string
+      submission_type:
+        enum:
+        - link
+        - text
+        - file
+        example: file
+        type: string
+    required:
+    - submission_type
     type: object
   models.CreateBannerInput:
     properties:
@@ -562,11 +1158,24 @@ definitions:
       end_date:
         example: "2024-06-15"
         type: string
+      max_students:
+        example: 30
+        type: integer
       module:
         example: Module 1
         type: string
       start_date:
         example: "2024-01-15"
+        type: string
+      status:
+        enum:
+        - draft
+        - upcoming
+        - active
+        - completed
+        - cancelled
+        - archived
+        example: draft
         type: string
       student_ids:
         example:
@@ -882,6 +1491,26 @@ definitions:
     - material_type
     - max_views
     type: object
+  models.CreateMilestoneInput:
+    properties:
+      description:
+        example: Submit your chosen project idea for approval.
+        type: string
+      due_date:
+        example: "2026-07-05T23:59:00Z"
+        type: string
+      is_final:
+        example: false
+        type: boolean
+      order_index:
+        example: 1
+        type: integer
+      title:
+        example: Topic Approval
+        type: string
+    required:
+    - title
+    type: object
   models.CreateModuleInput:
     properties:
       max_view_duration:
@@ -941,6 +1570,143 @@ definitions:
     - message
     - roles
     - title
+    type: object
+  models.CreateProjectInput:
+    properties:
+      allowed_submission_types:
+        example:
+        - '["link"'
+        - '"file"]'
+        items:
+          type: string
+        minItems: 1
+        type: array
+      batch_short_id:
+        example: use GET /batches to pick a real short_id
+        type: string
+      category:
+        enum:
+        - individual
+        - group
+        - module
+        - capstone
+        - internship
+        - final_course
+        example: capstone
+        type: string
+      evaluation_criteria:
+        example: Functionality 40%, code quality 30%, presentation 30%.
+        type: string
+      expected_deliverables:
+        example: GitHub repo, deployed app, final report.
+        type: string
+      final_deadline:
+        example: "2026-08-15T23:59:00Z"
+        type: string
+      is_team_project:
+        example: true
+        type: boolean
+      max_marks:
+        example: 200
+        minimum: 1
+        type: integer
+      module_short_id:
+        example: use GET /modules to pick a real short_id
+        type: string
+      problem_statement:
+        example: Build a full-stack e-commerce platform with cart, checkout, and admin
+          panel.
+        type: string
+      reference_files:
+        example:
+        - '["https://cdn.example.com/brief.pdf"]'
+        items:
+          type: string
+        type: array
+      requirements:
+        example: React frontend, Node.js backend, PostgreSQL database.
+        type: string
+      start_date:
+        example: "2026-07-01"
+        type: string
+      status:
+        enum:
+        - draft
+        - active
+        example: active
+        type: string
+      title:
+        example: E-Commerce Capstone
+        type: string
+    required:
+    - allowed_submission_types
+    - batch_short_id
+    - category
+    - final_deadline
+    - max_marks
+    - title
+    type: object
+  models.CreateProjectSubmissionInput:
+    properties:
+      content:
+        example: https://github.com/team/repo
+        type: string
+      file_url:
+        example: https://cdn.example.com/report.pdf
+        type: string
+      submission_type:
+        enum:
+        - link
+        - text
+        - file
+        example: link
+        type: string
+    required:
+    - submission_type
+    type: object
+  models.CreateQuestionInput:
+    type: object
+  models.CreateResourceInput:
+    properties:
+      batch_short_id:
+        example: use GET /batches to pick a real short_id, or omit for global visibility
+        type: string
+      description:
+        example: Quick reference for week 1.
+        type: string
+      expires_at:
+        example: "2026-12-31T23:59:00Z"
+        type: string
+      is_downloadable:
+        example: true
+        type: boolean
+      module_short_id:
+        example: use GET /modules to pick a real short_id
+        type: string
+      resource_type:
+        enum:
+        - pdf
+        - document
+        - video
+        - link
+        - image
+        - code
+        - other
+        example: pdf
+        type: string
+      session_short_id:
+        example: use GET /sessions to pick a real short_id
+        type: string
+      title:
+        example: Python Cheatsheet — Variables & Data Types
+        type: string
+      url:
+        example: https://cdn.example.com/cheatsheet.pdf
+        type: string
+    required:
+    - resource_type
+    - title
+    - url
     type: object
   models.CreateSessionInput:
     properties:
@@ -1035,6 +1801,65 @@ definitions:
     - question_short_id
     - status
     type: object
+  models.CreateTeamInput:
+    properties:
+      name:
+        example: Team Phoenix
+        type: string
+      student_ids:
+        example:
+        - '["11111111-1111-1111-1111-111111111111"]'
+        items:
+          type: string
+        type: array
+    required:
+    - name
+    type: object
+  models.DashboardSession:
+    properties:
+      batch_number:
+        type: string
+      end_time:
+        type: string
+      mentor_name:
+        type: string
+      name:
+        type: string
+      present_count:
+        type: integer
+      short_id:
+        type: string
+      start_time:
+        type: string
+      total_count:
+        type: integer
+    type: object
+  models.DashboardStats:
+    properties:
+      active_batches:
+        type: integer
+      active_students:
+        type: integer
+      avg_attendance_rate_7d:
+        type: number
+      certificates_issued_30d:
+        type: integer
+      enrollment_trend_30d:
+        items:
+          $ref: '#/definitions/models.EnrollmentTrendPoint'
+        type: array
+      sessions_today:
+        items:
+          $ref: '#/definitions/models.DashboardSession'
+        type: array
+    type: object
+  models.EnrollmentTrendPoint:
+    properties:
+      count:
+        type: integer
+      date:
+        type: string
+    type: object
   models.Event:
     properties:
       categories:
@@ -1077,6 +1902,47 @@ definitions:
         type: string
       updated_at:
         type: string
+    type: object
+  models.ExamAttempt:
+    properties:
+      assessment_name:
+        description: |-
+          AssessmentName/BatchShortID/BatchNumber are only populated by the
+          cross-assessment workspace listing (FindAllAttemptsForMentor).
+        type: string
+      assessment_short_id:
+        type: string
+      attempt_number:
+        type: integer
+      auto_submitted:
+        type: boolean
+      batch_number:
+        type: string
+      batch_short_id:
+        type: string
+      ends_at:
+        type: string
+      id:
+        type: string
+      max_score:
+        type: integer
+      passed:
+        type: boolean
+      short_id:
+        type: string
+      started_at:
+        type: string
+      status:
+        description: in_progress | submitted | evaluated | cancelled
+        type: string
+      student_id:
+        type: string
+      student_name:
+        type: string
+      submitted_at:
+        type: string
+      total_score:
+        type: integer
     type: object
   models.FeedbackForm:
     properties:
@@ -1178,11 +2044,98 @@ definitions:
       updated_at:
         type: string
     type: object
+  models.GradeAnswerInput:
+    properties:
+      feedback:
+        example: Good explanation, minor detail missing.
+        type: string
+      marks_awarded:
+        example: 8
+        type: integer
+    required:
+    - marks_awarded
+    type: object
+  models.GradeProjectSubmissionInput:
+    properties:
+      feedback:
+        example: Great execution, minor UI polish needed.
+        type: string
+      marks:
+        example: 90
+        type: integer
+      status:
+        enum:
+        - evaluated
+        - resubmission_required
+        example: evaluated
+        type: string
+    required:
+    - marks
+    type: object
+  models.GradeSubmissionInput:
+    properties:
+      feedback:
+        example: Good structure, but missing edge-case handling.
+        type: string
+      marks:
+        example: 85
+        type: integer
+      status:
+        enum:
+        - evaluated
+        - resubmission_required
+        example: evaluated
+        type: string
+    required:
+    - marks
+    type: object
+  models.GrantReattemptInput:
+    properties:
+      reason:
+        example: Missed the window due to a technical issue.
+        type: string
+      student_id:
+        example: use GET /assessments/{id}/attempts to find a student_id
+        type: string
+    required:
+    - student_id
+    type: object
+  models.MarkAttendanceInput:
+    properties:
+      notes:
+        type: string
+      status:
+        enum:
+        - present
+        - absent
+        - late
+        - excused
+        type: string
+    required:
+    - status
+    type: object
   models.MarkReadInput:
     properties:
       is_read:
         example: true
         type: boolean
+    type: object
+  models.MaterialSummary:
+    properties:
+      enable_downloads:
+        type: boolean
+      file_url:
+        type: string
+      is_active:
+        type: boolean
+      is_prerequisite:
+        type: boolean
+      material_name:
+        type: string
+      material_type:
+        type: string
+      short_id:
+        type: string
     type: object
   models.MaterialType:
     enum:
@@ -1240,6 +2193,15 @@ definitions:
       watch_time_minutes:
         type: integer
     type: object
+  models.ModuleScheduleEntry:
+    properties:
+      module_name:
+        type: string
+      module_short_id:
+        type: string
+      release_date:
+        type: string
+    type: object
   models.ModuleSection:
     properties:
       created_at:
@@ -1264,6 +2226,36 @@ definitions:
         type: string
       updated_at:
         type: string
+    type: object
+  models.ModuleWithSections:
+    properties:
+      is_active:
+        type: boolean
+      is_released:
+        description: |-
+          IsReleased/ReleaseDate are only populated by the batch-scoped curriculum
+          endpoint (GET /batches/{short_id}/curriculum) — nil when this struct is
+          returned by the plain course-level curriculum endpoint, which has no
+          batch context to schedule against.
+        type: boolean
+      max_view_duration:
+        type: string
+      module_branch:
+        type: string
+      module_name:
+        type: string
+      order_index:
+        type: integer
+      release_date:
+        type: string
+      sections:
+        items:
+          $ref: '#/definitions/models.SectionSummary'
+        type: array
+      short_id:
+        type: string
+      watch_time_minutes:
+        type: integer
     type: object
   models.Notification:
     properties:
@@ -1309,6 +2301,331 @@ definitions:
       type:
         type: string
     type: object
+  models.ProfileDetails:
+    properties:
+      bio:
+        type: string
+      education:
+        type: string
+      github_url:
+        type: string
+      linkedin_url:
+        type: string
+      location:
+        type: string
+      phone:
+        type: string
+      skills:
+        items:
+          type: string
+        type: array
+      updated_at:
+        type: string
+      user_id:
+        type: string
+    type: object
+  models.Project:
+    properties:
+      allowed_submission_types:
+        items:
+          type: string
+        type: array
+      batch_number:
+        type: string
+      batch_short_id:
+        type: string
+      category:
+        description: individual | group | module | capstone | internship | final_course
+        type: string
+      created_at:
+        type: string
+      created_by:
+        type: string
+      created_by_name:
+        type: string
+      deleted_at:
+        type: string
+      evaluation_criteria:
+        type: string
+      expected_deliverables:
+        type: string
+      final_deadline:
+        type: string
+      id:
+        type: string
+      is_team_project:
+        type: boolean
+      max_marks:
+        type: integer
+      module_name:
+        type: string
+      module_short_id:
+        type: string
+      problem_statement:
+        type: string
+      reference_files:
+        items:
+          type: string
+        type: array
+      requirements:
+        type: string
+      short_id:
+        type: string
+      start_date:
+        type: string
+      status:
+        description: draft | active | closed
+        type: string
+      title:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.ProjectDetail:
+    properties:
+      allowed_submission_types:
+        items:
+          type: string
+        type: array
+      batch_number:
+        type: string
+      batch_short_id:
+        type: string
+      category:
+        description: individual | group | module | capstone | internship | final_course
+        type: string
+      created_at:
+        type: string
+      created_by:
+        type: string
+      created_by_name:
+        type: string
+      deleted_at:
+        type: string
+      evaluation_criteria:
+        type: string
+      expected_deliverables:
+        type: string
+      final_deadline:
+        type: string
+      id:
+        type: string
+      is_team_project:
+        type: boolean
+      max_marks:
+        type: integer
+      milestones:
+        items:
+          $ref: '#/definitions/models.ProjectMilestone'
+        type: array
+      module_name:
+        type: string
+      module_short_id:
+        type: string
+      problem_statement:
+        type: string
+      reference_files:
+        items:
+          type: string
+        type: array
+      requirements:
+        type: string
+      short_id:
+        type: string
+      start_date:
+        type: string
+      status:
+        description: draft | active | closed
+        type: string
+      teams:
+        items:
+          $ref: '#/definitions/models.ProjectTeam'
+        type: array
+      title:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.ProjectMilestone:
+    properties:
+      created_at:
+        type: string
+      description:
+        type: string
+      due_date:
+        type: string
+      id:
+        type: string
+      is_final:
+        type: boolean
+      order_index:
+        type: integer
+      project_id:
+        type: string
+      short_id:
+        type: string
+      title:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.ProjectSubmission:
+    properties:
+      batch_number:
+        type: string
+      batch_short_id:
+        type: string
+      content:
+        type: string
+      created_at:
+        type: string
+      evaluated_at:
+        type: string
+      evaluated_by:
+        type: string
+      feedback:
+        type: string
+      file_url:
+        type: string
+      id:
+        type: string
+      marks:
+        type: integer
+      milestone_short_id:
+        type: string
+      milestone_title:
+        type: string
+      project_title:
+        description: |-
+          ProjectTitle/MilestoneTitle/BatchShortID/BatchNumber are only populated
+          by the cross-project workspace listing (FindAllSubmissionsForMentor).
+        type: string
+      short_id:
+        type: string
+      status:
+        description: submitted | late | evaluated | resubmission_required
+        type: string
+      student_id:
+        type: string
+      student_name:
+        type: string
+      submission_type:
+        description: link | text | file
+        type: string
+      submitted_at:
+        type: string
+      team_name:
+        type: string
+      team_short_id:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.ProjectTeam:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: string
+      members:
+        items:
+          $ref: '#/definitions/models.ProjectTeamMember'
+        type: array
+      name:
+        type: string
+      project_id:
+        type: string
+      short_id:
+        type: string
+    type: object
+  models.ProjectTeamMember:
+    properties:
+      email:
+        type: string
+      first_name:
+        type: string
+      joined_at:
+        type: string
+      last_name:
+        type: string
+      user_id:
+        type: string
+    type: object
+  models.Question:
+    properties:
+      coding_question_short_id:
+        type: string
+      coding_question_title:
+        type: string
+      correct_option_ids:
+        items:
+          type: string
+        type: array
+      correct_text:
+        type: string
+      created_at:
+        type: string
+      created_by:
+        type: string
+      created_by_name:
+        type: string
+      deleted_at:
+        type: string
+      difficulty:
+        description: easy | medium | hard
+        type: string
+      explanation:
+        type: string
+      id:
+        type: string
+      marks:
+        type: integer
+      negative_marks:
+        type: integer
+      options:
+        items:
+          $ref: '#/definitions/models.QuestionOption'
+        type: array
+      question_text:
+        type: string
+      question_type:
+        description: mcq | multi_select | true_false | fill_blank | short_answer |
+          descriptive | coding
+        type: string
+      short_id:
+        type: string
+      topic:
+        type: string
+      updated_at:
+        type: string
+      visibility:
+        description: private | course | global
+        type: string
+    type: object
+  models.QuestionOption:
+    properties:
+      id:
+        type: string
+      text:
+        type: string
+    type: object
+  models.ReattemptGrant:
+    properties:
+      assessment_short_id:
+        type: string
+      created_at:
+        type: string
+      granted_by:
+        type: string
+      new_attempt_number:
+        type: integer
+      reason:
+        type: string
+      short_id:
+        type: string
+      student_id:
+        type: string
+    type: object
   models.RecordingListItem:
     properties:
       name:
@@ -1318,6 +2635,48 @@ definitions:
       session_date:
         type: string
       session_short_id:
+        type: string
+    type: object
+  models.Resource:
+    properties:
+      batch_number:
+        type: string
+      batch_short_id:
+        type: string
+      created_at:
+        type: string
+      created_by:
+        type: string
+      created_by_name:
+        type: string
+      deleted_at:
+        type: string
+      description:
+        type: string
+      expires_at:
+        type: string
+      id:
+        type: string
+      is_downloadable:
+        type: boolean
+      module_name:
+        type: string
+      module_short_id:
+        type: string
+      resource_type:
+        description: pdf | document | video | link | image | code | other
+        type: string
+      session_name:
+        type: string
+      session_short_id:
+        type: string
+      short_id:
+        type: string
+      title:
+        type: string
+      updated_at:
+        type: string
+      url:
         type: string
     type: object
   models.Role:
@@ -1369,6 +2728,23 @@ definitions:
       updated_at:
         type: string
     type: object
+  models.SectionSummary:
+    properties:
+      is_active:
+        type: boolean
+      is_prerequisite:
+        type: boolean
+      materials:
+        items:
+          $ref: '#/definitions/models.MaterialSummary'
+        type: array
+      section_name:
+        type: string
+      short_description:
+        type: string
+      short_id:
+        type: string
+    type: object
   models.Session:
     properties:
       batch_id:
@@ -1405,8 +2781,12 @@ definitions:
         type: string
       name:
         type: string
+      recording_available_from:
+        type: string
       recording_url:
         type: string
+      recording_visible:
+        type: boolean
       send_confirmation_email:
         type: boolean
       session_date:
@@ -1437,6 +2817,68 @@ definitions:
         description: host token — stripped for students in the controller
         type: string
     type: object
+  models.SessionAttendance:
+    properties:
+      batch_id:
+        type: string
+      batch_number:
+        type: string
+      batch_short_id:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      marked_at:
+        type: string
+      marked_by:
+        type: string
+      notes:
+        type: string
+      session_date:
+        type: string
+      session_id:
+        type: string
+      session_name:
+        type: string
+      session_short_id:
+        type: string
+      short_id:
+        type: string
+      status:
+        type: string
+      student_id:
+        type: string
+      student_name:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.SessionAttendanceReport:
+    properties:
+      absent:
+        type: integer
+      attendance_percentage:
+        type: number
+      batch_number:
+        type: string
+      batch_short_id:
+        type: string
+      excused:
+        type: integer
+      late:
+        type: integer
+      present:
+        type: integer
+      session_date:
+        type: string
+      session_name:
+        type: string
+      session_short_id:
+        type: string
+      total:
+        type: integer
+    type: object
   models.SessionJoinInfo:
     properties:
       end_time:
@@ -1456,9 +2898,145 @@ definitions:
       zoom_join_url:
         type: string
     type: object
+  models.SetModuleScheduleInput:
+    properties:
+      release_date:
+        example: "2026-08-01"
+        type: string
+    required:
+    - release_date
+    type: object
   models.StarterCode:
     additionalProperties:
       type: string
+    type: object
+  models.StudentAnswer:
+    properties:
+      feedback:
+        type: string
+      is_correct:
+        type: boolean
+      marks_awarded:
+        type: integer
+      question_short_id:
+        type: string
+      selected_option_ids:
+        items:
+          type: string
+        type: array
+      text_answer:
+        type: string
+    type: object
+  models.StudentAttendanceSummary:
+    properties:
+      absent:
+        type: integer
+      attendance_percentage:
+        type: number
+      batch_id:
+        type: string
+      batch_number:
+        type: string
+      batch_short_id:
+        type: string
+      excused:
+        type: integer
+      late:
+        type: integer
+      present:
+        type: integer
+      student_id:
+        type: string
+      student_name:
+        type: string
+      total_sessions:
+        type: integer
+    type: object
+  models.StudentEnrollment:
+    properties:
+      access_end_date:
+        type: string
+      access_start_date:
+        type: string
+      batch_id:
+        type: string
+      batch_number:
+        type: string
+      batch_short_id:
+        type: string
+      completion_percentage:
+        type: number
+      course_id:
+        type: string
+      course_name:
+        type: string
+      course_short_id:
+        type: string
+      created_at:
+        type: string
+      created_by:
+        type: string
+      enrollment_date:
+        type: string
+      enrollment_type:
+        description: direct | invited | transferred
+        type: string
+      final_rank:
+        type: integer
+      final_score:
+        type: number
+      id:
+        type: string
+      is_late_enrollment:
+        type: boolean
+      short_id:
+        type: string
+      status:
+        type: string
+      student_id:
+        type: string
+      student_name:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.StudentScoreBreakdown:
+    properties:
+      assignments:
+        $ref: '#/definitions/models.CategoryScore'
+      batch_id:
+        type: string
+      batch_number:
+        type: string
+      batch_short_id:
+        type: string
+      exams:
+        $ref: '#/definitions/models.CategoryScore'
+      final_score:
+        type: number
+      projects:
+        $ref: '#/definitions/models.CategoryScore'
+      rank:
+        type: integer
+      student_id:
+        type: string
+      student_name:
+        type: string
+    type: object
+  models.StudentStreak:
+    properties:
+      current_streak:
+        type: integer
+      last_active_date:
+        type: string
+      longest_streak:
+        type: integer
+      student_id:
+        type: string
+      student_name:
+        type: string
+      total_active_days:
+        type: integer
     type: object
   models.Submission:
     properties:
@@ -1520,6 +3098,23 @@ definitions:
       user_id:
         type: string
     type: object
+  models.SubmitAnswerInput:
+    properties:
+      question_short_id:
+        example: A3F72C1D
+        type: string
+      selected_option_ids:
+        example:
+        - '["a"]'
+        items:
+          type: string
+        type: array
+      text_answer:
+        example: Goroutine
+        type: string
+    required:
+    - question_short_id
+    type: object
   models.SubmitFeedbackFormInput:
     properties:
       answers:
@@ -1529,6 +3124,14 @@ definitions:
         type: array
     required:
     - answers
+    type: object
+  models.TransferStudentInput:
+    properties:
+      to_batch_short_id:
+        example: use GET /batches to pick a real short_id
+        type: string
+    required:
+    - to_batch_short_id
     type: object
   models.UpdateAnnouncementInput:
     properties:
@@ -1556,8 +3159,20 @@ definitions:
       allow_attempts_after_passing:
         example: true
         type: boolean
+      auto_submit:
+        example: false
+        type: boolean
+      batch_short_id:
+        example: ""
+        type: string
       description:
         example: Updated description.
+        type: string
+      duration_minutes:
+        example: 90
+        type: integer
+      end_at:
+        example: "2026-07-16T11:00:00Z"
         type: string
       file_url:
         example: https://cdn.example.com/new-file.pdf
@@ -1568,23 +3183,105 @@ definitions:
       is_active:
         example: false
         type: boolean
+      max_attempts:
+        example: 2
+        type: integer
       name:
         example: Updated Assessment Name
         type: string
+      negative_marking:
+        example: true
+        type: boolean
       passing_percentage:
         example: 70
         type: number
+      randomize_options:
+        example: false
+        type: boolean
+      randomize_questions:
+        example: false
+        type: boolean
+      requires_proctoring:
+        example: true
+        type: boolean
       result_declaration:
         example: manual
         type: string
       result_display:
         example: status_only
         type: string
+      show_correct_answers:
+        example: true
+        type: boolean
+      start_at:
+        example: "2026-07-16T09:00:00Z"
+        type: string
       thumbnail:
         example: https://cdn.example.com/new-thumb.jpg
         type: string
       total_marks:
         example: 150
+        type: integer
+    type: object
+  models.UpdateAssignmentInput:
+    properties:
+      allowed_file_formats:
+        example:
+        - '[".pdf"]'
+        items:
+          type: string
+        type: array
+      allowed_submission_types:
+        example:
+        - '["file"]'
+        items:
+          type: string
+        type: array
+      batch_short_id:
+        example: use GET /batches to pick a real short_id
+        type: string
+      deadline:
+        example: "2026-07-20T23:59:00Z"
+        type: string
+      description:
+        example: Updated instructions.
+        type: string
+      late_penalty_percent:
+        example: 0
+        type: integer
+      late_submission_allowed:
+        example: false
+        type: boolean
+      max_file_size_mb:
+        example: 50
+        type: integer
+      max_marks:
+        example: 150
+        type: integer
+      module_short_id:
+        example: use GET /modules to pick a real short_id
+        type: string
+      session_short_id:
+        example: use GET /sessions to pick a real short_id
+        type: string
+      status:
+        enum:
+        - draft
+        - active
+        - closed
+        example: closed
+        type: string
+      title:
+        example: Java Collections Assignment — Part 2
+        type: string
+    type: object
+  models.UpdateAttachedQuestionInput:
+    properties:
+      marks_override:
+        example: 15
+        type: integer
+      order_index:
+        example: 2
         type: integer
     type: object
   models.UpdateBannerInput:
@@ -1632,11 +3329,24 @@ definitions:
       is_active:
         example: false
         type: boolean
+      max_students:
+        example: 30
+        type: integer
       module:
         example: Module 2
         type: string
       start_date:
         example: "2024-02-01"
+        type: string
+      status:
+        enum:
+        - draft
+        - upcoming
+        - active
+        - completed
+        - cancelled
+        - archived
+        example: completed
         type: string
     type: object
   models.UpdateBlogInput:
@@ -1748,6 +3458,23 @@ definitions:
         type: array
       thumbnail:
         type: string
+    type: object
+  models.UpdateEnrollmentStatusInput:
+    properties:
+      status:
+        enum:
+        - invited
+        - enrolled
+        - active
+        - on_hold
+        - completed
+        - dropped
+        - transferred
+        - removed
+        example: on_hold
+        type: string
+    required:
+    - status
     type: object
   models.UpdateEventInput:
     properties:
@@ -1875,6 +3602,24 @@ definitions:
         example: 10
         type: integer
     type: object
+  models.UpdateMilestoneInput:
+    properties:
+      description:
+        example: Updated instructions.
+        type: string
+      due_date:
+        example: "2026-07-07T23:59:00Z"
+        type: string
+      is_final:
+        example: true
+        type: boolean
+      order_index:
+        example: 2
+        type: integer
+      title:
+        example: Topic Approval (Revised)
+        type: string
+    type: object
   models.UpdateModuleInput:
     properties:
       is_active:
@@ -1917,6 +3662,148 @@ definitions:
         example: Updated title
         type: string
     type: object
+  models.UpdateProfileDetailsInput:
+    properties:
+      bio:
+        type: string
+      education:
+        type: string
+      github_url:
+        type: string
+      linkedin_url:
+        type: string
+      location:
+        type: string
+      phone:
+        type: string
+      skills:
+        items:
+          type: string
+        type: array
+    type: object
+  models.UpdateProjectInput:
+    properties:
+      allowed_submission_types:
+        example:
+        - '["file"]'
+        items:
+          type: string
+        type: array
+      batch_short_id:
+        example: use GET /batches to pick a real short_id
+        type: string
+      category:
+        enum:
+        - individual
+        - group
+        - module
+        - capstone
+        - internship
+        - final_course
+        example: group
+        type: string
+      evaluation_criteria:
+        example: Updated rubric.
+        type: string
+      expected_deliverables:
+        example: Updated deliverables.
+        type: string
+      final_deadline:
+        example: "2026-08-20T23:59:00Z"
+        type: string
+      is_team_project:
+        example: false
+        type: boolean
+      max_marks:
+        example: 250
+        type: integer
+      module_short_id:
+        example: ""
+        type: string
+      problem_statement:
+        example: Updated brief.
+        type: string
+      reference_files:
+        example:
+        - '["https://cdn.example.com/brief-v2.pdf"]'
+        items:
+          type: string
+        type: array
+      requirements:
+        example: Updated requirements.
+        type: string
+      start_date:
+        example: "2026-07-05"
+        type: string
+      status:
+        enum:
+        - draft
+        - active
+        - closed
+        example: closed
+        type: string
+      title:
+        example: E-Commerce Capstone — Extended
+        type: string
+    type: object
+  models.UpdateQuestionInput:
+    type: object
+  models.UpdateResourceInput:
+    properties:
+      batch_short_id:
+        example: ""
+        type: string
+      description:
+        example: Updated description
+        type: string
+      expires_at:
+        example: "2027-01-01T00:00:00Z"
+        type: string
+      is_downloadable:
+        example: false
+        type: boolean
+      module_short_id:
+        example: ""
+        type: string
+      resource_type:
+        enum:
+        - pdf
+        - document
+        - video
+        - link
+        - image
+        - code
+        - other
+        example: video
+        type: string
+      session_short_id:
+        example: ""
+        type: string
+      title:
+        example: Updated title
+        type: string
+      url:
+        example: https://cdn.example.com/new-file.pdf
+        type: string
+    type: object
+  models.UpdateScoreWeightsInput:
+    properties:
+      assignments_weight:
+        example: 40
+        maximum: 100
+        minimum: 0
+        type: integer
+      exams_weight:
+        example: 40
+        maximum: 100
+        minimum: 0
+        type: integer
+      projects_weight:
+        example: 20
+        maximum: 100
+        minimum: 0
+        type: integer
+    type: object
   models.UpdateSessionInput:
     properties:
       batch_short_id:
@@ -1946,6 +3833,12 @@ definitions:
       name:
         example: React Hooks Deep Dive — Part 2
         type: string
+      recording_available_from:
+        example: "2026-08-01T00:00:00Z"
+        type: string
+      recording_visible:
+        example: false
+        type: boolean
       send_confirmation_email:
         example: false
         type: boolean
@@ -1973,6 +3866,9 @@ definitions:
       first_name:
         example: John
         type: string
+      is_active:
+        example: false
+        type: boolean
       last_name:
         example: Doe
         type: string
@@ -2169,9 +4065,10 @@ paths:
       - announcements
   /assessments:
     get:
-      description: Returns all active and inactive assessments. Supports optional
-        filtering by name (partial match), description (partial match), and is_active
-        (true|false).
+      description: Returns assessments scoped to the caller's role — students see
+        active global assessments plus ones for their enrolled batches; mentors see
+        global plus their managed batches; team_lead/super_admin see everything (with
+        optional name/description/is_active/batch_short_id filters).
       parameters:
       - description: Filter by name (partial match)
         in: query
@@ -2184,6 +4081,10 @@ paths:
       - description: 'Filter by active status: true or false'
         in: query
         name: is_active
+        type: string
+      - description: Filter by batch short ID
+        in: query
+        name: batch_short_id
         type: string
       produces:
       - application/json
@@ -2208,10 +4109,11 @@ paths:
     post:
       consumes:
       - application/json
-      description: 'Create a new assessment. Upload thumbnail via POST /upload/assessment-thumbnail
-        and files via POST /upload/assessment-file first, then pass the returned URLs
-        here. result_declaration must be one of: manual | automatic. result_display
-        must be one of: marks_and_status | status_only.'
+      description: Create a new assessment — either static content (leave start_at/end_at/duration_minutes
+        unset) or a real timed exam. Attach questions afterwards via POST /assessments/{short_id}/questions.
+        Leave batch_short_id empty for global visibility. Upload thumbnail via POST
+        /upload/assessment-thumbnail and files via POST /upload/assessment-file first,
+        then pass the returned URLs here.
       parameters:
       - description: Assessment details
         in: body
@@ -2275,6 +4177,38 @@ paths:
       summary: Delete assessment
       tags:
       - assessments
+    get:
+      description: Returns a single assessment by its short_id.
+      parameters:
+      - description: Assessment short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Assessment'
+        "404":
+          description: Assessment not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get assessment
+      tags:
+      - assessments
     patch:
       consumes:
       - application/json
@@ -2324,6 +4258,1026 @@ paths:
       summary: Update assessment
       tags:
       - assessments
+  /assessments/{short_id}/attempts:
+    get:
+      description: Returns every attempt at an assessment across all students, for
+        monitoring and grading. Restricted to super_admin / team_lead / mentor.
+      parameters:
+      - description: Assessment short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.ExamAttempt'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List all attempts
+      tags:
+      - exam-attempts
+    post:
+      description: Starts a new timed attempt at an assessment, or resumes the caller's
+        existing in-progress attempt. Enforces the assessment's start/end window and
+        max_attempts. Returns the attempt with its (possibly randomized) question
+        list, sanitized of correct answers.
+      parameters:
+      - description: Assessment short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.AttemptDetail'
+        "400":
+          description: Outside the exam window, or attempts exhausted
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Assessment not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Start (or resume) an exam attempt
+      tags:
+      - exam-attempts
+  /assessments/{short_id}/attempts/{attempt_short_id}:
+    get:
+      description: Returns a single attempt with its full question list. Correct answers
+        are only included once the attempt is finished and the assessment allows revealing
+        them.
+      parameters:
+      - description: Assessment short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Attempt short ID
+        in: path
+        name: attempt_short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.AttemptDetail'
+        "404":
+          description: Attempt not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get attempt detail
+      tags:
+      - exam-attempts
+  /assessments/{short_id}/attempts/{attempt_short_id}/answers:
+    post:
+      consumes:
+      - application/json
+      description: Saves (or overwrites) the caller's answer to one question within
+        their in-progress attempt. Call this on every change — it's cheap to call
+        repeatedly.
+      parameters:
+      - description: Assessment short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Attempt short ID
+        in: path
+        name: attempt_short_id
+        required: true
+        type: string
+      - description: Answer
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.SubmitAnswerInput'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Validation error, or attempt is no longer in progress
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Autosave an answer
+      tags:
+      - exam-attempts
+  /assessments/{short_id}/attempts/{attempt_short_id}/answers/{question_short_id}/grade:
+    patch:
+      consumes:
+      - application/json
+      description: Records marks and feedback for a short_answer/descriptive/coding
+        answer within a submitted attempt. Once every answer in the attempt has a
+        grade, the attempt automatically flips to "evaluated" with its total score
+        and pass/fail computed. Restricted to super_admin / team_lead / mentor.
+      parameters:
+      - description: Assessment short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Attempt short ID
+        in: path
+        name: attempt_short_id
+        required: true
+        type: string
+      - description: Question short ID
+        in: path
+        name: question_short_id
+        required: true
+        type: string
+      - description: Grade details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.GradeAnswerInput'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Manually grade an answer
+      tags:
+      - exam-attempts
+  /assessments/{short_id}/attempts/{attempt_short_id}/submit:
+    post:
+      description: Finalizes the caller's attempt. Objective questions (mcq/multi_select/true_false/fill_blank)
+        are auto-graded immediately; if the assessment has no other question types,
+        the attempt is fully evaluated right away. Otherwise it's marked "submitted"
+        pending manual grading of descriptive/coding answers.
+      parameters:
+      - description: Assessment short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Attempt short ID
+        in: path
+        name: attempt_short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.AttemptDetail'
+        "404":
+          description: Attempt not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Submit an attempt
+      tags:
+      - exam-attempts
+  /assessments/{short_id}/attempts/me:
+    get:
+      description: Returns the calling student's attempts at an assessment, newest
+        first.
+      parameters:
+      - description: Assessment short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.ExamAttempt'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List my attempts
+      tags:
+      - exam-attempts
+  /assessments/{short_id}/cancel:
+    post:
+      description: Cancels an assessment — blocks any new attempt and marks every
+        currently in-progress attempt as cancelled. Existing submitted/evaluated attempts
+        are untouched. Restricted to super_admin / team_lead / mentor (of a batch
+        they manage).
+      parameters:
+      - description: Assessment short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Assessment not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Cancel an assessment
+      tags:
+      - assessments
+  /assessments/{short_id}/questions:
+    get:
+      description: Returns every question attached to an assessment, in display order.
+        Restricted to super_admin / team_lead / mentor (students never see the raw
+        question bank with answers — they get a sanitized view via the attempt endpoints).
+      parameters:
+      - description: Assessment short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.AssessmentQuestion'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List assessment questions
+      tags:
+      - assessments
+    post:
+      consumes:
+      - application/json
+      description: Attaches an existing question-bank entry (see POST /questions)
+        to an assessment, with a display order and optional marks override. Restricted
+        to super_admin / team_lead / mentor.
+      parameters:
+      - description: Assessment short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Question to attach
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.AttachQuestionInput'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Attach question to assessment
+      tags:
+      - assessments
+  /assessments/{short_id}/questions/{question_short_id}:
+    delete:
+      description: Removes a question from an assessment (the question itself remains
+        in the bank). Restricted to super_admin / team_lead / mentor.
+      parameters:
+      - description: Assessment short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Question short ID
+        in: path
+        name: question_short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Detach question from assessment
+      tags:
+      - assessments
+    patch:
+      consumes:
+      - application/json
+      description: Updates the display order or marks override for a question already
+        attached to an assessment. Restricted to super_admin / team_lead / mentor.
+      parameters:
+      - description: Assessment short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Question short ID
+        in: path
+        name: question_short_id
+        required: true
+        type: string
+      - description: Fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateAttachedQuestionInput'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update attached question
+      tags:
+      - assessments
+  /assessments/{short_id}/reattempts:
+    post:
+      consumes:
+      - application/json
+      description: Grants a student one extra attempt beyond the assessment's max_attempts,
+        or lets them retry after already passing. Previous attempts are untouched
+        — this only raises the ceiling by one and records who granted it and why.
+        Restricted to super_admin / team_lead / mentor (of a batch they manage).
+      parameters:
+      - description: Assessment short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Student and reason
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.GrantReattemptInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.ReattemptGrant'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Assessment not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Grant a reattempt
+      tags:
+      - exam-attempts
+  /assignments:
+    get:
+      description: Returns assignments scoped to the caller's role — students see
+        published assignments for their enrolled batches; mentors see assignments
+        for batches they manage; team_lead/super_admin see everything. Supports optional
+        filtering by batch_short_id and status.
+      parameters:
+      - description: Filter by batch short ID
+        in: query
+        name: batch_short_id
+        type: string
+      - description: 'Filter by status: draft | active | closed'
+        in: query
+        name: status
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Assignment'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List assignments
+      tags:
+      - assignments
+    post:
+      consumes:
+      - application/json
+      description: Create a new assignment scoped to a batch, with an optional module/session
+        tie. Restricted to super_admin / team_lead / mentor. Set status to "active"
+        to publish and notify the batch immediately, or "draft" (default) to save
+        without notifying.
+      parameters:
+      - description: Assignment details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateAssignmentInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Assignment'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create assignment
+      tags:
+      - assignments
+  /assignments/{short_id}:
+    delete:
+      description: Soft-deletes an assignment by its short ID. Restricted to super_admin
+        / team_lead / mentor.
+      parameters:
+      - description: Assignment short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Assignment not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete assignment
+      tags:
+      - assignments
+    get:
+      description: Returns a single assignment by its short_id.
+      parameters:
+      - description: Assignment short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Assignment'
+        "404":
+          description: Assignment not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get assignment
+      tags:
+      - assignments
+    patch:
+      consumes:
+      - application/json
+      description: 'Partially update an assignment. All fields are optional. Restricted
+        to super_admin / team_lead / mentor. Note: publishing a draft via this endpoint
+        (changing status to "active") does not re-trigger student notifications —
+        publish with status "active" on create instead, or notify separately.'
+      parameters:
+      - description: Assignment short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateAssignmentInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Assignment'
+        "400":
+          description: Validation error or no fields provided
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Assignment not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update assignment
+      tags:
+      - assignments
+  /assignments/{short_id}/submissions:
+    get:
+      description: Returns every submission for an assignment, newest first. Restricted
+        to super_admin / team_lead / mentor.
+      parameters:
+      - description: Assignment short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.AssignmentSubmission'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List submissions
+      tags:
+      - assignments
+    post:
+      consumes:
+      - application/json
+      description: Submit (or resubmit, if the mentor has requested a resubmission)
+        the calling student's work for an assignment. Upload files first via POST
+        /upload/assignment-file and pass the returned URL as file_url.
+      parameters:
+      - description: Assignment short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Submission details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateAssignmentSubmissionInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.AssignmentSubmission'
+        "400":
+          description: Validation error, or already submitted
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Submit assignment
+      tags:
+      - assignments
+  /assignments/{short_id}/submissions/{submission_short_id}:
+    patch:
+      consumes:
+      - application/json
+      description: Records marks and feedback for a student's submission, or requests
+        a resubmission. Restricted to super_admin / team_lead / mentor.
+      parameters:
+      - description: Assignment short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Submission short ID
+        in: path
+        name: submission_short_id
+        required: true
+        type: string
+      - description: Grade details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.GradeSubmissionInput'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Submission not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Grade submission
+      tags:
+      - assignments
+  /assignments/{short_id}/submissions/me:
+    get:
+      description: Returns the calling student's submission for an assignment, if
+        any.
+      parameters:
+      - description: Assignment short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.AssignmentSubmission'
+        "404":
+          description: No submission yet
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get my submission
+      tags:
+      - assignments
+  /attendance/reports:
+    get:
+      description: Returns a rollup per session (across every batch, most recent first)
+        — mentors see only sessions in batches they manage; team_lead/super_admin
+        see everything. Only sessions with at least one marked record appear.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.SessionAttendanceReport'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get cross-batch attendance reports
+      tags:
+      - attendance
+  /audit-logs:
+    get:
+      description: Returns the 500 most recent audit log entries, newest first. Supports
+        optional filtering by batch_short_id, entity_type, action, and actor_id. Restricted
+        to super_admin / team_lead.
+      parameters:
+      - description: Filter by batch short ID
+        in: query
+        name: batch_short_id
+        type: string
+      - description: Filter by entity type (batch, session, assignment, ...)
+        in: query
+        name: entity_type
+        type: string
+      - description: Filter by action (create, update, delete, grade, ...)
+        in: query
+        name: action
+        type: string
+      - description: Filter by actor user ID
+        in: query
+        name: actor_id
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.AuditLogEntry'
+            type: array
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Browse the audit log
+      tags:
+      - audit-log
+  /auth/change-password:
+    post:
+      consumes:
+      - application/json
+      description: Change the logged-in user's password. Requires the current password.
+      parameters:
+      - description: Old and new password
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/controller.ChangePasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Password changed
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Incorrect current password
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Change password
+      tags:
+      - auth
+  /auth/forgot-password:
+    post:
+      consumes:
+      - application/json
+      description: Sends a 6-digit OTP to the given email if it belongs to a registered
+        account. Always returns 200, whether or not the email is registered, to avoid
+        leaking which emails have accounts. The OTP expires after 5 minutes.
+      parameters:
+      - description: Account email
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/controller.ForgotPasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OTP sent if the email is registered
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Forgot password — request OTP
+      tags:
+      - auth
   /auth/login:
     post:
       consumes:
@@ -2404,6 +5358,43 @@ paths:
               type: string
             type: object
       summary: Register
+      tags:
+      - auth
+  /auth/reset-password:
+    post:
+      consumes:
+      - application/json
+      description: Verifies the OTP emailed via /auth/forgot-password and sets a new
+        password. The OTP is single-use and expires 5 minutes after being issued.
+      parameters:
+      - description: Email, OTP, and new password
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/controller.ResetPasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Password reset
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid or expired OTP / validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Reset password with OTP
       tags:
       - auth
   /banners:
@@ -2655,6 +5646,39 @@ paths:
       summary: Delete batch
       tags:
       - batches
+    get:
+      description: Returns a single batch by its short_id, with full course and manager
+        details.
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Batch'
+        "404":
+          description: Batch not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get batch
+      tags:
+      - batches
     patch:
       consumes:
       - application/json
@@ -2703,6 +5727,226 @@ paths:
       summary: Update batch
       tags:
       - batches
+  /batches/{short_id}/at-risk:
+    get:
+      description: Flags students with low attendance (<60%), a low final score (<40%,
+        only once they have graded work), or no activity in 7+ days (only once the
+        batch has been running that long). Only returns students who tripped at least
+        one flag.
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.AtRiskStudent'
+            type: array
+        "404":
+          description: Batch not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a batch's at-risk students
+      tags:
+      - engagement
+  /batches/{short_id}/attendance-summary:
+    get:
+      description: Returns every enrolled student's attendance rollup (present/absent/late/excused
+        counts and percentage) across every held session of the batch.
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.StudentAttendanceSummary'
+            type: array
+        "404":
+          description: Batch not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a batch's attendance summary
+      tags:
+      - attendance
+  /batches/{short_id}/audit-log:
+    get:
+      description: Returns the 500 most recent audit log entries for one batch, newest
+        first. Restricted to super_admin / team_lead / mentor (mentor scoped to batches
+        they manage).
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.AuditLogEntry'
+            type: array
+        "404":
+          description: Batch not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a batch's audit trail
+      tags:
+      - audit-log
+  /batches/{short_id}/certificates:
+    get:
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Certificate'
+            type: array
+        "404":
+          description: Batch not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List a batch's issued certificates
+      tags:
+      - certificates
+  /batches/{short_id}/curriculum:
+    get:
+      description: Returns the batch's course curriculum, annotating every module
+        with is_released and (if scheduled) release_date. A module with no configured
+        schedule is always released. Students don't see sections/materials for a module
+        that isn't released yet.
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.ModuleWithSections'
+            type: array
+        "404":
+          description: Batch not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a batch's curriculum (with module release status)
+      tags:
+      - curriculum
+  /batches/{short_id}/leaderboard:
+    get:
+      description: Computes every enrolled student's weighted final score (assignments
+        + exams + projects, per the batch's configured weights) and rank, persists
+        it, and returns the sorted leaderboard.
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.StudentScoreBreakdown'
+            type: array
+        "404":
+          description: Batch not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a batch's leaderboard
+      tags:
+      - scores
   /batches/{short_id}/me/fees:
     get:
       description: Returns the logged-in user's own fees_paid status for a batch —
@@ -2734,6 +5978,129 @@ paths:
       summary: Get my fee-payment status for a batch
       tags:
       - batches
+  /batches/{short_id}/modules/{module_short_id}/schedule:
+    delete:
+      description: Removes a module's release schedule for this batch, reverting it
+        to "released from day one". Restricted to super_admin / team_lead / mentor.
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Module short ID
+        in: path
+        name: module_short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Batch, module, or schedule not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Unschedule a module's release for a batch
+      tags:
+      - curriculum
+    patch:
+      consumes:
+      - application/json
+      description: Sets (or updates) the date a module becomes visible to this batch's
+        students. Restricted to super_admin / team_lead / mentor.
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Module short ID
+        in: path
+        name: module_short_id
+        required: true
+        type: string
+      - description: Release date
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.SetModuleScheduleInput'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Batch or module not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Schedule a module's release for a batch
+      tags:
+      - curriculum
+  /batches/{short_id}/modules/schedule:
+    get:
+      description: Returns every module that has a configured release date for this
+        batch.
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.ModuleScheduleEntry'
+            type: array
+        "404":
+          description: Batch not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List a batch's module release schedule
+      tags:
+      - curriculum
   /batches/{short_id}/recordings:
     get:
       description: Student-facing view of every recorded session in a batch. If the
@@ -2764,6 +6131,53 @@ paths:
       summary: List a batch's session recordings
       tags:
       - sessions
+  /batches/{short_id}/score-weights:
+    patch:
+      consumes:
+      - application/json
+      description: Sets how much each category (assignments/exams/projects) contributes
+        to the batch's final score and leaderboard ranking. The three weights must
+        sum to 100. Restricted to super_admin / team_lead.
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Category weights (must sum to 100)
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateScoreWeightsInput'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Validation error or weights don't sum to 100
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Batch not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Set a batch's score weights
+      tags:
+      - scores
   /batches/{short_id}/sessions:
     get:
       description: Returns all non-deleted sessions scheduled for a batch, ordered
@@ -2828,7 +6242,9 @@ paths:
       - application/json
       description: Enroll one or more students into a batch by user ID. Only users
         with role=student are matched; students already enrolled are left unchanged.
-        Restricted to super_admin / team_lead.
+        Rejected if the batch is at capacity, or if any student already holds an active
+        enrollment in another batch of the same course. Restricted to super_admin
+        / team_lead.
       parameters:
       - description: Batch short ID
         in: path
@@ -2851,7 +6267,14 @@ paths:
               type: integer
             type: object
         "400":
-          description: Validation error
+          description: Validation error, batch full, or already active in another
+            batch of this course
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Batch not found
           schema:
             additionalProperties:
               type: string
@@ -2902,6 +6325,100 @@ paths:
       security:
       - BearerAuth: []
       summary: Remove student from batch
+      tags:
+      - batches
+  /batches/{short_id}/students/{user_id}/certificate:
+    post:
+      description: Issues (or re-issues) a completion certificate for a student in
+        a batch, snapshotting their final score/rank at issuance time. Requires the
+        student to have an enrollment record in this batch. Restricted to super_admin
+        / team_lead / mentor.
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Student user ID
+        in: path
+        name: user_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Certificate'
+        "404":
+          description: Batch not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error, or no enrollment found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Issue a certificate
+      tags:
+      - certificates
+  /batches/{short_id}/students/{user_id}/enrollment:
+    patch:
+      consumes:
+      - application/json
+      description: Changes a student's enrollment status within a batch (e.g. on_hold,
+        completed, dropped) without touching their roster membership — use DELETE
+        .../students/{user_id} to actually remove them. Restricted to super_admin
+        / team_lead / mentor.
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Student user ID (UUID)
+        in: path
+        name: user_id
+        required: true
+        type: string
+      - description: New status
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateEnrollmentStatusInput'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Batch or enrollment not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update a student's enrollment status
       tags:
       - batches
   /batches/{short_id}/students/{user_id}/fees:
@@ -2959,6 +6476,59 @@ paths:
       security:
       - BearerAuth: []
       summary: Set a student's fee-payment status
+      tags:
+      - batches
+  /batches/{short_id}/students/{user_id}/transfer:
+    post:
+      consumes:
+      - application/json
+      description: Moves a student from this batch to a different batch of the SAME
+        course (schedule conflict, batch merge, etc). Their old enrollment is marked
+        "transferred" and kept for history; a new "active" enrollment is created for
+        the destination batch. Restricted to super_admin / team_lead.
+      parameters:
+      - description: Source batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Student user ID (UUID)
+        in: path
+        name: user_id
+        required: true
+        type: string
+      - description: Destination batch
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.TransferStudentInput'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Validation error, different course, or destination batch full
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Batch not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Transfer a student to another batch
       tags:
       - batches
   /batches/filter:
@@ -3193,6 +6763,88 @@ paths:
       summary: Update blog
       tags:
       - blogs
+  /certificates:
+    get:
+      description: Returns every issued certificate, newest first — mentors see only
+        certificates for batches they manage; team_lead/super_admin see everything.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Certificate'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List every issued certificate
+      tags:
+      - certificates
+  /certificates/{short_id}:
+    delete:
+      description: Soft-revokes a certificate (kept for history; fails verification
+        afterward). Restricted to super_admin / team_lead.
+      parameters:
+      - description: Certificate short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Certificate not found or already revoked
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Revoke a certificate
+      tags:
+      - certificates
+  /certificates/verify/{certificate_number}:
+    get:
+      description: Unauthenticated lookup by certificate number, for third parties
+        to verify authenticity. Always returns 200 — check the "valid" field.
+      parameters:
+      - description: Certificate number
+        in: path
+        name: certificate_number
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.CertificateVerification'
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Verify a certificate (public)
+      tags:
+      - certificates
   /coding-questions:
     get:
       description: Returns all active, non-deleted coding questions ordered by creation
@@ -3855,6 +7507,30 @@ paths:
       summary: Search courses
       tags:
       - courses
+  /dashboard/stats:
+    get:
+      description: Real, computed-from-live-data summary for the admin home screen
+        — active batches/students, today's sessions with attendance, certificates
+        issued in the last 30 days, average attendance this week, and a 30-day enrollment
+        trend. Restricted to super_admin / team_lead.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.DashboardStats'
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Admin dashboard stats
+      tags:
+      - dashboard
   /events:
     get:
       description: Returns all non-deleted events ordered newest first. Use query
@@ -5221,6 +8897,1038 @@ paths:
       summary: Mark notification read/unread
       tags:
       - notifications
+  /projects:
+    get:
+      description: Returns projects scoped to the caller's role — students see published
+        projects for their enrolled batches; mentors see projects for batches they
+        manage; team_lead/super_admin see everything.
+      parameters:
+      - description: Filter by batch short ID
+        in: query
+        name: batch_short_id
+        type: string
+      - description: 'Filter by status: draft | active | closed'
+        in: query
+        name: status
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Project'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List projects
+      tags:
+      - projects
+    post:
+      consumes:
+      - application/json
+      description: Create a new project scoped to a batch. Set is_team_project to
+        true if students should submit as teams (create teams afterwards via POST
+        /projects/{short_id}/teams). Restricted to super_admin / team_lead / mentor.
+      parameters:
+      - description: Project details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateProjectInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Project'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create project
+      tags:
+      - projects
+  /projects/{short_id}:
+    delete:
+      description: Soft-deletes a project by its short ID. Restricted to super_admin
+        / team_lead / mentor.
+      parameters:
+      - description: Project short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Project not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete project
+      tags:
+      - projects
+    get:
+      description: Returns a single project by its short_id, with its milestones and
+        (if applicable) teams embedded.
+      parameters:
+      - description: Project short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ProjectDetail'
+        "404":
+          description: Project not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get project
+      tags:
+      - projects
+    patch:
+      consumes:
+      - application/json
+      description: Partially update a project. All fields are optional. Restricted
+        to super_admin / team_lead / mentor.
+      parameters:
+      - description: Project short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateProjectInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Project'
+        "400":
+          description: Validation error or no fields provided
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Project not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update project
+      tags:
+      - projects
+  /projects/{short_id}/milestones:
+    post:
+      consumes:
+      - application/json
+      description: Add a milestone/checkpoint to a project (e.g. Topic Approval, Design
+        Submission, Final Submission). Mark exactly one milestone is_final to designate
+        the final deliverable. Restricted to super_admin / team_lead / mentor.
+      parameters:
+      - description: Project short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Milestone details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateMilestoneInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.ProjectMilestone'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Add milestone
+      tags:
+      - projects
+  /projects/{short_id}/milestones/{milestone_short_id}:
+    delete:
+      description: Soft-deletes a milestone. Restricted to super_admin / team_lead
+        / mentor.
+      parameters:
+      - description: Project short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Milestone short ID
+        in: path
+        name: milestone_short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Milestone not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete milestone
+      tags:
+      - projects
+    patch:
+      consumes:
+      - application/json
+      description: Partially update a milestone. Restricted to super_admin / team_lead
+        / mentor.
+      parameters:
+      - description: Project short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Milestone short ID
+        in: path
+        name: milestone_short_id
+        required: true
+        type: string
+      - description: Fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateMilestoneInput'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Validation error or no fields provided
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Milestone not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update milestone
+      tags:
+      - projects
+  /projects/{short_id}/milestones/{milestone_short_id}/submissions:
+    get:
+      description: Returns every submission for a milestone, newest first. Restricted
+        to super_admin / team_lead / mentor.
+      parameters:
+      - description: Project short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Milestone short ID
+        in: path
+        name: milestone_short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.ProjectSubmission'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List milestone submissions
+      tags:
+      - projects
+    post:
+      consumes:
+      - application/json
+      description: Submit (or resubmit, if the mentor has requested one) work for
+        a milestone. If the project is team-based, the calling student must already
+        belong to a team for this project. Upload files first via POST /upload/project-file
+        and pass the URL as file_url.
+      parameters:
+      - description: Project short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Milestone short ID
+        in: path
+        name: milestone_short_id
+        required: true
+        type: string
+      - description: Submission details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateProjectSubmissionInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.ProjectSubmission'
+        "400":
+          description: Validation error, not on a team, or already submitted
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Submit milestone work
+      tags:
+      - projects
+  /projects/{short_id}/milestones/{milestone_short_id}/submissions/{submission_short_id}:
+    patch:
+      consumes:
+      - application/json
+      description: Records marks and feedback for a milestone submission, or requests
+        a resubmission. Restricted to super_admin / team_lead / mentor.
+      parameters:
+      - description: Project short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Milestone short ID
+        in: path
+        name: milestone_short_id
+        required: true
+        type: string
+      - description: Submission short ID
+        in: path
+        name: submission_short_id
+        required: true
+        type: string
+      - description: Grade details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.GradeProjectSubmissionInput'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Submission not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Grade milestone submission
+      tags:
+      - projects
+  /projects/{short_id}/milestones/{milestone_short_id}/submissions/me:
+    get:
+      description: Returns the calling student's (or their team's) submission for
+        a milestone, if any.
+      parameters:
+      - description: Project short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Milestone short ID
+        in: path
+        name: milestone_short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ProjectSubmission'
+        "404":
+          description: No submission yet
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get my milestone submission
+      tags:
+      - projects
+  /projects/{short_id}/teams:
+    post:
+      consumes:
+      - application/json
+      description: Create a team for a team-based project, optionally with initial
+        student members. Restricted to super_admin / team_lead / mentor.
+      parameters:
+      - description: Project short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Team details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateTeamInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.ProjectTeam'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create project team
+      tags:
+      - projects
+  /projects/{short_id}/teams/{team_short_id}:
+    delete:
+      description: Soft-deletes a team. Restricted to super_admin / team_lead / mentor.
+      parameters:
+      - description: Project short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Team short ID
+        in: path
+        name: team_short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Team not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete project team
+      tags:
+      - projects
+  /projects/{short_id}/teams/{team_short_id}/members:
+    post:
+      consumes:
+      - application/json
+      description: Add one or more students to a project team. Restricted to super_admin
+        / team_lead / mentor.
+      parameters:
+      - description: Project short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Team short ID
+        in: path
+        name: team_short_id
+        required: true
+        type: string
+      - description: Student IDs to add
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.AddTeamMembersInput'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Add team members
+      tags:
+      - projects
+  /projects/{short_id}/teams/{team_short_id}/members/{user_id}:
+    delete:
+      description: Removes a student from a project team. Restricted to super_admin
+        / team_lead / mentor.
+      parameters:
+      - description: Project short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Team short ID
+        in: path
+        name: team_short_id
+        required: true
+        type: string
+      - description: Student user ID
+        in: path
+        name: user_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Member not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Remove team member
+      tags:
+      - projects
+  /questions:
+    get:
+      description: Returns questions visible to the caller — their own private questions
+        plus anything shared at course/global visibility. team_lead/super_admin see
+        every question. Supports optional filtering by question_type, topic, and difficulty.
+      parameters:
+      - description: 'Filter by type: mcq | multi_select | true_false | fill_blank
+          | short_answer | descriptive | coding'
+        in: query
+        name: question_type
+        type: string
+      - description: Filter by topic (partial match)
+        in: query
+        name: topic
+        type: string
+      - description: 'Filter by difficulty: easy | medium | hard'
+        in: query
+        name: difficulty
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Question'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List questions
+      tags:
+      - questions
+    post:
+      consumes:
+      - application/json
+      description: Add a question to the question bank. For question_type "coding",
+        set coding_question_short_id to link an existing entry from GET /coding-questions
+        instead of duplicating it — grading for coding answers within an exam is manual.
+        Visibility defaults to "private" (only visible to the creator); set "course"
+        or "global" to share it.
+      parameters:
+      - description: Question details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateQuestionInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Question'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create question
+      tags:
+      - questions
+  /questions/{short_id}:
+    delete:
+      description: Soft-deletes a question-bank entry. Restricted to super_admin /
+        team_lead / mentor.
+      parameters:
+      - description: Question short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Question not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete question
+      tags:
+      - questions
+    get:
+      description: Returns a single question-bank entry by its short_id (including
+        its correct answer — restricted to super_admin / team_lead / mentor).
+      parameters:
+      - description: Question short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Question'
+        "404":
+          description: Question not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get question
+      tags:
+      - questions
+    patch:
+      consumes:
+      - application/json
+      description: Partially update a question-bank entry. Restricted to super_admin
+        / team_lead / mentor.
+      parameters:
+      - description: Question short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateQuestionInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Question'
+        "400":
+          description: Validation error or no fields provided
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Question not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update question
+      tags:
+      - questions
+  /resources:
+    get:
+      description: Returns resources scoped to the caller's role — students see global
+        resources plus those for their enrolled batches (expired resources excluded);
+        mentors see global resources plus those for batches they manage; team_lead/super_admin
+        see everything. Supports optional filtering by batch_short_id and resource_type.
+      parameters:
+      - description: Filter by batch short ID
+        in: query
+        name: batch_short_id
+        type: string
+      - description: 'Filter by type: pdf | document | video | link | image | code
+          | other'
+        in: query
+        name: resource_type
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Resource'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List resources
+      tags:
+      - resources
+    post:
+      consumes:
+      - application/json
+      description: Publish a new learning resource. Upload a file first via POST /upload/resource-file
+        and pass the returned URL, or pass an external link directly. Leave batch_short_id
+        empty for global visibility (all students), or set it to scope to one batch.
+        Restricted to super_admin / team_lead / mentor.
+      parameters:
+      - description: Resource details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateResourceInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Resource'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create resource
+      tags:
+      - resources
+  /resources/{short_id}:
+    delete:
+      description: Soft-deletes a resource by its short ID. Restricted to super_admin
+        / team_lead / mentor.
+      parameters:
+      - description: Resource short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Resource not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete resource
+      tags:
+      - resources
+    get:
+      description: Returns a single resource by its short_id.
+      parameters:
+      - description: Resource short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Resource'
+        "404":
+          description: Resource not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get resource
+      tags:
+      - resources
+    patch:
+      consumes:
+      - application/json
+      description: Partially update a resource. All fields are optional. Send an empty
+        string for batch_short_id/module_short_id/session_short_id to clear that scoping.
+        Restricted to super_admin / team_lead / mentor.
+      parameters:
+      - description: Resource short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateResourceInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Resource'
+        "400":
+          description: Validation error or no fields provided
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Resource not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update resource
+      tags:
+      - resources
   /sessions:
     get:
       description: Returns all non-deleted sessions ordered by session date/time (newest
@@ -5421,6 +10129,142 @@ paths:
       summary: Update session
       tags:
       - sessions
+  /sessions/{short_id}/attendance:
+    get:
+      description: Returns the batch roster alongside whatever attendance has been
+        marked so far for this session. Students not yet marked simply won't appear
+        in "attendance" — the caller treats them as unmarked, not absent.
+      parameters:
+      - description: Session short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: roster[] and attendance[]
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Session not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get attendance for a session
+      tags:
+      - attendance
+  /sessions/{short_id}/attendance/{student_id}:
+    patch:
+      consumes:
+      - application/json
+      description: Updates a single student's attendance for one session without resubmitting
+        the whole roster. Restricted to super_admin / team_lead / mentor.
+      parameters:
+      - description: Session short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Student user ID
+        in: path
+        name: student_id
+        required: true
+        type: string
+      - description: Status
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.MarkAttendanceInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.SessionAttendance'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Session not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Mark one student's attendance for a session
+      tags:
+      - attendance
+  /sessions/{short_id}/attendance/bulk:
+    post:
+      consumes:
+      - application/json
+      description: Marks (or re-marks) attendance for every student listed in the
+        request for one session — this is what the "take attendance" screen submits.
+        Restricted to super_admin / team_lead / mentor.
+      parameters:
+      - description: Session short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Per-student attendance
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.BulkMarkAttendanceInput'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Session not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Mark attendance for a whole session
+      tags:
+      - attendance
   /sessions/by-token/{token}:
     get:
       description: Public, unauthenticated lookup of a session by its share token
@@ -5515,6 +10359,57 @@ paths:
       summary: List all submissions (admin/mentor)
       tags:
       - submissions
+  /submissions/assessments:
+    get:
+      description: Returns every submitted or evaluated exam attempt across every
+        assessment, newest first — mentors see only attempts in batches they manage
+        (plus any global assessments); team_lead/super_admin see everything. Powers
+        the unified Submissions workspace.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.ExamAttempt'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List every submitted/evaluated exam attempt (cross-assessment)
+      tags:
+      - assessments
+  /submissions/assignments:
+    get:
+      description: Returns every assignment submission across every assignment, newest
+        first — mentors see only submissions in batches they manage; team_lead/super_admin
+        see everything. Powers the unified Submissions workspace.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.AssignmentSubmission'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List every assignment submission (cross-assignment)
+      tags:
+      - assignments
   /submissions/me:
     get:
       description: Returns all submissions made by the authenticated user across all
@@ -5539,6 +10434,31 @@ paths:
       summary: Get current user's submissions
       tags:
       - submissions
+  /submissions/projects:
+    get:
+      description: Returns every project-milestone submission across every project,
+        newest first — mentors see only submissions in batches they manage; team_lead/super_admin
+        see everything. Powers the unified Submissions workspace.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.ProjectSubmission'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List every project-milestone submission (cross-project)
+      tags:
+      - projects
   /submissions/question/{short_id}:
     get:
       description: Returns all submissions by the authenticated user for the given
@@ -5676,6 +10596,45 @@ paths:
       security:
       - BearerAuth: []
       summary: Upload assessment thumbnail
+      tags:
+      - upload
+  /upload/assignment-file:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Upload a student's assignment submission file. Returns the public
+        URL to pass as file_url when submitting via POST /assignments/{short_id}/submissions.
+        Max size 500 MB.
+      parameters:
+      - description: Submission file
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'url: public URL of the uploaded file'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Upload failed
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Upload assignment submission file
       tags:
       - upload
   /upload/banner-image:
@@ -5834,6 +10793,84 @@ paths:
       summary: Upload a material file
       tags:
       - upload
+  /upload/project-file:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Upload a project submission file (report, zip, presentation, etc.).
+        Returns the public URL to pass as file_url when submitting via POST /projects/{short_id}/milestones/{milestone_short_id}/submissions.
+        Max size 500 MB.
+      parameters:
+      - description: Submission file
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'url: public URL of the uploaded file'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Upload failed
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Upload project submission file
+      tags:
+      - upload
+  /upload/resource-file:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Upload a learning resource file (PDF, doc, video, image, code,
+        etc.) to attach to a resource. Returns the public URL to pass as url when
+        creating or updating a resource via POST/PATCH /resources. Max size 500 MB.
+      parameters:
+      - description: Resource file
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'url: public URL of the uploaded file'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Upload failed
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Upload resource file
+      tags:
+      - upload
   /users:
     get:
       description: Returns all active (non-deleted) users.
@@ -5936,6 +10973,232 @@ paths:
       summary: Update user
       tags:
       - users
+  /users/{id}/attendance-history:
+    get:
+      description: Returns every attendance record ever marked for a student, newest
+        first — the session-by-session log behind "My Attendance".
+      parameters:
+      - description: Student user ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.SessionAttendance'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a student's attendance history
+      tags:
+      - attendance
+  /users/{id}/attendance-summary:
+    get:
+      description: Returns one student's attendance rollup per batch, across every
+        batch they've ever been added to.
+      parameters:
+      - description: Student user ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.StudentAttendanceSummary'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a student's attendance summary
+      tags:
+      - attendance
+  /users/{id}/batches:
+    get:
+      description: Returns every batch a given student is enrolled in. Restricted
+        to super_admin / team_lead / mentor — for a mentor/employee to view a student's
+        real enrollment on their profile page.
+      parameters:
+      - description: Student user ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Batch'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List a student's batches
+      tags:
+      - batches
+  /users/{id}/certificates:
+    get:
+      parameters:
+      - description: Student user ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Certificate'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List a student's certificates
+      tags:
+      - certificates
+  /users/{id}/enrollments:
+    get:
+      description: Returns every enrollment a student has ever had — one per (course,
+        batch) — newest first. This is the real, per-course enrollment history backing
+        a student's multi-course dashboard. Restricted to super_admin / team_lead
+        / mentor, or the student themselves.
+      parameters:
+      - description: Student user ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.StudentEnrollment'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List a student's enrollments
+      tags:
+      - batches
+  /users/{id}/profile-details:
+    get:
+      description: Returns the bio/location/education/skills/social-link fields for
+        a user's profile page, plus their current phone. Self, or super_admin/team_lead.
+      parameters:
+      - description: User ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ProfileDetails'
+        "404":
+          description: User not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get profile details
+      tags:
+      - profile
+    patch:
+      consumes:
+      - application/json
+      description: Partially update a user's bio/location/education/skills/social
+        links (and phone, which writes through to the users table). Self, or super_admin/team_lead.
+      parameters:
+      - description: User ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Fields to update (all optional)
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateProfileDetailsInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ProfileDetails'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update profile details
+      tags:
+      - profile
   /users/{id}/role:
     patch:
       consumes:
@@ -5984,6 +11247,64 @@ paths:
       summary: Change user role
       tags:
       - users
+  /users/{id}/score-breakdown:
+    get:
+      description: Returns one student's score breakdown (assignments/exams/projects/final
+        score) per batch, across every batch they've ever been added to.
+      parameters:
+      - description: Student user ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.StudentScoreBreakdown'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a student's score breakdown
+      tags:
+      - scores
+  /users/{id}/streak:
+    get:
+      description: '"Active" means the student submitted an assignment/project, attempted
+        an exam, or attended a session on that calendar day.'
+      parameters:
+      - description: Student user ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.StudentStreak'
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a student's activity streak
+      tags:
+      - engagement
   /users/deleted:
     get:
       description: Returns all soft-deleted users (where deleted_at is set).

@@ -17,10 +17,11 @@ type AssessmentController struct {
 	questionBankRepo *repository.QuestionBankRepository
 	batchRepo        *repository.BatchRepository
 	notificationRepo *repository.NotificationRepository
+	auditLogRepo     *repository.AuditLogRepository
 }
 
-func NewAssessmentController(repo *repository.AssessmentRepository, questionBankRepo *repository.QuestionBankRepository, batchRepo *repository.BatchRepository, notificationRepo *repository.NotificationRepository) *AssessmentController {
-	return &AssessmentController{assessmentRepo: repo, questionBankRepo: questionBankRepo, batchRepo: batchRepo, notificationRepo: notificationRepo}
+func NewAssessmentController(repo *repository.AssessmentRepository, questionBankRepo *repository.QuestionBankRepository, batchRepo *repository.BatchRepository, notificationRepo *repository.NotificationRepository, auditLogRepo *repository.AuditLogRepository) *AssessmentController {
+	return &AssessmentController{assessmentRepo: repo, questionBankRepo: questionBankRepo, batchRepo: batchRepo, notificationRepo: notificationRepo, auditLogRepo: auditLogRepo}
 }
 
 // CreateAssessment godoc
@@ -42,6 +43,9 @@ func (ctrl *AssessmentController) Create(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	if !checkBatchAccess(c, ctrl.batchRepo, input.BatchShortID) {
+		return
+	}
 
 	createdBy := c.GetString("user_id")
 
@@ -61,6 +65,12 @@ func (ctrl *AssessmentController) Create(c *gin.Context) {
 	); err != nil {
 		log.Printf("notify assessment create: %v", err)
 	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "create", EntityType: "assessment",
+		EntityID: assessment.ID, EntityShortID: assessment.ShortID, EntityLabel: assessment.Name,
+		BatchShortID: assessment.BatchShortID,
+	})
 
 	c.JSON(http.StatusCreated, assessment)
 }
@@ -163,6 +173,9 @@ func (ctrl *AssessmentController) GetByShortID(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "assessment not found"})
 		return
 	}
+	if !checkBatchAccess(c, ctrl.batchRepo, a.BatchShortID) {
+		return
+	}
 	c.JSON(http.StatusOK, a)
 }
 
@@ -183,6 +196,19 @@ func (ctrl *AssessmentController) GetByShortID(c *gin.Context) {
 //	@Router			/assessments/{short_id} [patch]
 func (ctrl *AssessmentController) Update(c *gin.Context) {
 	shortID := c.Param("short_id")
+
+	existing, err := ctrl.assessmentRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch assessment"})
+		return
+	}
+	if existing == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "assessment not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, existing.BatchShortID) {
+		return
+	}
 
 	var input models.UpdateAssessmentInput
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -209,6 +235,12 @@ func (ctrl *AssessmentController) Update(c *gin.Context) {
 		return
 	}
 
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "update", EntityType: "assessment",
+		EntityID: assessment.ID, EntityShortID: assessment.ShortID, EntityLabel: assessment.Name,
+		BatchShortID: assessment.BatchShortID,
+	})
+
 	c.JSON(http.StatusOK, assessment)
 }
 
@@ -227,6 +259,19 @@ func (ctrl *AssessmentController) Update(c *gin.Context) {
 func (ctrl *AssessmentController) Delete(c *gin.Context) {
 	shortID := c.Param("short_id")
 
+	existing, err := ctrl.assessmentRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch assessment"})
+		return
+	}
+	if existing == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "assessment not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, existing.BatchShortID) {
+		return
+	}
+
 	if err := ctrl.assessmentRepo.Delete(c.Request.Context(), shortID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "assessment not found"})
@@ -235,6 +280,12 @@ func (ctrl *AssessmentController) Delete(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not delete assessment"})
 		return
 	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "delete", EntityType: "assessment",
+		EntityID: existing.ID, EntityShortID: existing.ShortID, EntityLabel: existing.Name,
+		BatchShortID: existing.BatchShortID,
+	})
 
 	c.Status(http.StatusNoContent)
 }
@@ -264,6 +315,15 @@ func (ctrl *AssessmentController) AttachQuestion(c *gin.Context) {
 		return
 	}
 
+	assessment, err := ctrl.assessmentRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil || assessment == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "assessment not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, assessment.BatchShortID) {
+		return
+	}
+
 	if err := ctrl.questionBankRepo.AttachQuestion(c.Request.Context(), shortID, input); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not attach question: " + err.Error()})
 		return
@@ -284,6 +344,16 @@ func (ctrl *AssessmentController) AttachQuestion(c *gin.Context) {
 //	@Router			/assessments/{short_id}/questions [get]
 func (ctrl *AssessmentController) GetQuestions(c *gin.Context) {
 	shortID := c.Param("short_id")
+
+	assessment, err := ctrl.assessmentRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil || assessment == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "assessment not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, assessment.BatchShortID) {
+		return
+	}
+
 	questions, err := ctrl.questionBankRepo.GetQuestions(c.Request.Context(), shortID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch questions"})
@@ -321,6 +391,15 @@ func (ctrl *AssessmentController) UpdateAttachedQuestion(c *gin.Context) {
 		return
 	}
 
+	assessment, err := ctrl.assessmentRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil || assessment == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "assessment not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, assessment.BatchShortID) {
+		return
+	}
+
 	if err := ctrl.questionBankRepo.UpdateAttachedQuestion(c.Request.Context(), shortID, questionShortID, input); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
@@ -352,6 +431,16 @@ func (ctrl *AssessmentController) UpdateAttachedQuestion(c *gin.Context) {
 func (ctrl *AssessmentController) DetachQuestion(c *gin.Context) {
 	shortID := c.Param("short_id")
 	questionShortID := c.Param("question_short_id")
+
+	assessment, err := ctrl.assessmentRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil || assessment == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "assessment not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, assessment.BatchShortID) {
+		return
+	}
+
 	if err := ctrl.questionBankRepo.DetachQuestion(c.Request.Context(), shortID, questionShortID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})

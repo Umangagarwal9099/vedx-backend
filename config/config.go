@@ -13,6 +13,23 @@ type Config struct {
 	JWT      JWTConfig
 	Storage  StorageConfig
 	Zoom     ZoomConfig
+	Resend   ResendConfig
+}
+
+// ResendConfig holds credentials for sending transactional email (session
+// confirmations/reminders, batch start reminders) via Resend's HTTP API.
+// Raw SMTP is deliberately not used here — outbound SMTP ports are blocked or
+// silently dropped on Render (and many other PaaS hosts), while HTTPS never
+// is. Optional: when unset, Configured() returns false and email sending is
+// skipped rather than failing the parent operation.
+type ResendConfig struct {
+	APIKey    string
+	FromEmail string
+	FromName  string
+}
+
+func (r ResendConfig) Configured() bool {
+	return r.APIKey != "" && r.FromEmail != ""
 }
 
 type StorageConfig struct {
@@ -133,6 +150,11 @@ func Load() (*Config, error) {
 			ClientID:           get("ZOOM_CLIENT_ID", ""),
 			ClientSecret:       get("ZOOM_CLIENT_SECRET", ""),
 			WebhookSecretToken: get("ZOOM_WEBHOOK_SECRET_TOKEN", ""),
+		},
+		Resend: ResendConfig{
+			APIKey:    get("RESEND_API_KEY", ""),
+			FromEmail: get("RESEND_FROM_EMAIL", ""),
+			FromName:  get("RESEND_FROM_NAME", "Vedex"),
 		},
 	}
 

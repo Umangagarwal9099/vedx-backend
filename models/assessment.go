@@ -34,6 +34,8 @@ type Assessment struct {
 	RequiresProctoring        bool       `json:"requires_proctoring"`
 	QuestionCount             int        `json:"question_count"`
 	IsActive                  bool       `json:"is_active"`
+	CancelledAt               *time.Time `json:"cancelled_at,omitempty"`
+	CancelledBy               string     `json:"cancelled_by,omitempty"`
 	CreatedBy                 string     `json:"created_by"`
 	CreatedAt                 time.Time  `json:"created_at"`
 	UpdatedAt                 time.Time  `json:"updated_at"`

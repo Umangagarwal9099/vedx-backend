@@ -148,6 +148,12 @@ type ProjectSubmission struct {
 	ID              string     `json:"id"`
 	ShortID         string     `json:"short_id"`
 	MilestoneShortID string    `json:"milestone_short_id"`
+	// ProjectTitle/MilestoneTitle/BatchShortID/BatchNumber are only populated
+	// by the cross-project workspace listing (FindAllSubmissionsForMentor).
+	ProjectTitle    string     `json:"project_title,omitempty"`
+	MilestoneTitle  string     `json:"milestone_title,omitempty"`
+	BatchShortID    string     `json:"batch_short_id,omitempty"`
+	BatchNumber     string     `json:"batch_number,omitempty"`
 	StudentID       string     `json:"student_id,omitempty"`
 	StudentName     string     `json:"student_name,omitempty"`
 	TeamShortID     string     `json:"team_short_id,omitempty"`

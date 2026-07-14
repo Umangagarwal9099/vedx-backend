@@ -81,6 +81,11 @@ type AssignmentSubmission struct {
 	ID                string     `json:"id"`
 	ShortID           string     `json:"short_id"`
 	AssignmentShortID string     `json:"assignment_short_id"`
+	// AssignmentTitle/BatchShortID/BatchNumber are only populated by the
+	// cross-assignment workspace listing (FindAllSubmissionsForMentor).
+	AssignmentTitle   string     `json:"assignment_title,omitempty"`
+	BatchShortID      string     `json:"batch_short_id,omitempty"`
+	BatchNumber       string     `json:"batch_number,omitempty"`
 	StudentID         string     `json:"student_id"`
 	StudentName       string     `json:"student_name,omitempty"`
 	StudentEmail      string     `json:"student_email,omitempty"`
@@ -97,10 +102,10 @@ type AssignmentSubmission struct {
 	UpdatedAt         time.Time  `json:"updated_at"`
 }
 
-// CreateSubmissionInput carries a student's submission for an assignment.
+// CreateAssignmentSubmissionInput carries a student's submission for an assignment.
 // content holds the link URL or text answer depending on submission_type;
 // file_url is set after uploading via POST /upload/assignment-file.
-type CreateSubmissionInput struct {
+type CreateAssignmentSubmissionInput struct {
 	SubmissionType string `json:"submission_type" binding:"required,oneof=link text file" example:"file"`
 	Content        string `json:"content"                                                 example:"https://github.com/student/repo"`
 	FileURL        string `json:"file_url"                                                example:"https://cdn.example.com/submission.pdf"`

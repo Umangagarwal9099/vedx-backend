@@ -269,6 +269,11 @@ func (r *UserRepository) UpdateUser(ctx context.Context, id string, in models.Up
 		args = append(args, *in.DateOfBirth)
 		i++
 	}
+	if in.IsActive != nil {
+		setClauses = append(setClauses, fmt.Sprintf("is_active = $%d", i))
+		args = append(args, *in.IsActive)
+		i++
+	}
 
 	if len(setClauses) == 0 {
 		return fmt.Errorf("no fields to update")
@@ -279,6 +284,36 @@ func (r *UserRepository) UpdateUser(ctx context.Context, id string, in models.Up
 		strings.Join(setClauses, ", "),
 	)
 	result, err := r.pool.Exec(ctx, q, args...)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+// FindPasswordHashByID returns the bcrypt hash stored for an active user, for
+// verifying the "old password" on a change-password request.
+func (r *UserRepository) FindPasswordHashByID(ctx context.Context, id string) (string, error) {
+	var hash string
+	err := r.pool.QueryRow(ctx,
+		`SELECT password_hash FROM users WHERE id = $1 AND deleted_at IS NULL`, id,
+	).Scan(&hash)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", pgx.ErrNoRows
+	}
+	if err != nil {
+		return "", err
+	}
+	return hash, nil
+}
+
+// UpdatePassword overwrites the stored bcrypt hash for a user.
+func (r *UserRepository) UpdatePassword(ctx context.Context, id string, newHash string) error {
+	result, err := r.pool.Exec(ctx,
+		`UPDATE users SET password_hash = $1 WHERE id = $2 AND deleted_at IS NULL`, newHash, id,
+	)
 	if err != nil {
 		return err
 	}

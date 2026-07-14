@@ -16,10 +16,11 @@ type ProjectController struct {
 	projectRepo      *repository.ProjectRepository
 	batchRepo        *repository.BatchRepository
 	notificationRepo *repository.NotificationRepository
+	auditLogRepo     *repository.AuditLogRepository
 }
 
-func NewProjectController(projectRepo *repository.ProjectRepository, batchRepo *repository.BatchRepository, notificationRepo *repository.NotificationRepository) *ProjectController {
-	return &ProjectController{projectRepo: projectRepo, batchRepo: batchRepo, notificationRepo: notificationRepo}
+func NewProjectController(projectRepo *repository.ProjectRepository, batchRepo *repository.BatchRepository, notificationRepo *repository.NotificationRepository, auditLogRepo *repository.AuditLogRepository) *ProjectController {
+	return &ProjectController{projectRepo: projectRepo, batchRepo: batchRepo, notificationRepo: notificationRepo, auditLogRepo: auditLogRepo}
 }
 
 // ── Projects ─────────────────────────────────────────────────────────────────
@@ -43,6 +44,9 @@ func (ctrl *ProjectController) Create(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	if !checkBatchAccess(c, ctrl.batchRepo, input.BatchShortID) {
+		return
+	}
 
 	createdBy := c.GetString("user_id")
 	p, err := ctrl.projectRepo.Create(c.Request.Context(), input, createdBy)
@@ -54,6 +58,12 @@ func (ctrl *ProjectController) Create(c *gin.Context) {
 	if p.Status == "active" {
 		ctrl.notifyPublished(c, p, createdBy)
 	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "create", EntityType: "project",
+		EntityID: p.ID, EntityShortID: p.ShortID, EntityLabel: p.Title,
+		BatchShortID: p.BatchShortID,
+	})
 
 	c.JSON(http.StatusCreated, p)
 }
@@ -151,6 +161,9 @@ func (ctrl *ProjectController) GetByShortID(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
 		return
 	}
+	if !checkBatchAccess(c, ctrl.batchRepo, p.BatchShortID) {
+		return
+	}
 
 	milestones, err := ctrl.projectRepo.GetMilestones(c.Request.Context(), shortID)
 	if err != nil {
@@ -196,6 +209,19 @@ func (ctrl *ProjectController) GetByShortID(c *gin.Context) {
 func (ctrl *ProjectController) Update(c *gin.Context) {
 	shortID := c.Param("short_id")
 
+	existing, err := ctrl.projectRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch project"})
+		return
+	}
+	if existing == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, existing.BatchShortID) {
+		return
+	}
+
 	var input models.UpdateProjectInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -220,6 +246,13 @@ func (ctrl *ProjectController) Update(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch updated project"})
 		return
 	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "update", EntityType: "project",
+		EntityID: p.ID, EntityShortID: p.ShortID, EntityLabel: p.Title,
+		BatchShortID: p.BatchShortID,
+	})
+
 	c.JSON(http.StatusOK, p)
 }
 
@@ -237,6 +270,20 @@ func (ctrl *ProjectController) Update(c *gin.Context) {
 //	@Router			/projects/{short_id} [delete]
 func (ctrl *ProjectController) Delete(c *gin.Context) {
 	shortID := c.Param("short_id")
+
+	existing, err := ctrl.projectRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch project"})
+		return
+	}
+	if existing == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, existing.BatchShortID) {
+		return
+	}
+
 	if err := ctrl.projectRepo.Delete(c.Request.Context(), shortID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
@@ -245,6 +292,13 @@ func (ctrl *ProjectController) Delete(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not delete project"})
 		return
 	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "delete", EntityType: "project",
+		EntityID: existing.ID, EntityShortID: existing.ShortID, EntityLabel: existing.Title,
+		BatchShortID: existing.BatchShortID,
+	})
+
 	c.Status(http.StatusNoContent)
 }
 
@@ -266,6 +320,15 @@ func (ctrl *ProjectController) Delete(c *gin.Context) {
 //	@Router			/projects/{short_id}/milestones [post]
 func (ctrl *ProjectController) AddMilestone(c *gin.Context) {
 	shortID := c.Param("short_id")
+
+	project, err := ctrl.projectRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil || project == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, project.BatchShortID) {
+		return
+	}
 
 	var input models.CreateMilestoneInput
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -298,7 +361,17 @@ func (ctrl *ProjectController) AddMilestone(c *gin.Context) {
 //	@Security		BearerAuth
 //	@Router			/projects/{short_id}/milestones/{milestone_short_id} [patch]
 func (ctrl *ProjectController) UpdateMilestone(c *gin.Context) {
+	projectShortID := c.Param("short_id")
 	milestoneShortID := c.Param("milestone_short_id")
+
+	project, err := ctrl.projectRepo.FindByShortID(c.Request.Context(), projectShortID)
+	if err != nil || project == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, project.BatchShortID) {
+		return
+	}
 
 	var input models.UpdateMilestoneInput
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -335,7 +408,18 @@ func (ctrl *ProjectController) UpdateMilestone(c *gin.Context) {
 //	@Security		BearerAuth
 //	@Router			/projects/{short_id}/milestones/{milestone_short_id} [delete]
 func (ctrl *ProjectController) DeleteMilestone(c *gin.Context) {
+	projectShortID := c.Param("short_id")
 	milestoneShortID := c.Param("milestone_short_id")
+
+	project, err := ctrl.projectRepo.FindByShortID(c.Request.Context(), projectShortID)
+	if err != nil || project == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, project.BatchShortID) {
+		return
+	}
+
 	if err := ctrl.projectRepo.DeleteMilestone(c.Request.Context(), milestoneShortID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "milestone not found"})
@@ -366,6 +450,15 @@ func (ctrl *ProjectController) DeleteMilestone(c *gin.Context) {
 func (ctrl *ProjectController) CreateTeam(c *gin.Context) {
 	shortID := c.Param("short_id")
 
+	project, err := ctrl.projectRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil || project == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, project.BatchShortID) {
+		return
+	}
+
 	var input models.CreateTeamInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -394,7 +487,18 @@ func (ctrl *ProjectController) CreateTeam(c *gin.Context) {
 //	@Security		BearerAuth
 //	@Router			/projects/{short_id}/teams/{team_short_id} [delete]
 func (ctrl *ProjectController) DeleteTeam(c *gin.Context) {
+	projectShortID := c.Param("short_id")
 	teamShortID := c.Param("team_short_id")
+
+	project, err := ctrl.projectRepo.FindByShortID(c.Request.Context(), projectShortID)
+	if err != nil || project == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, project.BatchShortID) {
+		return
+	}
+
 	if err := ctrl.projectRepo.DeleteTeam(c.Request.Context(), teamShortID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "team not found"})
@@ -422,7 +526,17 @@ func (ctrl *ProjectController) DeleteTeam(c *gin.Context) {
 //	@Security		BearerAuth
 //	@Router			/projects/{short_id}/teams/{team_short_id}/members [post]
 func (ctrl *ProjectController) AddTeamMembers(c *gin.Context) {
+	projectShortID := c.Param("short_id")
 	teamShortID := c.Param("team_short_id")
+
+	project, err := ctrl.projectRepo.FindByShortID(c.Request.Context(), projectShortID)
+	if err != nil || project == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, project.BatchShortID) {
+		return
+	}
 
 	var input models.AddTeamMembersInput
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -452,8 +566,19 @@ func (ctrl *ProjectController) AddTeamMembers(c *gin.Context) {
 //	@Security		BearerAuth
 //	@Router			/projects/{short_id}/teams/{team_short_id}/members/{user_id} [delete]
 func (ctrl *ProjectController) RemoveTeamMember(c *gin.Context) {
+	projectShortID := c.Param("short_id")
 	teamShortID := c.Param("team_short_id")
 	userID := c.Param("user_id")
+
+	project, err := ctrl.projectRepo.FindByShortID(c.Request.Context(), projectShortID)
+	if err != nil || project == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, project.BatchShortID) {
+		return
+	}
+
 	if err := ctrl.projectRepo.RemoveTeamMember(c.Request.Context(), teamShortID, userID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "member not found in team"})
@@ -588,8 +713,47 @@ func (ctrl *ProjectController) GetMySubmission(c *gin.Context) {
 //	@Security		BearerAuth
 //	@Router			/projects/{short_id}/milestones/{milestone_short_id}/submissions [get]
 func (ctrl *ProjectController) GetAllSubmissions(c *gin.Context) {
+	projectShortID := c.Param("short_id")
 	milestoneShortID := c.Param("milestone_short_id")
+
+	project, err := ctrl.projectRepo.FindByShortID(c.Request.Context(), projectShortID)
+	if err != nil || project == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, project.BatchShortID) {
+		return
+	}
+
 	submissions, err := ctrl.projectRepo.FindAllSubmissions(c.Request.Context(), milestoneShortID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch submissions"})
+		return
+	}
+	if submissions == nil {
+		submissions = []models.ProjectSubmission{}
+	}
+	c.JSON(http.StatusOK, submissions)
+}
+
+// GetAllSubmissionsGlobal godoc
+//
+//	@Summary		List every project-milestone submission (cross-project)
+//	@Description	Returns every project-milestone submission across every project, newest first — mentors see only submissions in batches they manage; team_lead/super_admin see everything. Powers the unified Submissions workspace.
+//	@Tags			projects
+//	@Produce		json
+//	@Success		200	{array}		models.ProjectSubmission
+//	@Failure		500	{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/submissions/projects [get]
+func (ctrl *ProjectController) GetAllSubmissionsGlobal(c *gin.Context) {
+	mentorID := ""
+	role := c.GetString("role")
+	if role == string(models.RoleMentor) || role == string(models.RoleEmployee) {
+		mentorID = c.GetString("user_id")
+	}
+
+	submissions, err := ctrl.projectRepo.FindAllSubmissionsForMentor(c.Request.Context(), mentorID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch submissions"})
 		return
@@ -618,8 +782,18 @@ func (ctrl *ProjectController) GetAllSubmissions(c *gin.Context) {
 //	@Security		BearerAuth
 //	@Router			/projects/{short_id}/milestones/{milestone_short_id}/submissions/{submission_short_id} [patch]
 func (ctrl *ProjectController) GradeSubmission(c *gin.Context) {
+	projectShortID := c.Param("short_id")
 	milestoneShortID := c.Param("milestone_short_id")
 	submissionShortID := c.Param("submission_short_id")
+
+	project, err := ctrl.projectRepo.FindByShortID(c.Request.Context(), projectShortID)
+	if err != nil || project == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, project.BatchShortID) {
+		return
+	}
 
 	var input models.GradeProjectSubmissionInput
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -635,5 +809,13 @@ func (ctrl *ProjectController) GradeSubmission(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not grade submission"})
 		return
 	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "grade", EntityType: "project_submission",
+		EntityShortID: submissionShortID, EntityLabel: project.Title,
+		BatchShortID: project.BatchShortID,
+		Metadata: map[string]interface{}{"marks": input.Marks, "status": input.Status},
+	})
+
 	c.Status(http.StatusNoContent)
 }

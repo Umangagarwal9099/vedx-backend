@@ -12,10 +12,12 @@ import (
 
 type ResourceController struct {
 	resourceRepo *repository.ResourceRepository
+	batchRepo    *repository.BatchRepository
+	auditLogRepo *repository.AuditLogRepository
 }
 
-func NewResourceController(resourceRepo *repository.ResourceRepository) *ResourceController {
-	return &ResourceController{resourceRepo: resourceRepo}
+func NewResourceController(resourceRepo *repository.ResourceRepository, batchRepo *repository.BatchRepository, auditLogRepo *repository.AuditLogRepository) *ResourceController {
+	return &ResourceController{resourceRepo: resourceRepo, batchRepo: batchRepo, auditLogRepo: auditLogRepo}
 }
 
 // CreateResource godoc
@@ -37,12 +39,21 @@ func (ctrl *ResourceController) Create(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	if !checkBatchAccess(c, ctrl.batchRepo, input.BatchShortID) {
+		return
+	}
 
 	res, err := ctrl.resourceRepo.Create(c.Request.Context(), input, c.GetString("user_id"))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create resource: " + err.Error()})
 		return
 	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "create", EntityType: "resource",
+		EntityID: res.ID, EntityShortID: res.ShortID, EntityLabel: res.Title,
+		BatchShortID: res.BatchShortID,
+	})
 
 	c.JSON(http.StatusCreated, res)
 }
@@ -141,6 +152,18 @@ func (ctrl *ResourceController) Update(c *gin.Context) {
 		return
 	}
 
+	existing, err := ctrl.resourceRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil || existing == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "resource not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, existing.BatchShortID) {
+		return
+	}
+	if input.BatchShortID != nil && !checkBatchAccess(c, ctrl.batchRepo, *input.BatchShortID) {
+		return
+	}
+
 	if err := ctrl.resourceRepo.Update(c.Request.Context(), shortID, input); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "resource not found"})
@@ -159,6 +182,13 @@ func (ctrl *ResourceController) Update(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch updated resource"})
 		return
 	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "update", EntityType: "resource",
+		EntityID: res.ID, EntityShortID: res.ShortID, EntityLabel: res.Title,
+		BatchShortID: res.BatchShortID,
+	})
+
 	c.JSON(http.StatusOK, res)
 }
 
@@ -176,6 +206,16 @@ func (ctrl *ResourceController) Update(c *gin.Context) {
 //	@Router			/resources/{short_id} [delete]
 func (ctrl *ResourceController) Delete(c *gin.Context) {
 	shortID := c.Param("short_id")
+
+	existing, err := ctrl.resourceRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil || existing == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "resource not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, existing.BatchShortID) {
+		return
+	}
+
 	if err := ctrl.resourceRepo.Delete(c.Request.Context(), shortID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "resource not found"})
@@ -184,5 +224,12 @@ func (ctrl *ResourceController) Delete(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not delete resource"})
 		return
 	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "delete", EntityType: "resource",
+		EntityID: existing.ID, EntityShortID: existing.ShortID, EntityLabel: existing.Title,
+		BatchShortID: existing.BatchShortID,
+	})
+
 	c.Status(http.StatusNoContent)
 }

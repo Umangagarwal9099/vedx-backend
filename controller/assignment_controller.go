@@ -16,10 +16,11 @@ type AssignmentController struct {
 	assignmentRepo   *repository.AssignmentRepository
 	batchRepo        *repository.BatchRepository
 	notificationRepo *repository.NotificationRepository
+	auditLogRepo     *repository.AuditLogRepository
 }
 
-func NewAssignmentController(assignmentRepo *repository.AssignmentRepository, batchRepo *repository.BatchRepository, notificationRepo *repository.NotificationRepository) *AssignmentController {
-	return &AssignmentController{assignmentRepo: assignmentRepo, batchRepo: batchRepo, notificationRepo: notificationRepo}
+func NewAssignmentController(assignmentRepo *repository.AssignmentRepository, batchRepo *repository.BatchRepository, notificationRepo *repository.NotificationRepository, auditLogRepo *repository.AuditLogRepository) *AssignmentController {
+	return &AssignmentController{assignmentRepo: assignmentRepo, batchRepo: batchRepo, notificationRepo: notificationRepo, auditLogRepo: auditLogRepo}
 }
 
 // CreateAssignment godoc
@@ -41,6 +42,9 @@ func (ctrl *AssignmentController) Create(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	if !checkBatchAccess(c, ctrl.batchRepo, input.BatchShortID) {
+		return
+	}
 
 	createdBy := c.GetString("user_id")
 
@@ -53,6 +57,12 @@ func (ctrl *AssignmentController) Create(c *gin.Context) {
 	if assignment.Status == "active" {
 		ctrl.notifyPublished(c, assignment, createdBy)
 	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "create", EntityType: "assignment",
+		EntityID: assignment.ID, EntityShortID: assignment.ShortID, EntityLabel: assignment.Title,
+		BatchShortID: assignment.BatchShortID,
+	})
 
 	c.JSON(http.StatusCreated, assignment)
 }
@@ -152,6 +162,9 @@ func (ctrl *AssignmentController) GetByShortID(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "assignment not found"})
 		return
 	}
+	if !checkBatchAccess(c, ctrl.batchRepo, a.BatchShortID) {
+		return
+	}
 	c.JSON(http.StatusOK, a)
 }
 
@@ -172,6 +185,19 @@ func (ctrl *AssignmentController) GetByShortID(c *gin.Context) {
 //	@Router			/assignments/{short_id} [patch]
 func (ctrl *AssignmentController) Update(c *gin.Context) {
 	shortID := c.Param("short_id")
+
+	existing, err := ctrl.assignmentRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch assignment"})
+		return
+	}
+	if existing == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "assignment not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, existing.BatchShortID) {
+		return
+	}
 
 	var input models.UpdateAssignmentInput
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -197,6 +223,13 @@ func (ctrl *AssignmentController) Update(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch updated assignment"})
 		return
 	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "update", EntityType: "assignment",
+		EntityID: a.ID, EntityShortID: a.ShortID, EntityLabel: a.Title,
+		BatchShortID: a.BatchShortID,
+	})
+
 	c.JSON(http.StatusOK, a)
 }
 
@@ -214,6 +247,20 @@ func (ctrl *AssignmentController) Update(c *gin.Context) {
 //	@Router			/assignments/{short_id} [delete]
 func (ctrl *AssignmentController) Delete(c *gin.Context) {
 	shortID := c.Param("short_id")
+
+	existing, err := ctrl.assignmentRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch assignment"})
+		return
+	}
+	if existing == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "assignment not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, existing.BatchShortID) {
+		return
+	}
+
 	if err := ctrl.assignmentRepo.Delete(c.Request.Context(), shortID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "assignment not found"})
@@ -222,6 +269,13 @@ func (ctrl *AssignmentController) Delete(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not delete assignment"})
 		return
 	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "delete", EntityType: "assignment",
+		EntityID: existing.ID, EntityShortID: existing.ShortID, EntityLabel: existing.Title,
+		BatchShortID: existing.BatchShortID,
+	})
+
 	c.Status(http.StatusNoContent)
 }
 
@@ -235,7 +289,7 @@ func (ctrl *AssignmentController) Delete(c *gin.Context) {
 //	@Accept			json
 //	@Produce		json
 //	@Param			short_id	path		string							true	"Assignment short ID"
-//	@Param			body		body		models.CreateSubmissionInput	true	"Submission details"
+//	@Param			body		body		models.CreateAssignmentSubmissionInput	true	"Submission details"
 //	@Success		201			{object}	models.AssignmentSubmission
 //	@Failure		400			{object}	map[string]string	"Validation error, or already submitted"
 //	@Failure		500			{object}	map[string]string	"Internal server error"
@@ -244,7 +298,7 @@ func (ctrl *AssignmentController) Delete(c *gin.Context) {
 func (ctrl *AssignmentController) CreateSubmission(c *gin.Context) {
 	shortID := c.Param("short_id")
 
-	var input models.CreateSubmissionInput
+	var input models.CreateAssignmentSubmissionInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -306,7 +360,45 @@ func (ctrl *AssignmentController) GetMySubmission(c *gin.Context) {
 //	@Router			/assignments/{short_id}/submissions [get]
 func (ctrl *AssignmentController) GetAllSubmissions(c *gin.Context) {
 	shortID := c.Param("short_id")
+
+	assignment, err := ctrl.assignmentRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil || assignment == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "assignment not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, assignment.BatchShortID) {
+		return
+	}
+
 	submissions, err := ctrl.assignmentRepo.FindAllSubmissions(c.Request.Context(), shortID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch submissions"})
+		return
+	}
+	if submissions == nil {
+		submissions = []models.AssignmentSubmission{}
+	}
+	c.JSON(http.StatusOK, submissions)
+}
+
+// GetAllSubmissionsGlobal godoc
+//
+//	@Summary		List every assignment submission (cross-assignment)
+//	@Description	Returns every assignment submission across every assignment, newest first — mentors see only submissions in batches they manage; team_lead/super_admin see everything. Powers the unified Submissions workspace.
+//	@Tags			assignments
+//	@Produce		json
+//	@Success		200	{array}		models.AssignmentSubmission
+//	@Failure		500	{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/submissions/assignments [get]
+func (ctrl *AssignmentController) GetAllSubmissionsGlobal(c *gin.Context) {
+	mentorID := ""
+	role := c.GetString("role")
+	if role == string(models.RoleMentor) || role == string(models.RoleEmployee) {
+		mentorID = c.GetString("user_id")
+	}
+
+	submissions, err := ctrl.assignmentRepo.FindAllSubmissionsForMentor(c.Request.Context(), mentorID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch submissions"})
 		return
@@ -337,6 +429,15 @@ func (ctrl *AssignmentController) GradeSubmission(c *gin.Context) {
 	shortID := c.Param("short_id")
 	submissionShortID := c.Param("submission_short_id")
 
+	assignment, err := ctrl.assignmentRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil || assignment == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "assignment not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, assignment.BatchShortID) {
+		return
+	}
+
 	var input models.GradeSubmissionInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -353,6 +454,13 @@ func (ctrl *AssignmentController) GradeSubmission(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not grade submission"})
 		return
 	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "grade", EntityType: "assignment_submission",
+		EntityShortID: submissionShortID, EntityLabel: assignment.Title,
+		BatchShortID: assignment.BatchShortID,
+		Metadata: map[string]interface{}{"marks": input.Marks, "status": input.Status},
+	})
 
 	c.Status(http.StatusNoContent)
 }

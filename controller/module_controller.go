@@ -10,15 +10,18 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/umangagarwal/vedx-backend/models"
 	"github.com/umangagarwal/vedx-backend/repository"
+	"github.com/umangagarwal/vedx-backend/service"
 )
 
 type ModuleController struct {
 	moduleRepo       *repository.ModuleRepository
 	notificationRepo *repository.NotificationRepository
+	userRepo         *repository.UserRepository
+	emailSvc         *service.EmailService
 }
 
-func NewModuleController(moduleRepo *repository.ModuleRepository, notificationRepo *repository.NotificationRepository) *ModuleController {
-	return &ModuleController{moduleRepo: moduleRepo, notificationRepo: notificationRepo}
+func NewModuleController(moduleRepo *repository.ModuleRepository, notificationRepo *repository.NotificationRepository, userRepo *repository.UserRepository, emailSvc *service.EmailService) *ModuleController {
+	return &ModuleController{moduleRepo: moduleRepo, notificationRepo: notificationRepo, userRepo: userRepo, emailSvc: emailSvc}
 }
 
 // CreateModule godoc
@@ -65,6 +68,14 @@ func (ctrl *ModuleController) Create(c *gin.Context) {
 		[]string{"student", "mentor", "team_lead"},
 	); err != nil {
 		log.Printf("notify module create: %v", err)
+	}
+
+	// Mirrors the in-app broadcast above exactly — every student, mentor, and
+	// team lead in the system gets emailed, not just staff. On a large student
+	// base this can approach Gmail/Workspace's ~500/day send cap quickly.
+	if ctrl.emailSvc.Configured() {
+		subject, html := service.ModuleCreatedEmail(module.ModuleName, module.ModuleBranch)
+		emailUsersByRoles(c.Request.Context(), ctrl.userRepo, ctrl.emailSvc, []models.Role{models.RoleStudent, models.RoleMentor, models.RoleTeamLead}, subject, html)
 	}
 
 	c.JSON(http.StatusCreated, module)
