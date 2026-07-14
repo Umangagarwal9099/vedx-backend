@@ -27,6 +27,17 @@ type User struct {
 	DeletedAt    *time.Time `json:"deleted_at,omitempty"`
 }
 
+// PasswordResetOTP is a single row in password_reset_otps — one issued
+// code for the "forgot password" flow.
+type PasswordResetOTP struct {
+	ID        string
+	UserID    string
+	OTPHash   string
+	ExpiresAt time.Time
+	UsedAt    *time.Time
+	CreatedAt time.Time
+}
+
 // UpdateUserInput carries the editable fields for PATCH /users/:id.
 // All fields are optional — send only the ones you want to change.
 type UpdateUserInput struct {

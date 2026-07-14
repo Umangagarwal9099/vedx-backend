@@ -88,6 +88,20 @@ func ModuleCreatedEmail(moduleName, moduleBranch string) (subject, html string) 
 	return
 }
 
+// ForgotPasswordOTPEmail is sent when a user requests a password reset. The
+// code is valid for 5 minutes.
+func ForgotPasswordOTPEmail(otp string) (subject, html string) {
+	subject = "Your Vedex password reset code"
+	html = fmt.Sprintf(`
+		<p>Hi,</p>
+		<p>Use the code below to reset your password. It expires in <strong>5 minutes</strong>.</p>
+		<p style="font-size:24px; font-weight:bold; letter-spacing:4px;">%s</p>
+		<p>If you didn't request this, you can safely ignore this email.</p>
+		<p>— Vedex</p>`,
+		otp)
+	return
+}
+
 func joinLinkHTML(link string) string {
 	if link == "" {
 		return ""

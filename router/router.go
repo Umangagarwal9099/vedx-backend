@@ -50,6 +50,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	certificateRepo := repository.NewCertificateRepository(pool)
 	auditLogRepo := repository.NewAuditLogRepository(pool)
 	profileRepo := repository.NewProfileRepository(pool)
+	passwordResetRepo := repository.NewPasswordResetRepository(pool)
 
 	// Services
 	storageSvc := service.NewStorageService(cfg.Storage)
@@ -57,7 +58,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	emailSvc := service.NewEmailService(cfg.Resend)
 
 	// Controllers
-	authCtrl := controller.NewAuthController(userRepo, cfg.JWT.Secret)
+	authCtrl := controller.NewAuthController(userRepo, passwordResetRepo, emailSvc, cfg.JWT.Secret)
 	userCtrl := controller.NewUserController(userRepo)
 	courseCtrl := controller.NewCourseController(courseRepo, notificationRepo)
 	batchCtrl := controller.NewBatchController(batchRepo, enrollmentRepo, notificationRepo, userRepo, emailSvc, auditLogRepo)
@@ -98,6 +99,8 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 		{
 			auth.POST("/login", authCtrl.Login)
 			auth.POST("/register", authCtrl.Register)
+			auth.POST("/forgot-password", authCtrl.ForgotPassword)
+			auth.POST("/reset-password", authCtrl.ResetPassword)
 		}
 
 		// Public session join-link resolution — the token itself is the credential
@@ -116,6 +119,9 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			// Role sets used across multiple route groups
 			adminOrAbove := middleware.RequireRole(models.RoleSuperAdmin, models.RoleTeamLead)
 			staffOrAbove := middleware.RequireRole(models.RoleSuperAdmin, models.RoleTeamLead, models.RoleMentor)
+
+			// Change password — logged-in user, requires the current password.
+			protected.POST("/auth/change-password", authCtrl.ChangePassword)
 
 			// Users — static paths registered before /:id so Gin matches them first.
 			// GetAll/GetDeleted/Search return full PII (email, phone, DOB) across every
