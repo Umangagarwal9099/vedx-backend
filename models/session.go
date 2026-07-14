@@ -23,6 +23,8 @@ type Session struct {
 	ZoomJoinURL                  string     `json:"zoom_join_url,omitempty"`
 	ZoomStartURL                 string     `json:"zoom_start_url,omitempty"` // host token — stripped for students in the controller
 	RecordingURL                 string     `json:"recording_url,omitempty"`
+	RecordingVisible             bool       `json:"recording_visible"`
+	RecordingAvailableFrom       *time.Time `json:"recording_available_from,omitempty"`
 	FeedbackFormShortID          string     `json:"feedback_form_short_id,omitempty"`
 	FeedbackFormTitle            string     `json:"feedback_form_title,omitempty"`
 	SessionType                  string     `json:"session_type"`
@@ -73,6 +75,8 @@ type UpdateSessionInput struct {
 	FeedbackFormShortID          *string  `json:"feedback_form_short_id"          example:"B4G83D2E"`
 	BatchShortID                 *string  `json:"batch_short_id"                  example:"use GET /batches to pick a real short_id"`
 	IsActive                     *bool    `json:"is_active"                       example:"false"`
+	RecordingVisible             *bool      `json:"recording_visible"              example:"false"`
+	RecordingAvailableFrom       *time.Time `json:"recording_available_from"       example:"2026-08-01T00:00:00Z"`
 }
 
 // ZoomMeetingInfo carries a created/updated Zoom meeting's identifiers from

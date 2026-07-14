@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
@@ -15,14 +16,31 @@ import (
 )
 
 type BatchController struct {
-	batchRepo        *repository.BatchRepository
+	batchRepo      *repository.BatchRepository
+	enrollmentRepo *repository.EnrollmentRepository
 	notificationRepo *repository.NotificationRepository
 	userRepo         *repository.UserRepository
 	emailSvc         *service.EmailService
+	auditLogRepo     *repository.AuditLogRepository
 }
 
-func NewBatchController(batchRepo *repository.BatchRepository, notificationRepo *repository.NotificationRepository, userRepo *repository.UserRepository, emailSvc *service.EmailService) *BatchController {
-	return &BatchController{batchRepo: batchRepo, notificationRepo: notificationRepo, userRepo: userRepo, emailSvc: emailSvc}
+func NewBatchController(batchRepo *repository.BatchRepository, enrollmentRepo *repository.EnrollmentRepository, notificationRepo *repository.NotificationRepository, userRepo *repository.UserRepository, emailSvc *service.EmailService, auditLogRepo *repository.AuditLogRepository) *BatchController {
+	return &BatchController{batchRepo: batchRepo, enrollmentRepo: enrollmentRepo, notificationRepo: notificationRepo, userRepo: userRepo, emailSvc: emailSvc, auditLogRepo: auditLogRepo}
+}
+
+// batchDateLayout matches how Batch.StartDate/EndDate are stored — plain
+// "YYYY-MM-DD" strings (see batchBaseSelect's start_date::TEXT/end_date::TEXT).
+const batchDateLayout = "2006-01-02"
+
+func parseBatchDate(s string) *time.Time {
+	if s == "" {
+		return nil
+	}
+	t, err := time.Parse(batchDateLayout, s)
+	if err != nil {
+		return nil
+	}
+	return &t
 }
 
 // emailBatchManagers emails the batch manager and additional manager (if set)
@@ -75,7 +93,14 @@ func (ctrl *BatchController) Create(c *gin.Context) {
 	subject, html := service.BatchCreatedEmail(batch.BatchNumber, batch.CourseName, batch.StartDate, batch.EndDate)
 
 	if len(input.StudentIDs) > 0 {
-		added, err := ctrl.batchRepo.AddStudents(c.Request.Context(), batch.ShortID, input.StudentIDs, createdBy)
+		now := time.Now()
+		startDate := parseBatchDate(batch.StartDate)
+		isLate := startDate != nil && now.After(*startDate)
+		accessEnd := parseBatchDate(batch.EndDate)
+		added, err := ctrl.batchRepo.AddStudentsWithEnrollment(
+			c.Request.Context(), batch.ShortID, input.StudentIDs, createdBy,
+			batch.CourseID, batch.ID, isLate, &now, accessEnd,
+		)
 		if err != nil {
 			log.Printf("add students on batch create: %v", err)
 		} else if len(added) > 0 {
@@ -118,6 +143,12 @@ func (ctrl *BatchController) Create(c *gin.Context) {
 		ctrl.emailBatchManagers(c.Request.Context(), batch, subject, html)
 	}
 
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "create", EntityType: "batch",
+		EntityID: batch.ID, EntityShortID: batch.ShortID, EntityLabel: batch.BatchNumber,
+		BatchShortID: batch.ShortID,
+	})
+
 	c.JSON(http.StatusCreated, batch)
 }
 
@@ -132,7 +163,15 @@ func (ctrl *BatchController) Create(c *gin.Context) {
 //	@Security		BearerAuth
 //	@Router			/batches [get]
 func (ctrl *BatchController) GetAll(c *gin.Context) {
-	batches, err := ctrl.batchRepo.FindAll(c.Request.Context())
+	role := c.GetString("role")
+
+	var batches []models.Batch
+	var err error
+	if role == string(models.RoleMentor) || role == string(models.RoleEmployee) {
+		batches, err = ctrl.batchRepo.FindAllForMentor(c.Request.Context(), c.GetString("user_id"))
+	} else {
+		batches, err = ctrl.batchRepo.FindAll(c.Request.Context())
+	}
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch batches"})
 		return
@@ -198,6 +237,19 @@ func (ctrl *BatchController) Filter(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not filter batches"})
 		return
 	}
+
+	role := c.GetString("role")
+	if role == string(models.RoleMentor) || role == string(models.RoleEmployee) {
+		userID := c.GetString("user_id")
+		scoped := make([]models.Batch, 0, len(batches))
+		for _, b := range batches {
+			if b.BatchManagerID == userID || (b.AdditionalManagerID != "" && b.AdditionalManagerID == userID) {
+				scoped = append(scoped, b)
+			}
+		}
+		batches = scoped
+	}
+
 	if batches == nil {
 		batches = []models.Batch{}
 	}
@@ -216,6 +268,31 @@ func (ctrl *BatchController) Filter(c *gin.Context) {
 //	@Router			/batches/mine [get]
 func (ctrl *BatchController) GetMine(c *gin.Context) {
 	userID := c.GetString("user_id")
+
+	batches, err := ctrl.batchRepo.FindByStudentID(c.Request.Context(), userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch batches"})
+		return
+	}
+	if batches == nil {
+		batches = []models.Batch{}
+	}
+	c.JSON(http.StatusOK, batches)
+}
+
+// GetByStudentID godoc
+//
+//	@Summary		List a student's batches
+//	@Description	Returns every batch a given student is enrolled in. Restricted to super_admin / team_lead / mentor — for a mentor/employee to view a student's real enrollment on their profile page.
+//	@Tags			batches
+//	@Produce		json
+//	@Param			id	path		string	true	"Student user ID"
+//	@Success		200	{array}		models.Batch
+//	@Failure		500	{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/users/{id}/batches [get]
+func (ctrl *BatchController) GetByStudentID(c *gin.Context) {
+	userID := c.Param("id")
 
 	batches, err := ctrl.batchRepo.FindByStudentID(c.Request.Context(), userID)
 	if err != nil {
@@ -271,20 +348,27 @@ func (ctrl *BatchController) Update(c *gin.Context) {
 		return
 	}
 
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "update", EntityType: "batch",
+		EntityID: batch.ID, EntityShortID: batch.ShortID, EntityLabel: batch.BatchNumber,
+		BatchShortID: batch.ShortID,
+	})
+
 	c.JSON(http.StatusOK, batch)
 }
 
 // AddBatchStudents godoc
 //
 //	@Summary		Add students to batch
-//	@Description	Enroll one or more students into a batch by user ID. Only users with role=student are matched; students already enrolled are left unchanged. Restricted to super_admin / team_lead.
+//	@Description	Enroll one or more students into a batch by user ID. Only users with role=student are matched; students already enrolled are left unchanged. Rejected if the batch is at capacity, or if any student already holds an active enrollment in another batch of the same course. Restricted to super_admin / team_lead.
 //	@Tags			batches
 //	@Accept			json
 //	@Produce		json
 //	@Param			short_id	path		string							true	"Batch short ID"
 //	@Param			body		body		models.AddBatchStudentsInput	true	"Student user IDs to add"
 //	@Success		200			{object}	map[string]int	"Number of students added"
-//	@Failure		400			{object}	map[string]string	"Validation error"
+//	@Failure		400			{object}	map[string]string	"Validation error, batch full, or already active in another batch of this course"
+//	@Failure		404			{object}	map[string]string	"Batch not found"
 //	@Failure		500			{object}	map[string]string	"Internal server error"
 //	@Security		BearerAuth
 //	@Router			/batches/{short_id}/students [post]
@@ -297,25 +381,62 @@ func (ctrl *BatchController) AddStudents(c *gin.Context) {
 		return
 	}
 
+	batch, err := ctrl.batchRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil || batch == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "batch not found"})
+		return
+	}
+
+	if batch.MaxStudents != nil && batch.StudentCount+len(input.StudentIDs) > *batch.MaxStudents {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf(
+			"this batch allows at most %d students (currently %d enrolled)", *batch.MaxStudents, batch.StudentCount,
+		)})
+		return
+	}
+
+	for _, studentID := range input.StudentIDs {
+		conflict, err := ctrl.enrollmentRepo.HasActiveEnrollmentInCourse(c.Request.Context(), studentID, batch.CourseID, batch.ID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not verify existing enrollment"})
+			return
+		}
+		if conflict {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "one or more students already have an active enrollment in another batch of this course — remove or transfer them from that batch first"})
+			return
+		}
+	}
+
 	addedBy := c.GetString("user_id")
 
-	added, err := ctrl.batchRepo.AddStudents(c.Request.Context(), shortID, input.StudentIDs, addedBy)
+	now := time.Now()
+	startDate := parseBatchDate(batch.StartDate)
+	isLate := startDate != nil && now.After(*startDate)
+	accessEnd := parseBatchDate(batch.EndDate)
+
+	added, err := ctrl.batchRepo.AddStudentsWithEnrollment(
+		c.Request.Context(), shortID, input.StudentIDs, addedBy,
+		batch.CourseID, batch.ID, isLate, &now, accessEnd,
+	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not add students: " + err.Error()})
 		return
 	}
 
 	if len(added) > 0 {
-		batch, err := ctrl.batchRepo.FindByShortID(c.Request.Context(), shortID)
-		if err == nil && batch != nil {
-			if err := ctrl.notificationRepo.NotifyUsers(c.Request.Context(),
-				"Added to batch: "+batch.BatchNumber,
-				fmt.Sprintf("You've been enrolled in batch %q.", batch.BatchNumber),
-				"batch", "batch", shortID, addedBy, added,
-			); err != nil {
-				log.Printf("notify batch add students: %v", err)
-			}
+		if err := ctrl.notificationRepo.NotifyUsers(c.Request.Context(),
+			"Added to batch: "+batch.BatchNumber,
+			fmt.Sprintf("You've been enrolled in batch %q.", batch.BatchNumber),
+			"batch", "batch", shortID, addedBy, added,
+		); err != nil {
+			log.Printf("notify batch add students: %v", err)
 		}
+
+		logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+			Action: "enroll", EntityType: "enrollment",
+			EntityShortID: shortID, EntityLabel: batch.BatchNumber,
+			BatchShortID: batch.ShortID,
+			Metadata: map[string]interface{}{"student_ids": added, "count": len(added)},
+		})
 	}
 
 	c.JSON(http.StatusOK, gin.H{"added": len(added)})
@@ -334,6 +455,10 @@ func (ctrl *BatchController) AddStudents(c *gin.Context) {
 //	@Router			/batches/{short_id}/students [get]
 func (ctrl *BatchController) GetStudents(c *gin.Context) {
 	shortID := c.Param("short_id")
+
+	if !checkBatchAccess(c, ctrl.batchRepo, shortID) {
+		return
+	}
 
 	students, err := ctrl.batchRepo.GetStudents(c.Request.Context(), shortID)
 	if err != nil {
@@ -387,6 +512,12 @@ func (ctrl *BatchController) RemoveStudent(c *gin.Context) {
 	shortID := c.Param("short_id")
 	userID := c.Param("user_id")
 
+	batch, err := ctrl.batchRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil || batch == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "batch not found"})
+		return
+	}
+
 	if err := ctrl.batchRepo.RemoveStudent(c.Request.Context(), shortID, userID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "student not enrolled in batch"})
@@ -396,7 +527,174 @@ func (ctrl *BatchController) RemoveStudent(c *gin.Context) {
 		return
 	}
 
+	if err := ctrl.enrollmentRepo.UpdateStatus(c.Request.Context(), userID, batch.ID, models.EnrollmentRemoved); err != nil {
+		log.Printf("mark enrollment removed for %s in batch %s: %v", userID, shortID, err)
+	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "remove", EntityType: "enrollment",
+		EntityShortID: userID, EntityLabel: batch.BatchNumber,
+		BatchShortID: batch.ShortID,
+	})
+
 	c.Status(http.StatusNoContent)
+}
+
+// TransferStudent godoc
+//
+//	@Summary		Transfer a student to another batch
+//	@Description	Moves a student from this batch to a different batch of the SAME course (schedule conflict, batch merge, etc). Their old enrollment is marked "transferred" and kept for history; a new "active" enrollment is created for the destination batch. Restricted to super_admin / team_lead.
+//	@Tags			batches
+//	@Accept			json
+//	@Produce		json
+//	@Param			short_id	path	string							true	"Source batch short ID"
+//	@Param			user_id		path	string							true	"Student user ID (UUID)"
+//	@Param			body		body	models.TransferStudentInput	true	"Destination batch"
+//	@Success		204			"No Content"
+//	@Failure		400			{object}	map[string]string	"Validation error, different course, or destination batch full"
+//	@Failure		404			{object}	map[string]string	"Batch not found"
+//	@Failure		500			{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/batches/{short_id}/students/{user_id}/transfer [post]
+func (ctrl *BatchController) TransferStudent(c *gin.Context) {
+	fromShortID := c.Param("short_id")
+	userID := c.Param("user_id")
+
+	var input models.TransferStudentInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	fromBatch, err := ctrl.batchRepo.FindByShortID(c.Request.Context(), fromShortID)
+	if err != nil || fromBatch == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "source batch not found"})
+		return
+	}
+	toBatch, err := ctrl.batchRepo.FindByShortID(c.Request.Context(), input.ToBatchShortID)
+	if err != nil || toBatch == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "destination batch not found"})
+		return
+	}
+	if toBatch.CourseID != fromBatch.CourseID {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "can only transfer a student to another batch of the same course"})
+		return
+	}
+	if toBatch.MaxStudents != nil && toBatch.StudentCount+1 > *toBatch.MaxStudents {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "destination batch is full"})
+		return
+	}
+
+	actorID := c.GetString("user_id")
+
+	if _, err := ctrl.enrollmentRepo.Transfer(c.Request.Context(), userID, fromBatch.ID, toBatch.ID, toBatch.CourseID, actorID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not transfer student: " + err.Error()})
+		return
+	}
+
+	if err := ctrl.batchRepo.RemoveStudent(c.Request.Context(), fromShortID, userID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		log.Printf("remove from source batch during transfer: %v", err)
+	}
+	if _, err := ctrl.batchRepo.AddStudents(c.Request.Context(), toBatch.ShortID, []string{userID}, actorID); err != nil {
+		log.Printf("add to destination batch during transfer: %v", err)
+	}
+
+	if err := ctrl.notificationRepo.NotifyUsers(c.Request.Context(),
+		"Moved to a new batch: "+toBatch.BatchNumber,
+		fmt.Sprintf("You've been moved from batch %q to batch %q.", fromBatch.BatchNumber, toBatch.BatchNumber),
+		"batch", "batch", toBatch.ShortID, actorID, []string{userID},
+	); err != nil {
+		log.Printf("notify transfer: %v", err)
+	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "transfer", EntityType: "enrollment",
+		EntityShortID: userID, EntityLabel: fmt.Sprintf("%s -> %s", fromBatch.BatchNumber, toBatch.BatchNumber),
+		BatchShortID: toBatch.ShortID,
+		Metadata: map[string]interface{}{"from_batch_short_id": fromShortID, "to_batch_short_id": toBatch.ShortID},
+	})
+
+	c.Status(http.StatusNoContent)
+}
+
+// UpdateEnrollmentStatus godoc
+//
+//	@Summary		Update a student's enrollment status
+//	@Description	Changes a student's enrollment status within a batch (e.g. on_hold, completed, dropped) without touching their roster membership — use DELETE .../students/{user_id} to actually remove them. Restricted to super_admin / team_lead / mentor.
+//	@Tags			batches
+//	@Accept			json
+//	@Produce		json
+//	@Param			short_id	path	string								true	"Batch short ID"
+//	@Param			user_id		path	string								true	"Student user ID (UUID)"
+//	@Param			body		body	models.UpdateEnrollmentStatusInput	true	"New status"
+//	@Success		204			"No Content"
+//	@Failure		400			{object}	map[string]string	"Validation error"
+//	@Failure		404			{object}	map[string]string	"Batch or enrollment not found"
+//	@Failure		500			{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/batches/{short_id}/students/{user_id}/enrollment [patch]
+func (ctrl *BatchController) UpdateEnrollmentStatus(c *gin.Context) {
+	shortID := c.Param("short_id")
+	userID := c.Param("user_id")
+
+	var input models.UpdateEnrollmentStatusInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if !checkBatchAccess(c, ctrl.batchRepo, shortID) {
+		return
+	}
+
+	batch, err := ctrl.batchRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil || batch == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "batch not found"})
+		return
+	}
+
+	if err := ctrl.enrollmentRepo.UpdateStatus(c.Request.Context(), userID, batch.ID, input.Status); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "enrollment not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not update enrollment status"})
+		return
+	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "update", EntityType: "enrollment",
+		EntityShortID: userID, EntityLabel: batch.BatchNumber,
+		BatchShortID: batch.ShortID,
+		Metadata: map[string]interface{}{"status": input.Status},
+	})
+
+	c.Status(http.StatusNoContent)
+}
+
+// GetStudentEnrollments godoc
+//
+//	@Summary		List a student's enrollments
+//	@Description	Returns every enrollment a student has ever had — one per (course, batch) — newest first. This is the real, per-course enrollment history backing a student's multi-course dashboard. Restricted to super_admin / team_lead / mentor, or the student themselves.
+//	@Tags			batches
+//	@Produce		json
+//	@Param			id	path		string	true	"Student user ID"
+//	@Success		200	{array}		models.StudentEnrollment
+//	@Failure		500	{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/users/{id}/enrollments [get]
+func (ctrl *BatchController) GetStudentEnrollments(c *gin.Context) {
+	userID := c.Param("id")
+
+	enrollments, err := ctrl.enrollmentRepo.FindByStudent(c.Request.Context(), userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch enrollments"})
+		return
+	}
+	if enrollments == nil {
+		enrollments = []models.StudentEnrollment{}
+	}
+	c.JSON(http.StatusOK, enrollments)
 }
 
 // SetStudentFeesPaid godoc
@@ -425,6 +723,10 @@ func (ctrl *BatchController) SetStudentFeesPaid(c *gin.Context) {
 		return
 	}
 
+	if !checkBatchAccess(c, ctrl.batchRepo, shortID) {
+		return
+	}
+
 	if err := ctrl.batchRepo.SetFeesPaid(c.Request.Context(), shortID, userID, *input.FeesPaid); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "student not enrolled in batch"})
@@ -433,6 +735,12 @@ func (ctrl *BatchController) SetStudentFeesPaid(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not update fee status"})
 		return
 	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "update", EntityType: "fees",
+		EntityShortID: userID,
+		Metadata: map[string]interface{}{"fees_paid": *input.FeesPaid},
+	})
 
 	c.JSON(http.StatusOK, gin.H{"status": "updated"})
 }
@@ -460,6 +768,10 @@ func (ctrl *BatchController) Delete(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not delete batch"})
 		return
 	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "delete", EntityType: "batch", EntityShortID: shortID,
+	})
 
 	c.Status(http.StatusNoContent)
 }

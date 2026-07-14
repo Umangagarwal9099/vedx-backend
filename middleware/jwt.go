@@ -51,3 +51,28 @@ func RequireRole(roles ...models.Role) gin.HandlerFunc {
 		c.Next()
 	}
 }
+
+// RequireSelfOrRole allows a request through if EITHER the caller's own
+// user_id matches the route param named paramName (e.g. "id" in
+// "/users/:id/streak" — a user reading their own data), OR their role is in
+// the allowed list (staff reading someone else's data). Must be placed
+// after JWTAuth in the middleware chain.
+func RequireSelfOrRole(paramName string, roles ...models.Role) gin.HandlerFunc {
+	allowed := make(map[string]struct{}, len(roles))
+	for _, r := range roles {
+		allowed[string(r)] = struct{}{}
+	}
+
+	return func(c *gin.Context) {
+		if c.Param(paramName) == c.GetString("user_id") {
+			c.Next()
+			return
+		}
+		role, _ := c.Get("role")
+		if _, ok := allowed[role.(string)]; !ok {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "you do not have permission to access this resource"})
+			return
+		}
+		c.Next()
+	}
+}

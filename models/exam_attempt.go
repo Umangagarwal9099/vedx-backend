@@ -7,16 +7,41 @@ type ExamAttempt struct {
 	ID                string     `json:"id"`
 	ShortID           string     `json:"short_id"`
 	AssessmentShortID string     `json:"assessment_short_id"`
+	// AssessmentName/BatchShortID/BatchNumber are only populated by the
+	// cross-assessment workspace listing (FindAllAttemptsForMentor).
+	AssessmentName    string     `json:"assessment_name,omitempty"`
+	BatchShortID      string     `json:"batch_short_id,omitempty"`
+	BatchNumber       string     `json:"batch_number,omitempty"`
 	StudentID         string     `json:"student_id"`
 	StudentName       string     `json:"student_name,omitempty"`
 	AttemptNumber     int        `json:"attempt_number"`
 	StartedAt         time.Time  `json:"started_at"`
+	EndsAt            *time.Time `json:"ends_at,omitempty"`
 	SubmittedAt       *time.Time `json:"submitted_at,omitempty"`
 	AutoSubmitted     bool       `json:"auto_submitted"`
-	Status            string     `json:"status"` // in_progress | submitted | evaluated
+	Status            string     `json:"status"` // in_progress | submitted | evaluated | cancelled
 	TotalScore        *int       `json:"total_score,omitempty"`
 	MaxScore          int        `json:"max_score"`
 	Passed            *bool      `json:"passed,omitempty"`
+}
+
+// ReattemptGrant records an admin/mentor granting a student an extra attempt
+// beyond the assessment's normal max_attempts. Append-only — never overwrites
+// a past attempt's data.
+type ReattemptGrant struct {
+	ShortID          string    `json:"short_id"`
+	AssessmentShortID string   `json:"assessment_short_id"`
+	StudentID        string    `json:"student_id"`
+	GrantedBy        string    `json:"granted_by"`
+	Reason           string    `json:"reason,omitempty"`
+	NewAttemptNumber int       `json:"new_attempt_number"`
+	CreatedAt        time.Time `json:"created_at"`
+}
+
+// GrantReattemptInput is the request body for granting a student an extra attempt.
+type GrantReattemptInput struct {
+	StudentID string `json:"student_id" binding:"required" example:"use GET /assessments/{id}/attempts to find a student_id"`
+	Reason    string `json:"reason"                         example:"Missed the window due to a technical issue."`
 }
 
 // StudentAnswer is one answer within an attempt.

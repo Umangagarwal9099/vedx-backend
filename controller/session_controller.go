@@ -25,9 +25,10 @@ type SessionController struct {
 	emailSvc         *service.EmailService
 	publicBaseURL    string
 	timezone         string
+	auditLogRepo     *repository.AuditLogRepository
 }
 
-func NewSessionController(repo *repository.SessionRepository, batchRepo *repository.BatchRepository, notificationRepo *repository.NotificationRepository, userRepo *repository.UserRepository, zoomSvc *service.ZoomService, emailSvc *service.EmailService, publicBaseURL, timezone string) *SessionController {
+func NewSessionController(repo *repository.SessionRepository, batchRepo *repository.BatchRepository, notificationRepo *repository.NotificationRepository, userRepo *repository.UserRepository, zoomSvc *service.ZoomService, emailSvc *service.EmailService, publicBaseURL, timezone string, auditLogRepo *repository.AuditLogRepository) *SessionController {
 	return &SessionController{
 		sessionRepo:      repo,
 		batchRepo:        batchRepo,
@@ -37,6 +38,7 @@ func NewSessionController(repo *repository.SessionRepository, batchRepo *reposit
 		emailSvc:         emailSvc,
 		publicBaseURL:    publicBaseURL,
 		timezone:         timezone,
+		auditLogRepo:     auditLogRepo,
 	}
 }
 
@@ -124,6 +126,10 @@ func (ctrl *SessionController) Create(c *gin.Context) {
 
 	if input.Mode == "online" && input.MeetingPlatform == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "meeting_platform is required when mode is online"})
+		return
+	}
+
+	if !checkBatchAccess(c, ctrl.batchRepo, input.BatchShortID) {
 		return
 	}
 
@@ -224,6 +230,12 @@ func (ctrl *SessionController) Create(c *gin.Context) {
 		}
 	}
 
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "create", EntityType: "session",
+		EntityID: session.ID, EntityShortID: session.ShortID, EntityLabel: session.Name,
+		BatchShortID: session.BatchShortID,
+	})
+
 	c.JSON(http.StatusCreated, sanitizeForRole(session, c.GetString("role")))
 }
 
@@ -251,8 +263,11 @@ func (ctrl *SessionController) GetAll(c *gin.Context) {
 	var sessions []models.Session
 	var err error
 
+	role := c.GetString("role")
 	if filter.BatchShortID != "" || filter.MentorID != "" || filter.Date != "" || filter.IsActive != "" {
 		sessions, err = ctrl.sessionRepo.Filter(c.Request.Context(), filter)
+	} else if role == string(models.RoleMentor) || role == string(models.RoleEmployee) {
+		sessions, err = ctrl.sessionRepo.FindAllForMentor(c.Request.Context(), c.GetString("user_id"))
 	} else {
 		sessions, err = ctrl.sessionRepo.FindAll(c.Request.Context())
 	}
@@ -264,7 +279,6 @@ func (ctrl *SessionController) GetAll(c *gin.Context) {
 	if sessions == nil {
 		sessions = []models.Session{}
 	}
-	role := c.GetString("role")
 	userID := c.GetString("user_id")
 	for i := range sessions {
 		ctrl.withShareLink(&sessions[i])
@@ -287,6 +301,10 @@ func (ctrl *SessionController) GetAll(c *gin.Context) {
 //	@Router			/batches/{short_id}/sessions [get]
 func (ctrl *SessionController) GetByBatch(c *gin.Context) {
 	batchShortID := c.Param("short_id")
+
+	if !checkBatchAccess(c, ctrl.batchRepo, batchShortID) {
+		return
+	}
 
 	sessions, err := ctrl.sessionRepo.FindByBatchShortID(c.Request.Context(), batchShortID)
 	if err != nil {
@@ -322,6 +340,10 @@ func (ctrl *SessionController) GetBatchRecordings(c *gin.Context) {
 	role := c.GetString("role")
 	userID := c.GetString("user_id")
 
+	if !checkBatchAccess(c, ctrl.batchRepo, batchShortID) {
+		return
+	}
+
 	if role == string(models.RoleStudent) {
 		paid, err := ctrl.batchRepo.IsFeesPaidByBatchShortID(c.Request.Context(), batchShortID, userID)
 		if err != nil {
@@ -348,6 +370,14 @@ func (ctrl *SessionController) GetBatchRecordings(c *gin.Context) {
 	for _, s := range sessions {
 		if s.RecordingURL == "" {
 			continue
+		}
+		if role == string(models.RoleStudent) {
+			if !s.RecordingVisible {
+				continue
+			}
+			if s.RecordingAvailableFrom != nil && time.Now().Before(*s.RecordingAvailableFrom) {
+				continue
+			}
 		}
 		recordings = append(recordings, models.RecordingListItem{
 			SessionShortID: s.ShortID,
@@ -418,6 +448,18 @@ func (ctrl *SessionController) Update(c *gin.Context) {
 		return
 	}
 
+	existing, err := ctrl.sessionRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil || existing == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, existing.BatchShortID) {
+		return
+	}
+	if input.BatchShortID != nil && !checkBatchAccess(c, ctrl.batchRepo, *input.BatchShortID) {
+		return
+	}
+
 	if err := ctrl.sessionRepo.Update(c.Request.Context(), shortID, input); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
@@ -450,6 +492,12 @@ func (ctrl *SessionController) Update(c *gin.Context) {
 		}
 	}
 
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "update", EntityType: "session",
+		EntityID: session.ID, EntityShortID: session.ShortID, EntityLabel: session.Name,
+		BatchShortID: session.BatchShortID,
+	})
+
 	c.JSON(http.StatusOK, sanitizeForRole(ctrl.withShareLink(session), c.GetString("role")))
 }
 
@@ -468,10 +516,17 @@ func (ctrl *SessionController) Update(c *gin.Context) {
 func (ctrl *SessionController) Delete(c *gin.Context) {
 	shortID := c.Param("short_id")
 
+	session, err := ctrl.sessionRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil || session == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, session.BatchShortID) {
+		return
+	}
+
 	// Best-effort: cancel the Zoom meeting before soft-deleting the session.
-	if session, err := ctrl.sessionRepo.FindByShortID(c.Request.Context(), shortID); err != nil {
-		log.Printf("fetch session before delete: %v", err)
-	} else if session != nil && session.ZoomMeetingID != nil {
+	if session.ZoomMeetingID != nil {
 		if err := ctrl.zoomSvc.DeleteMeeting(*session.ZoomMeetingID); err != nil {
 			log.Printf("delete zoom meeting: %v", err)
 		}
@@ -485,6 +540,12 @@ func (ctrl *SessionController) Delete(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not delete session"})
 		return
 	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "delete", EntityType: "session",
+		EntityID: session.ID, EntityShortID: session.ShortID, EntityLabel: session.Name,
+		BatchShortID: session.BatchShortID,
+	})
 
 	c.Status(http.StatusNoContent)
 }

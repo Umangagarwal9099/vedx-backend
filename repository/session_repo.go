@@ -39,6 +39,7 @@ const sessionBaseSelect = `
 	       COALESCE(s.zoom_join_url, ''),
 	       COALESCE(s.zoom_start_url, ''),
 	       COALESCE(s.recording_url, ''),
+	       s.recording_visible, s.recording_available_from,
 	       COALESCE(ff.short_id, ''),
 	       COALESCE(ff.title, ''),
 	       s.session_type::TEXT,
@@ -67,6 +68,7 @@ func scanSession(row pgx.Row) (*models.Session, error) {
 		&s.ZoomJoinURL,
 		&s.ZoomStartURL,
 		&s.RecordingURL,
+		&s.RecordingVisible, &s.RecordingAvailableFrom,
 		&s.FeedbackFormShortID,
 		&s.FeedbackFormTitle,
 		&s.SessionType,
@@ -136,6 +138,7 @@ func (r *SessionRepository) Create(ctx context.Context, in models.CreateSessionI
 		       COALESCE(ins.zoom_join_url, ''),
 		       COALESCE(ins.zoom_start_url, ''),
 		       COALESCE(ins.recording_url, ''),
+		       ins.recording_visible, ins.recording_available_from,
 		       COALESCE(ff.short_id, ''),
 		       COALESCE(ff.title, ''),
 		       ins.session_type::TEXT,
@@ -178,6 +181,14 @@ func (r *SessionRepository) Create(ctx context.Context, in models.CreateSessionI
 func (r *SessionRepository) FindAll(ctx context.Context) ([]models.Session, error) {
 	q := sessionBaseSelect + ` WHERE s.deleted_at IS NULL ORDER BY s.session_date DESC, s.start_time DESC`
 	return r.scanSessions(ctx, q)
+}
+
+// FindAllForMentor returns sessions for batches the given mentor manages.
+func (r *SessionRepository) FindAllForMentor(ctx context.Context, mentorID string) ([]models.Session, error) {
+	q := sessionBaseSelect + `
+		WHERE s.deleted_at IS NULL AND (b.batch_manager_id = $1 OR b.additional_manager_id = $1)
+		ORDER BY s.session_date DESC, s.start_time DESC`
+	return r.scanSessions(ctx, q, mentorID)
 }
 
 // FindByShortID returns a single non-deleted session.
@@ -311,6 +322,12 @@ func (r *SessionRepository) Update(ctx context.Context, shortID string, in model
 	if in.IsActive != nil {
 		add("is_active = $%d", *in.IsActive)
 	}
+	if in.RecordingVisible != nil {
+		add("recording_visible = $%d", *in.RecordingVisible)
+	}
+	if in.RecordingAvailableFrom != nil {
+		add("recording_available_from = $%d", *in.RecordingAvailableFrom)
+	}
 	if in.GenerateShareableLink != nil {
 		if *in.GenerateShareableLink {
 			add("generate_shareable_link = TRUE, share_token = COALESCE(share_token, $%d)", util.GenerateShortID()+util.GenerateShortID())
@@ -390,6 +407,7 @@ func (r *SessionRepository) scanSessions(ctx context.Context, q string, args ...
 			&s.ZoomJoinURL,
 			&s.ZoomStartURL,
 			&s.RecordingURL,
+			&s.RecordingVisible, &s.RecordingAvailableFrom,
 			&s.FeedbackFormShortID,
 			&s.FeedbackFormTitle,
 			&s.SessionType,

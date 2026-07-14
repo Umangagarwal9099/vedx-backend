@@ -269,6 +269,11 @@ func (r *UserRepository) UpdateUser(ctx context.Context, id string, in models.Up
 		args = append(args, *in.DateOfBirth)
 		i++
 	}
+	if in.IsActive != nil {
+		setClauses = append(setClauses, fmt.Sprintf("is_active = $%d", i))
+		args = append(args, *in.IsActive)
+		i++
+	}
 
 	if len(setClauses) == 0 {
 		return fmt.Errorf("no fields to update")

@@ -33,7 +33,7 @@ const assessmentBaseSelect = `
 	       a.max_attempts, a.negative_marking, a.randomize_questions, a.randomize_options,
 	       a.auto_submit, a.show_correct_answers, a.requires_proctoring,
 	       (SELECT COUNT(*) FROM assessment_question_links aql WHERE aql.assessment_id = a.id),
-	       a.is_active, a.created_by::TEXT,
+	       a.is_active, a.cancelled_at, COALESCE(a.cancelled_by::TEXT, ''), a.created_by::TEXT,
 	       a.created_at, a.updated_at
 	FROM assessments a
 	LEFT JOIN batches b ON a.batch_id = b.id AND b.deleted_at IS NULL`
@@ -52,7 +52,7 @@ func scanAssessment(row pgx.Row) (*models.Assessment, error) {
 		&a.MaxAttempts, &a.NegativeMarking, &a.RandomizeQuestions, &a.RandomizeOptions,
 		&a.AutoSubmit, &a.ShowCorrectAnswers, &a.RequiresProctoring,
 		&a.QuestionCount,
-		&a.IsActive, &a.CreatedBy,
+		&a.IsActive, &a.CancelledAt, &a.CancelledBy, &a.CreatedBy,
 		&a.CreatedAt, &a.UpdatedAt,
 	)
 	if err != nil {
@@ -306,6 +306,42 @@ func (r *AssessmentRepository) Delete(ctx context.Context, shortID string) error
 		return pgx.ErrNoRows
 	}
 	return nil
+}
+
+// Cancel marks an assessment as cancelled — it blocks new attempts (see
+// ExamAttemptController.StartAttempt) but does not touch existing rows.
+// Cascading in-progress attempts to "cancelled" is a separate step, done by
+// ExamAttemptRepository.CancelAssessmentAttempts.
+func (r *AssessmentRepository) Cancel(ctx context.Context, shortID, cancelledBy string) error {
+	result, err := r.pool.Exec(ctx, `
+		UPDATE assessments SET cancelled_at = NOW(), cancelled_by = $2::UUID, updated_at = NOW()
+		WHERE short_id = $1 AND deleted_at IS NULL AND cancelled_at IS NULL`,
+		shortID, cancelledBy,
+	)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+// FindDueForStartReminder returns non-cancelled assessments starting within
+// the next 15 minutes that haven't had a start reminder sent yet.
+func (r *AssessmentRepository) FindDueForStartReminder(ctx context.Context) ([]models.Assessment, error) {
+	q := fmt.Sprintf(`%s
+		WHERE a.deleted_at IS NULL AND a.cancelled_at IS NULL
+		  AND a.start_reminder_sent = FALSE
+		  AND a.start_at IS NOT NULL
+		  AND a.start_at > NOW() AND a.start_at <= NOW() + INTERVAL '15 minutes'`, assessmentBaseSelect)
+	return r.scanAll(ctx, q)
+}
+
+// MarkStartReminderSent flags an assessment so its start reminder isn't sent twice.
+func (r *AssessmentRepository) MarkStartReminderSent(ctx context.Context, id string) error {
+	_, err := r.pool.Exec(ctx, `UPDATE assessments SET start_reminder_sent = TRUE WHERE id = $1`, id)
+	return err
 }
 
 // FindIDByShortID resolves an assessment's internal UUID and a couple of

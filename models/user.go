@@ -34,6 +34,7 @@ type UpdateUserInput struct {
 	LastName    *string `json:"last_name"     example:"Doe"`
 	Phone       *string `json:"phone"         example:"+919876543210"`
 	DateOfBirth *string `json:"date_of_birth" example:"1998-05-20"`
+	IsActive    *bool   `json:"is_active"     example:"false"`
 }
 
 // ── Role-specific profile structs (populated via separate APIs) ──────────────

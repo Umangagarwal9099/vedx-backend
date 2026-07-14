@@ -138,6 +138,17 @@ func (ctrl *UserController) Update(c *gin.Context) {
 		return
 	}
 
+	role := c.GetString("role")
+	isStaff := role == string(models.RoleSuperAdmin) || role == string(models.RoleTeamLead)
+	if c.GetString("user_id") != id && !isStaff {
+		c.JSON(http.StatusForbidden, gin.H{"error": "you can only update your own profile"})
+		return
+	}
+	if input.IsActive != nil && !isStaff {
+		c.JSON(http.StatusForbidden, gin.H{"error": "only staff can change account status"})
+		return
+	}
+
 	if err := ctrl.userRepo.UpdateUser(c.Request.Context(), id, input); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
