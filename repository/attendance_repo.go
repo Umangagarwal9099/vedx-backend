@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -47,6 +48,10 @@ func scanAttendance(row pgx.Row) (models.SessionAttendance, error) {
 
 // MarkOne upserts a single student's attendance for one session.
 func (r *AttendanceRepository) MarkOne(ctx context.Context, sessionID, batchID, studentID, status, notes, markedBy string) (*models.SessionAttendance, error) {
+	// See the comment on assessment_repo.go's Create for why this reads FROM
+	// ins rather than FROM session_attendance.
+	insSelect := strings.Replace(attendanceBaseSelect, "FROM session_attendance sa", "FROM ins sa", 1)
+
 	for attempt := 0; attempt < 3; attempt++ {
 		shortID := util.GenerateShortID()
 
@@ -61,7 +66,7 @@ func (r *AttendanceRepository) MarkOne(ctx context.Context, sessionID, batchID, 
 					marked_by = EXCLUDED.marked_by, marked_at = NOW(), updated_at = NOW()
 				RETURNING *
 			)
-			%s WHERE sa.id = (SELECT id FROM ins)`, attendanceBaseSelect),
+			%s`, insSelect),
 			shortID, sessionID, batchID, studentID, status, notes, markedBy,
 		))
 		if err == nil {

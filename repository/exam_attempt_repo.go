@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -51,6 +52,10 @@ func (r *ExamAttemptRepository) FindInProgressAttempt(ctx context.Context, asses
 }
 
 func (r *ExamAttemptRepository) CreateAttempt(ctx context.Context, assessmentShortID, studentID string, attemptNumber, maxScore int, questionOrder []string, startedAt time.Time, endsAt *time.Time) (*models.ExamAttempt, error) {
+	// See the comment on assessment_repo.go's Create for why this reads FROM
+	// ins rather than FROM exam_attempts.
+	insSelect := strings.Replace(attemptBaseSelect, "FROM exam_attempts ea", "FROM ins ea", 1)
+
 	for attempt := 0; attempt < 3; attempt++ {
 		shortID := util.GenerateShortID()
 
@@ -64,7 +69,7 @@ func (r *ExamAttemptRepository) CreateAttempt(ctx context.Context, assessmentSho
 				FROM assessments a WHERE a.short_id = $8 AND a.deleted_at IS NULL
 				RETURNING *
 			)
-			%s WHERE ea.id = (SELECT id FROM ins)`, attemptBaseSelect),
+			%s`, insSelect),
 			shortID, studentID, attemptNumber, startedAt, endsAt, maxScore, questionOrder, assessmentShortID,
 		))
 		if err == nil {

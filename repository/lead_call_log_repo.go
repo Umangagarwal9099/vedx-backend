@@ -43,6 +43,10 @@ func scanLeadCallLog(row pgx.Row) (models.LeadCallLog, error) {
 // caller (controller) is responsible for also updating the lead's own
 // status/last_contacted_at/next_follow_up_at fields.
 func (r *LeadCallLogRepository) Create(ctx context.Context, leadShortID, employeeID string, in models.CreateCallLogInput) (*models.LeadCallLog, error) {
+	// See the comment on assessment_repo.go's Create for why this reads FROM
+	// ins rather than FROM lead_call_logs.
+	insSelect := strings.Replace(leadCallLogBaseSelect, "FROM lead_call_logs cl", "FROM ins cl", 1)
+
 	for attempt := 0; attempt < 3; attempt++ {
 		shortID := util.GenerateShortID()
 
@@ -53,7 +57,7 @@ func (r *LeadCallLogRepository) Create(ctx context.Context, leadShortID, employe
 				FROM leads l WHERE l.short_id = $7 AND l.deleted_at IS NULL
 				RETURNING *
 			)
-			%s WHERE cl.id = (SELECT id FROM ins)`, leadCallLogBaseSelect),
+			%s`, insSelect),
 			shortID, employeeID, in.Outcome, in.Status, in.Notes, in.NextFollowUpAt, leadShortID,
 		))
 		if err == nil {

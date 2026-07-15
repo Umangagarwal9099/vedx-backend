@@ -83,6 +83,10 @@ func (r *LeadRepository) Create(ctx context.Context, in models.CreateLeadInput, 
 		priority = "medium"
 	}
 
+	// See the comment on assessment_repo.go's Create for why this reads FROM
+	// ins rather than FROM leads.
+	insSelect := strings.Replace(leadBaseSelect, "FROM leads l", "FROM ins l", 1)
+
 	for attempt := 0; attempt < 3; attempt++ {
 		shortID := util.GenerateShortID()
 
@@ -98,7 +102,7 @@ func (r *LeadRepository) Create(ctx context.Context, in models.CreateLeadInput, 
 				)
 				RETURNING *
 			)
-			%s WHERE l.id = (SELECT id FROM ins)`, leadBaseSelect),
+			%s`, insSelect),
 			shortID, in.Name, in.Phone, in.Email, in.City, in.CourseInterest,
 			source, priority, in.Notes, createdBy,
 		))

@@ -66,6 +66,10 @@ func (r *AssignmentRepository) Create(ctx context.Context, in models.CreateAssig
 		status = "draft"
 	}
 
+	// See the comment on assessment_repo.go's Create for why this reads FROM
+	// ins rather than FROM assignments.
+	insSelect := strings.Replace(assignmentBaseSelect, "FROM assignments a", "FROM ins a", 1)
+
 	for attempt := 0; attempt < 3; attempt++ {
 		shortID := util.GenerateShortID()
 
@@ -81,13 +85,13 @@ func (r *AssignmentRepository) Create(ctx context.Context, in models.CreateAssig
 					(SELECT id FROM batches WHERE short_id = $4 AND deleted_at IS NULL),
 					(SELECT id FROM modules WHERE short_id = NULLIF($5,'') AND deleted_at IS NULL),
 					(SELECT id FROM sessions WHERE short_id = NULLIF($6,'') AND deleted_at IS NULL),
-					$7, $8, $9, NULLIF($10, '{}'),
+					$7, $8, $9, NULLIF($10, '{}'::text[]),
 					NULLIF($11, 0), $12, NULLIF($13, 0),
 					$14::assignment_status, $15
 				)
 				RETURNING *
 			)
-			%s WHERE a.id = (SELECT id FROM ins)`, assignmentBaseSelect),
+			%s`, insSelect),
 			shortID, in.Title, in.Description, in.BatchShortID, in.ModuleShortID, in.SessionShortID,
 			in.MaxMarks, in.Deadline, in.AllowedSubmissionTypes, in.AllowedFileFormats,
 			in.MaxFileSizeMB, in.LateSubmissionAllowed, in.LatePenaltyPercent,
@@ -314,6 +318,10 @@ func (r *AssignmentRepository) CreateOrResubmit(ctx context.Context, assignmentS
 		return nil, fmt.Errorf("already submitted")
 	}
 
+	// See the comment on assessment_repo.go's Create for why this reads FROM
+	// ins rather than FROM assignment_submissions.
+	insSelect := strings.Replace(submissionBaseSelect, "FROM assignment_submissions asub", "FROM ins asub", 1)
+
 	for attempt := 0; attempt < 3; attempt++ {
 		shortID := util.GenerateShortID()
 
@@ -342,7 +350,7 @@ func (r *AssignmentRepository) CreateOrResubmit(ctx context.Context, assignmentS
 					updated_at = NOW()
 				RETURNING *
 			)
-			%s WHERE asub.id = (SELECT id FROM ins)`, submissionBaseSelect),
+			%s`, insSelect),
 			shortID, studentID, in.SubmissionType, in.Content, in.FileURL, assignmentShortID,
 		))
 		if err == nil {

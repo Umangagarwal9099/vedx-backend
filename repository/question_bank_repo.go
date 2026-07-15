@@ -73,6 +73,10 @@ func (r *QuestionBankRepository) Create(ctx context.Context, in models.CreateQue
 		correctOptionIDs = []string{}
 	}
 
+	// See the comment on assessment_repo.go's Create for why this reads FROM
+	// ins rather than FROM assessment_questions.
+	insSelect := strings.Replace(questionBaseSelect, "FROM assessment_questions q", "FROM ins q", 1)
+
 	for attempt := 0; attempt < 3; attempt++ {
 		shortID := util.GenerateShortID()
 
@@ -90,7 +94,7 @@ func (r *QuestionBankRepository) Create(ctx context.Context, in models.CreateQue
 				)
 				RETURNING *
 			)
-			%s WHERE q.id = (SELECT id FROM ins)`, questionBaseSelect),
+			%s`, insSelect),
 			shortID, in.QuestionType, in.QuestionText, optionsJSON, correctOptionIDs,
 			in.CorrectText, in.Explanation, in.Marks, in.NegativeMarks, in.Subject, in.Topic, in.Subtopic, in.Difficulty,
 			in.CodingQuestionShortID, visibilityOrDefault(in.Visibility), createdBy,

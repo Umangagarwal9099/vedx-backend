@@ -54,6 +54,10 @@ func scanResource(row pgx.Row) (models.Resource, error) {
 }
 
 func (r *ResourceRepository) Create(ctx context.Context, in models.CreateResourceInput, createdBy string) (*models.Resource, error) {
+	// See the comment on assessment_repo.go's Create for why this reads FROM
+	// ins rather than FROM resources.
+	insSelect := strings.Replace(resourceBaseSelect, "FROM resources r", "FROM ins r", 1)
+
 	for attempt := 0; attempt < 3; attempt++ {
 		shortID := util.GenerateShortID()
 
@@ -71,7 +75,7 @@ func (r *ResourceRepository) Create(ctx context.Context, in models.CreateResourc
 				)
 				RETURNING *
 			)
-			%s WHERE r.id = (SELECT id FROM ins)`, resourceBaseSelect),
+			%s`, insSelect),
 			shortID, in.Title, in.Description, in.URL, in.ResourceType,
 			in.BatchShortID, in.ModuleShortID, in.SessionShortID,
 			in.IsDownloadable, in.ExpiresAt, createdBy,

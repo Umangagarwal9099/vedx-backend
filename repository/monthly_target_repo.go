@@ -50,6 +50,10 @@ func scanMonthlyTarget(row pgx.Row) (models.MonthlyTarget, error) {
 
 // Set upserts an employee's target for a given year/month.
 func (r *MonthlyTargetRepository) Set(ctx context.Context, employeeID string, in models.SetMonthlyTargetInput, setBy string) (*models.MonthlyTarget, error) {
+	// See the comment on assessment_repo.go's Create for why this reads FROM
+	// ins rather than FROM employee_monthly_targets.
+	insSelect := strings.Replace(monthlyTargetBaseSelect, "FROM employee_monthly_targets t", "FROM ins t", 1)
+
 	for attempt := 0; attempt < 3; attempt++ {
 		shortID := util.GenerateShortID()
 
@@ -63,7 +67,7 @@ func (r *MonthlyTargetRepository) Set(ctx context.Context, employeeID string, in
 					updated_at = NOW()
 				RETURNING *
 			)
-			%s WHERE t.id = (SELECT id FROM ins)`, monthlyTargetBaseSelect),
+			%s`, insSelect),
 			shortID, employeeID, in.Year, in.Month, in.TargetConversions, setBy,
 		))
 		if err == nil {

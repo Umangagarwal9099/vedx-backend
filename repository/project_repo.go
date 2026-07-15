@@ -64,6 +64,10 @@ func (r *ProjectRepository) Create(ctx context.Context, in models.CreateProjectI
 		status = "draft"
 	}
 
+	// See the comment on assessment_repo.go's Create for why this reads FROM
+	// ins rather than FROM projects.
+	insSelect := strings.Replace(projectBaseSelect, "FROM projects p", "FROM ins p", 1)
+
 	for attempt := 0; attempt < 3; attempt++ {
 		shortID := util.GenerateShortID()
 
@@ -76,7 +80,7 @@ func (r *ProjectRepository) Create(ctx context.Context, in models.CreateProjectI
 					allowed_submission_types, status, created_by
 				) VALUES (
 					$1, $2, NULLIF($3,''), NULLIF($4,''), NULLIF($5,''),
-					NULLIF($6,''), NULLIF($7,'{}'), $8::project_category, $9,
+					NULLIF($6,''), NULLIF($7,'{}'::text[]), $8::project_category, $9,
 					(SELECT id FROM batches WHERE short_id = $10 AND deleted_at IS NULL),
 					(SELECT id FROM modules WHERE short_id = NULLIF($11,'') AND deleted_at IS NULL),
 					$12, NULLIF($13,'')::DATE, $14,
@@ -84,7 +88,7 @@ func (r *ProjectRepository) Create(ctx context.Context, in models.CreateProjectI
 				)
 				RETURNING *
 			)
-			%s WHERE p.id = (SELECT id FROM ins)`, projectBaseSelect),
+			%s`, insSelect),
 			shortID, in.Title, in.ProblemStatement, in.Requirements, in.ExpectedDeliverables,
 			in.EvaluationCriteria, in.ReferenceFiles, in.Category, in.IsTeamProject,
 			in.BatchShortID, in.ModuleShortID, in.MaxMarks, in.StartDate, in.FinalDeadline,
@@ -604,6 +608,10 @@ func (r *ProjectRepository) CreateOrResubmitSubmission(ctx context.Context, mile
 		conflictCol = "team_id"
 	}
 
+	// See the comment on assessment_repo.go's Create for why this reads FROM
+	// ins rather than FROM project_submissions.
+	insSelect := strings.Replace(projectSubmissionSelect, "FROM project_submissions ps", "FROM ins ps", 1)
+
 	for attempt := 0; attempt < 3; attempt++ {
 		shortID := util.GenerateShortID()
 
@@ -636,7 +644,7 @@ func (r *ProjectRepository) CreateOrResubmitSubmission(ctx context.Context, mile
 					updated_at = NOW()
 				RETURNING *
 			)
-			%s WHERE ps.id = (SELECT id FROM ins)`, identifierSelect, conflictCol, projectSubmissionSelect),
+			%s`, identifierSelect, conflictCol, insSelect),
 			shortID, in.SubmissionType, in.Content, in.FileURL, milestoneShortID, identifierValue,
 		))
 		if err == nil {

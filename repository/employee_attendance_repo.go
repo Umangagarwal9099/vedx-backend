@@ -41,6 +41,10 @@ func scanEmployeeAttendance(row pgx.Row) (models.EmployeeAttendance, error) {
 // CheckIn creates (or reuses) today's row for the employee and stamps
 // check_in_at, unless they've already checked in today.
 func (r *EmployeeAttendanceRepository) CheckIn(ctx context.Context, employeeID string) (*models.EmployeeAttendance, error) {
+	// See the comment on assessment_repo.go's Create for why this reads FROM
+	// ins rather than FROM employee_attendance.
+	insSelect := strings.Replace(employeeAttendanceBaseSelect, "FROM employee_attendance a", "FROM ins a", 1)
+
 	for attempt := 0; attempt < 3; attempt++ {
 		shortID := util.GenerateShortID()
 
@@ -53,7 +57,7 @@ func (r *EmployeeAttendanceRepository) CheckIn(ctx context.Context, employeeID s
 					updated_at = NOW()
 				RETURNING *
 			)
-			%s WHERE a.id = (SELECT id FROM ins)`, employeeAttendanceBaseSelect),
+			%s`, insSelect),
 			shortID, employeeID,
 		))
 		if err == nil {

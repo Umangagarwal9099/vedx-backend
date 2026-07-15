@@ -65,6 +65,10 @@ func (r *LeaveRequestRepository) Apply(ctx context.Context, employeeID string, i
 		leaveType = "full_day"
 	}
 
+	// See the comment on assessment_repo.go's Create for why this reads FROM
+	// ins rather than FROM employee_leave_requests.
+	insSelect := strings.Replace(leaveRequestBaseSelect, "FROM employee_leave_requests l", "FROM ins l", 1)
+
 	for attempt := 0; attempt < 3; attempt++ {
 		shortID := util.GenerateShortID()
 
@@ -74,7 +78,7 @@ func (r *LeaveRequestRepository) Apply(ctx context.Context, employeeID string, i
 				VALUES ($1, $2, $3::DATE, $4::DATE, $5::leave_type, $6)
 				RETURNING *
 			)
-			%s WHERE l.id = (SELECT id FROM ins)`, leaveRequestBaseSelect),
+			%s`, insSelect),
 			shortID, employeeID, in.FromDate, in.ToDate, leaveType, in.Reason,
 		))
 		if err == nil {

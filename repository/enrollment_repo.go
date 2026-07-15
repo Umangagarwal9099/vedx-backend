@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -83,6 +84,10 @@ func (r *EnrollmentRepository) Create(
 	accessStartDate *time.Time,
 	accessEndDate *time.Time,
 ) (*models.StudentEnrollment, error) {
+	// See the comment on assessment_repo.go's Create for why this reads FROM
+	// ins rather than FROM student_enrollments.
+	insSelect := strings.Replace(enrollmentBaseSelect, "FROM student_enrollments se", "FROM ins se", 1)
+
 	for attempt := 0; attempt < 3; attempt++ {
 		shortID := util.GenerateShortID()
 
@@ -99,7 +104,7 @@ func (r *EnrollmentRepository) Create(
 					updated_at = NOW()
 				RETURNING *
 			)
-			%s WHERE se.id = (SELECT id FROM ins)`, enrollmentBaseSelect),
+			%s`, insSelect),
 			shortID, studentID, courseID, batchID, accessStartDate, accessEndDate, isLateEnrollment, createdBy,
 		))
 		if err == nil {
@@ -226,6 +231,10 @@ func (r *EnrollmentRepository) Transfer(ctx context.Context, studentID, fromBatc
 		return nil, fmt.Errorf("mark old enrollment transferred: %w", err)
 	}
 
+	// See the comment on assessment_repo.go's Create for why this reads FROM
+	// ins rather than FROM student_enrollments.
+	transferInsSelect := strings.Replace(enrollmentBaseSelect, "FROM student_enrollments se", "FROM ins se", 1)
+
 	for attempt := 0; attempt < 3; attempt++ {
 		shortID := util.GenerateShortID()
 		e, err := scanEnrollment(tx.QueryRow(ctx, fmt.Sprintf(`
@@ -237,7 +246,7 @@ func (r *EnrollmentRepository) Transfer(ctx context.Context, studentID, fromBatc
 				ON CONFLICT (student_id, batch_id) DO UPDATE SET status = 'active', updated_at = NOW()
 				RETURNING *
 			)
-			%s WHERE se.id = (SELECT id FROM ins)`, enrollmentBaseSelect),
+			%s`, transferInsSelect),
 			shortID, studentID, courseID, toBatchID, actorID,
 		))
 		if err == nil {

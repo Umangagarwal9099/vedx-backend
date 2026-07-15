@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -52,6 +53,10 @@ func scanCertificate(row pgx.Row) (models.Certificate, error) {
 // issuance time. Re-issuing (same student+batch) refreshes the snapshot,
 // issued_at, and clears any prior revocation.
 func (r *CertificateRepository) Issue(ctx context.Context, studentID, batchID, courseID, issuedBy string) (*models.Certificate, error) {
+	// See the comment on assessment_repo.go's Create for why this reads FROM
+	// ins rather than FROM certificates.
+	insSelect := strings.Replace(certificateBaseSelect, "FROM certificates cert", "FROM ins cert", 1)
+
 	for attempt := 0; attempt < 3; attempt++ {
 		shortID := util.GenerateShortID()
 		certNumber := "CERT-" + util.GenerateShortID()
@@ -71,7 +76,7 @@ func (r *CertificateRepository) Issue(ctx context.Context, studentID, batchID, c
 					issued_by = EXCLUDED.issued_by, issued_at = NOW(), revoked_at = NULL, updated_at = NOW()
 				RETURNING *
 			)
-			%s WHERE cert.id = (SELECT id FROM ins)`, certificateBaseSelect),
+			%s`, insSelect),
 			shortID, certNumber, studentID, batchID, courseID, issuedBy,
 		))
 		if err == nil {
