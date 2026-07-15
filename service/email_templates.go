@@ -102,6 +102,41 @@ func ForgotPasswordOTPEmail(otp string) (subject, html string) {
 	return
 }
 
+// StaffWelcomeEmail is sent when an admin creates a new staff or student
+// account, carrying the one-time-shown temporary password.
+func StaffWelcomeEmail(firstName, roleLabel, email, password, loginURL string) (subject, html string) {
+	subject = "Your Vedex account has been created"
+	html = fmt.Sprintf(`
+		<p>Hi %s,</p>
+		<p>An account has been created for you on Vedex as a <strong>%s</strong>.</p>
+		<p><strong>Email:</strong> %s<br><strong>Temporary password:</strong> %s</p>
+		<p>Please log in and change your password as soon as possible.</p>
+		<p><a href="%s">Log in to Vedex</a></p>
+		<p>— Vedex</p>`,
+		firstName, roleLabel, email, password, loginURL)
+	return
+}
+
+// LeaveDecisionEmail is sent when an admin approves or rejects a leave request.
+func LeaveDecisionEmail(firstName, status, fromDate, toDate, adminNote string) (subject, html string) {
+	verb := "approved"
+	if status == "rejected" {
+		verb = "rejected"
+	}
+	subject = fmt.Sprintf("Your leave request has been %s", verb)
+	noteHTML := ""
+	if adminNote != "" {
+		noteHTML = fmt.Sprintf(`<p><strong>Note:</strong> %s</p>`, adminNote)
+	}
+	html = fmt.Sprintf(`
+		<p>Hi %s,</p>
+		<p>Your leave request for <strong>%s to %s</strong> has been <strong>%s</strong>.</p>
+		%s
+		<p>— Vedex</p>`,
+		firstName, fromDate, toDate, verb, noteHTML)
+	return
+}
+
 func joinLinkHTML(link string) string {
 	if link == "" {
 		return ""

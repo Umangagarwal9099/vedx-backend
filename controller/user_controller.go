@@ -8,14 +8,195 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/umangagarwal/vedx-backend/models"
 	"github.com/umangagarwal/vedx-backend/repository"
+	"github.com/umangagarwal/vedx-backend/service"
+	"github.com/umangagarwal/vedx-backend/util"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type UserController struct {
-	userRepo *repository.UserRepository
+	userRepo  *repository.UserRepository
+	emailSvc  *service.EmailService
+	publicURL string
 }
 
-func NewUserController(userRepo *repository.UserRepository) *UserController {
-	return &UserController{userRepo: userRepo}
+func NewUserController(userRepo *repository.UserRepository, emailSvc *service.EmailService, publicURL string) *UserController {
+	return &UserController{userRepo: userRepo, emailSvc: emailSvc, publicURL: publicURL}
+}
+
+// roleLabels maps a role to the human-readable label used in the welcome email.
+var roleLabels = map[models.Role]string{
+	models.RoleMentor:   "Mentor",
+	models.RoleEmployee: "Employee",
+	models.RoleTeamLead: "Team Lead",
+	models.RoleStudent:  "Student",
+}
+
+// CreateStaffUserRequest carries the fields for admin-provisioned staff accounts.
+type CreateStaffUserRequest struct {
+	FirstName string `json:"first_name" binding:"required" example:"Jane"`
+	LastName  string `json:"last_name"  binding:"required" example:"Doe"`
+	Email     string `json:"email"      binding:"required,email" example:"jane@example.com"`
+	Phone     string `json:"phone"      example:"+919876543210"`
+	Role      string `json:"role"       binding:"required,oneof=mentor employee team_lead" enums:"mentor,employee,team_lead" example:"employee"`
+}
+
+// CreateStaffUserResponse returns the created user plus the one-time-shown
+// temporary password and whether the welcome email was sent successfully.
+type CreateStaffUserResponse struct {
+	User              models.User `json:"user"`
+	TemporaryPassword string      `json:"temporary_password"`
+	EmailSent         bool        `json:"email_sent"`
+}
+
+// CreateStaffUser godoc
+//
+//	@Summary		Create a staff account
+//	@Description	Admin-provisioned account creation for mentor/employee/team_lead roles. Generates a temporary password, emails it to the new user, and returns it once in the response.
+//	@Tags			users
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body		CreateStaffUserRequest	true	"New staff account details"
+//	@Success		201		{object}	CreateStaffUserResponse
+//	@Failure		400		{object}	map[string]string	"Validation error"
+//	@Failure		409		{object}	map[string]string	"Email already in use"
+//	@Failure		500		{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/users/staff [post]
+func (ctrl *UserController) CreateStaffUser(c *gin.Context) {
+	var req CreateStaffUserRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	exists, err := ctrl.userRepo.EmailExists(c.Request.Context(), req.Email)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not verify email"})
+		return
+	}
+	if exists {
+		c.JSON(http.StatusConflict, gin.H{"error": "email already in use"})
+		return
+	}
+
+	tempPassword := util.GenerateTemporaryPassword()
+	hash, err := bcrypt.GenerateFromPassword([]byte(tempPassword), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create account"})
+		return
+	}
+
+	role := models.Role(req.Role)
+	userID, err := ctrl.userRepo.CreateStaffUser(c.Request.Context(), models.User{
+		Email:        req.Email,
+		PasswordHash: string(hash),
+		FirstName:    req.FirstName,
+		LastName:     req.LastName,
+		Phone:        req.Phone,
+	}, role)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create account: " + err.Error()})
+		return
+	}
+
+	user, err := ctrl.userRepo.FindByID(c.Request.Context(), userID)
+	if err != nil || user == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch created user"})
+		return
+	}
+
+	emailSent := false
+	if ctrl.emailSvc != nil && ctrl.emailSvc.Configured() {
+		subject, html := service.StaffWelcomeEmail(req.FirstName, roleLabels[role], req.Email, tempPassword, ctrl.publicURL)
+		ctrl.emailSvc.SendAsync(req.Email, subject, html)
+		emailSent = true
+	}
+
+	c.JSON(http.StatusCreated, CreateStaffUserResponse{
+		User:              *user,
+		TemporaryPassword: tempPassword,
+		EmailSent:         emailSent,
+	})
+}
+
+// CreateStudentRequest carries the fields for admin-provisioned student accounts.
+type CreateStudentRequest struct {
+	FirstName   string `json:"first_name"    binding:"required" example:"Jane"`
+	LastName    string `json:"last_name"     binding:"required" example:"Doe"`
+	Email       string `json:"email"         binding:"required,email" example:"jane@example.com"`
+	Phone       string `json:"phone"         example:"+919876543210"`
+	DateOfBirth string `json:"date_of_birth" example:"1998-05-20"`
+}
+
+// CreateStudent godoc
+//
+//	@Summary		Create a student account
+//	@Description	Admin/staff-provisioned student account creation. Generates a temporary password, emails it to the new student, and returns it once in the response.
+//	@Tags			users
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body		CreateStudentRequest	true	"New student account details"
+//	@Success		201		{object}	CreateStaffUserResponse
+//	@Failure		400		{object}	map[string]string	"Validation error"
+//	@Failure		409		{object}	map[string]string	"Email already in use"
+//	@Failure		500		{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/users/student [post]
+func (ctrl *UserController) CreateStudent(c *gin.Context) {
+	var req CreateStudentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	exists, err := ctrl.userRepo.EmailExists(c.Request.Context(), req.Email)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not verify email"})
+		return
+	}
+	if exists {
+		c.JSON(http.StatusConflict, gin.H{"error": "email already in use"})
+		return
+	}
+
+	tempPassword := util.GenerateTemporaryPassword()
+	hash, err := bcrypt.GenerateFromPassword([]byte(tempPassword), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create account"})
+		return
+	}
+
+	userID, err := ctrl.userRepo.Register(c.Request.Context(), models.User{
+		Email:        req.Email,
+		PasswordHash: string(hash),
+		FirstName:    req.FirstName,
+		LastName:     req.LastName,
+		Phone:        req.Phone,
+		DateOfBirth:  req.DateOfBirth,
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create account: " + err.Error()})
+		return
+	}
+
+	user, err := ctrl.userRepo.FindByID(c.Request.Context(), userID)
+	if err != nil || user == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch created user"})
+		return
+	}
+
+	emailSent := false
+	if ctrl.emailSvc != nil && ctrl.emailSvc.Configured() {
+		subject, html := service.StaffWelcomeEmail(req.FirstName, roleLabels[models.RoleStudent], req.Email, tempPassword, ctrl.publicURL)
+		ctrl.emailSvc.SendAsync(req.Email, subject, html)
+		emailSent = true
+	}
+
+	c.JSON(http.StatusCreated, CreateStaffUserResponse{
+		User:              *user,
+		TemporaryPassword: tempPassword,
+		EmailSent:         emailSent,
+	})
 }
 
 // GetAll godoc

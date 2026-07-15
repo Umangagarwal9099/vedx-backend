@@ -40,3 +40,28 @@ func checkBatchAccess(c *gin.Context, batchRepo *repository.BatchRepository, bat
 	}
 	return true
 }
+
+// checkLeadAccess enforces that an employee caller only reads or mutates
+// leads assigned to them — super_admin/team_lead bypass (team_lead also
+// carries a personal lead quota, but is never restricted from any lead).
+// Mirrors checkBatchAccess. Writes the error response itself on failure; the
+// caller should return immediately when this returns false.
+func checkLeadAccess(c *gin.Context, leadRepo *repository.LeadRepository, leadShortID string) bool {
+	role := c.GetString("role")
+	if role != string(models.RoleEmployee) {
+		return true
+	}
+
+	lead, err := leadRepo.FindByShortID(c.Request.Context(), leadShortID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not verify lead access"})
+		return false
+	}
+
+	userID := c.GetString("user_id")
+	if lead == nil || lead.AssignedTo != userID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "this lead isn't assigned to you"})
+		return false
+	}
+	return true
+}

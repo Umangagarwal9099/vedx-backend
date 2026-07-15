@@ -52,6 +52,13 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	profileRepo := repository.NewProfileRepository(pool)
 	passwordResetRepo := repository.NewPasswordResetRepository(pool)
 	analyticsRepo := repository.NewAnalyticsRepository(pool)
+	leadRepo := repository.NewLeadRepository(pool)
+	leadAssignmentHistoryRepo := repository.NewLeadAssignmentHistoryRepository(pool)
+	employeeAttendanceRepo := repository.NewEmployeeAttendanceRepository(pool)
+	leaveRequestRepo := repository.NewLeaveRequestRepository(pool)
+	leaveBalanceRepo := repository.NewLeaveBalanceRepository(pool)
+	monthlyTargetRepo := repository.NewMonthlyTargetRepository(pool)
+	leadCallLogRepo := repository.NewLeadCallLogRepository(pool)
 
 	// Services
 	storageSvc := service.NewStorageService(cfg.Storage)
@@ -60,7 +67,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 
 	// Controllers
 	authCtrl := controller.NewAuthController(userRepo, passwordResetRepo, emailSvc, cfg.JWT.Secret)
-	userCtrl := controller.NewUserController(userRepo)
+	userCtrl := controller.NewUserController(userRepo, emailSvc, cfg.App.PublicURL)
 	courseCtrl := controller.NewCourseController(courseRepo, notificationRepo)
 	batchCtrl := controller.NewBatchController(batchRepo, enrollmentRepo, notificationRepo, userRepo, emailSvc, auditLogRepo)
 	eventCtrl := controller.NewEventController(eventRepo, notificationRepo)
@@ -91,6 +98,10 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	profileCtrl := controller.NewProfileController(profileRepo, userRepo)
 	dashboardCtrl := controller.NewDashboardController(batchRepo, enrollmentRepo, sessionRepo, attendanceRepo, certificateRepo)
 	analyticsCtrl := controller.NewAnalyticsController(analyticsRepo, batchRepo)
+	leadCtrl := controller.NewLeadController(leadRepo, leadCallLogRepo, leadAssignmentHistoryRepo, notificationRepo, auditLogRepo)
+	employeeAttendanceCtrl := controller.NewEmployeeAttendanceController(employeeAttendanceRepo)
+	leaveCtrl := controller.NewLeaveController(leaveRequestRepo, leaveBalanceRepo, userRepo, emailSvc)
+	monthlyTargetCtrl := controller.NewMonthlyTargetController(monthlyTargetRepo)
 
 	v1 := r.Group("/api/v1")
 	{
@@ -121,6 +132,8 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			// Role sets used across multiple route groups
 			adminOrAbove := middleware.RequireRole(models.RoleSuperAdmin, models.RoleTeamLead)
 			staffOrAbove := middleware.RequireRole(models.RoleSuperAdmin, models.RoleTeamLead, models.RoleMentor)
+			// Lead-CRM routes: team_lead carries a personal lead quota alongside employees.
+			leadOrAbove := middleware.RequireRole(models.RoleSuperAdmin, models.RoleTeamLead, models.RoleEmployee)
 
 			// Change password — logged-in user, requires the current password.
 			protected.POST("/auth/change-password", authCtrl.ChangePassword)
@@ -131,6 +144,9 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			protected.GET("/users", staffOrAbove, userCtrl.GetAll)
 			protected.GET("/users/deleted", staffOrAbove, userCtrl.GetDeleted)
 			protected.GET("/users/search", staffOrAbove, userCtrl.Search)
+			// Account creation is admin-provisioned only — restricted to super_admin/team_lead.
+			protected.POST("/users/staff", adminOrAbove, userCtrl.CreateStaffUser)
+			protected.POST("/users/student", adminOrAbove, userCtrl.CreateStudent)
 			protected.PATCH("/users/:id", userCtrl.Update)
 			protected.PATCH("/users/:id/role", middleware.RequireRole(models.RoleSuperAdmin), userCtrl.ChangeRole)
 			// Deleting an account is destructive and irreversible from the API's
@@ -147,6 +163,56 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			{
 				analytics.GET("/batches", staffOrAbove, analyticsCtrl.GetBatchAnalytics)
 				analytics.GET("/batches/:short_id/attendance-trend", staffOrAbove, analyticsCtrl.GetBatchAttendanceTrend)
+			}
+
+			// Lead CRM — admin imports/assigns/monitors; employees (and team_lead's
+			// own quota) work only their assigned leads. Static paths registered
+			// before /:short_id so Gin matches them first.
+			leads := protected.Group("/leads")
+			{
+				leads.POST("", adminOrAbove, leadCtrl.Create)
+				leads.POST("/import", adminOrAbove, leadCtrl.BulkImport)
+				leads.POST("/assign", adminOrAbove, leadCtrl.AssignBulk)
+				leads.POST("/reassign", adminOrAbove, leadCtrl.Reassign)
+				leads.POST("/unassign", adminOrAbove, leadCtrl.Unassign)
+				leads.POST("/auto-assign", adminOrAbove, leadCtrl.AutoAssign)
+				leads.GET("", leadOrAbove, leadCtrl.GetAll)
+				leads.GET("/dashboard/me", leadOrAbove, leadCtrl.GetMyDashboard)
+				leads.GET("/dashboard/team", adminOrAbove, leadCtrl.GetTeamDashboard)
+				leads.GET("/:short_id", leadOrAbove, leadCtrl.GetByShortID)
+				leads.PATCH("/:short_id", leadOrAbove, leadCtrl.Update)
+				leads.DELETE("/:short_id", adminOrAbove, leadCtrl.Delete)
+				leads.POST("/:short_id/calls", leadOrAbove, leadCtrl.AddCallLog)
+				leads.GET("/:short_id/calls", leadOrAbove, leadCtrl.GetCallLogs)
+				leads.GET("/:short_id/history", adminOrAbove, leadCtrl.GetAssignmentHistory)
+			}
+
+			// Employee attendance — self check-in/out only, admin views the team roster.
+			employeeAttendance := protected.Group("/attendance/employee")
+			{
+				employeeAttendance.POST("/check-in", leadOrAbove, employeeAttendanceCtrl.CheckIn)
+				employeeAttendance.POST("/check-out", leadOrAbove, employeeAttendanceCtrl.CheckOut)
+				employeeAttendance.GET("/me", leadOrAbove, employeeAttendanceCtrl.GetMine)
+				employeeAttendance.GET("/team", adminOrAbove, employeeAttendanceCtrl.GetTeam)
+			}
+
+			// Employee leave requests — apply/view own, admin approves/rejects.
+			leaves := protected.Group("/leaves")
+			{
+				leaves.POST("", leadOrAbove, leaveCtrl.Apply)
+				leaves.GET("", adminOrAbove, leaveCtrl.GetAll)
+				leaves.GET("/me", leadOrAbove, leaveCtrl.GetMine)
+				leaves.GET("/me/balance", leadOrAbove, leaveCtrl.GetMyBalance)
+				leaves.GET("/pending", adminOrAbove, leaveCtrl.GetAllPending)
+				leaves.PATCH("/:short_id/review", adminOrAbove, leaveCtrl.Review)
+			}
+
+			// Employee monthly conversion targets.
+			targets := protected.Group("/targets/employee")
+			{
+				targets.PATCH("/:user_id", adminOrAbove, monthlyTargetCtrl.Set)
+				targets.GET("/me", leadOrAbove, monthlyTargetCtrl.GetMine)
+				targets.GET("/team", adminOrAbove, monthlyTargetCtrl.GetTeam)
 			}
 
 			// Courses — only super_admin / team_lead may create, edit, or delete

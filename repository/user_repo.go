@@ -180,6 +180,40 @@ func (r *UserRepository) Register(ctx context.Context, user models.User) (string
 	return userID, tx.Commit(ctx)
 }
 
+// CreateStaffUser inserts a user row with the given role plus an empty
+// role-specific profile row, in a single transaction. Only roles present in
+// profileTable are supported (mentor, employee, team_lead) — student accounts
+// go through Register, and there is no backing table for super_admin yet.
+func (r *UserRepository) CreateStaffUser(ctx context.Context, user models.User, role models.Role) (string, error) {
+	table, ok := profileTable[role]
+	if !ok {
+		return "", fmt.Errorf("no profile table for role %q", role)
+	}
+
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return "", fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	var userID string
+	err = tx.QueryRow(ctx, `
+		INSERT INTO users (email, password_hash, first_name, last_name, phone, role)
+		VALUES ($1, $2, $3, $4, NULLIF($5,''), $6)
+		RETURNING id`,
+		user.Email, user.PasswordHash, user.FirstName, user.LastName, user.Phone, role,
+	).Scan(&userID)
+	if err != nil {
+		return "", fmt.Errorf("insert user: %w", err)
+	}
+
+	if _, err = tx.Exec(ctx, fmt.Sprintf(`INSERT INTO %s (user_id) VALUES ($1)`, table), userID); err != nil {
+		return "", fmt.Errorf("insert %s profile: %w", table, err)
+	}
+
+	return userID, tx.Commit(ctx)
+}
+
 // profileTable maps a role to its dedicated profile table.
 var profileTable = map[models.Role]string{
 	models.RoleStudent:  "students",
