@@ -51,6 +51,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	auditLogRepo := repository.NewAuditLogRepository(pool)
 	profileRepo := repository.NewProfileRepository(pool)
 	passwordResetRepo := repository.NewPasswordResetRepository(pool)
+	analyticsRepo := repository.NewAnalyticsRepository(pool)
 
 	// Services
 	storageSvc := service.NewStorageService(cfg.Storage)
@@ -89,6 +90,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	auditLogCtrl := controller.NewAuditLogController(auditLogRepo, batchRepo)
 	profileCtrl := controller.NewProfileController(profileRepo, userRepo)
 	dashboardCtrl := controller.NewDashboardController(batchRepo, enrollmentRepo, sessionRepo, attendanceRepo, certificateRepo)
+	analyticsCtrl := controller.NewAnalyticsController(analyticsRepo, batchRepo)
 
 	v1 := r.Group("/api/v1")
 	{
@@ -139,6 +141,13 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			protected.GET("/mentors", userCtrl.GetMentors)
 
 			protected.GET("/dashboard/stats", staffOrAbove, dashboardCtrl.GetStats)
+
+			// Batch & Progress analytics — mentors/employees see only their own batches
+			analytics := protected.Group("/analytics")
+			{
+				analytics.GET("/batches", staffOrAbove, analyticsCtrl.GetBatchAnalytics)
+				analytics.GET("/batches/:short_id/attendance-trend", staffOrAbove, analyticsCtrl.GetBatchAttendanceTrend)
+			}
 
 			// Courses — only super_admin / team_lead may create, edit, or delete
 			courses := protected.Group("/courses")
