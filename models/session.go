@@ -32,10 +32,17 @@ type Session struct {
 	BatchShortID                 string     `json:"batch_short_id"`
 	BatchNumber                  string     `json:"batch_number"`
 	IsActive                     bool       `json:"is_active"`
-	CreatedBy                    string     `json:"created_by"`
-	CreatedAt                    time.Time  `json:"created_at"`
-	UpdatedAt                    time.Time  `json:"updated_at"`
-	DeletedAt                    *time.Time `json:"deleted_at,omitempty"`
+	// Status is computed server-side (not stored) from is_active plus
+	// session_date/start_time/end_time against the current time, in the
+	// app's configured timezone — one of upcoming | live | completed |
+	// cancelled. The frontend should render its Join/Watch Recording button
+	// off this field instead of recomputing it from local wall-clock time,
+	// so all clients agree regardless of the viewer's own timezone.
+	Status    string     `json:"status"`
+	CreatedBy string     `json:"created_by"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+	DeletedAt *time.Time `json:"deleted_at,omitempty"`
 }
 
 // CreateSessionInput carries the fields required to schedule a new session.
@@ -61,20 +68,20 @@ type CreateSessionInput struct {
 
 // UpdateSessionInput — all fields optional; send only what you want to change.
 type UpdateSessionInput struct {
-	Name                         *string  `json:"name"                            example:"React Hooks Deep Dive — Part 2"`
-	SessionDate                  *string  `json:"session_date"                    example:"2025-09-22"`
-	StartTime                    *string  `json:"start_time"                      example:"10:30"`
-	EndTime                      *string  `json:"end_time"                        example:"12:00"`
-	MentorID                     *string  `json:"mentor_id"                       example:"use GET /mentors to pick a real ID"`
-	Mode                         *string  `json:"mode"                            example:"offline"`
-	MeetingPlatform              *string  `json:"meeting_platform"                example:"google_meet"`
-	SendConfirmationEmail        *bool    `json:"send_confirmation_email"         example:"false"`
-	SessionReminderNotifications *bool    `json:"session_reminder_notifications"  example:"false"`
-	Topics                       []string `json:"topics"                          example:"[\"hooks\"]"`
-	GenerateShareableLink        *bool    `json:"generate_shareable_link"         example:"false"`
-	FeedbackFormShortID          *string  `json:"feedback_form_short_id"          example:"B4G83D2E"`
-	BatchShortID                 *string  `json:"batch_short_id"                  example:"use GET /batches to pick a real short_id"`
-	IsActive                     *bool    `json:"is_active"                       example:"false"`
+	Name                         *string    `json:"name"                            example:"React Hooks Deep Dive — Part 2"`
+	SessionDate                  *string    `json:"session_date"                    example:"2025-09-22"`
+	StartTime                    *string    `json:"start_time"                      example:"10:30"`
+	EndTime                      *string    `json:"end_time"                        example:"12:00"`
+	MentorID                     *string    `json:"mentor_id"                       example:"use GET /mentors to pick a real ID"`
+	Mode                         *string    `json:"mode"                            example:"offline"`
+	MeetingPlatform              *string    `json:"meeting_platform"                example:"google_meet"`
+	SendConfirmationEmail        *bool      `json:"send_confirmation_email"         example:"false"`
+	SessionReminderNotifications *bool      `json:"session_reminder_notifications"  example:"false"`
+	Topics                       []string   `json:"topics"                          example:"[\"hooks\"]"`
+	GenerateShareableLink        *bool      `json:"generate_shareable_link"         example:"false"`
+	FeedbackFormShortID          *string    `json:"feedback_form_short_id"          example:"B4G83D2E"`
+	BatchShortID                 *string    `json:"batch_short_id"                  example:"use GET /batches to pick a real short_id"`
+	IsActive                     *bool      `json:"is_active"                       example:"false"`
 	RecordingVisible             *bool      `json:"recording_visible"              example:"false"`
 	RecordingAvailableFrom       *time.Time `json:"recording_available_from"       example:"2026-08-01T00:00:00Z"`
 }

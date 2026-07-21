@@ -117,6 +117,21 @@ func StaffWelcomeEmail(firstName, roleLabel, email, password, loginURL string) (
 	return
 }
 
+// AdminPasswordResetEmail is sent when a staff member resets a user's
+// password on their behalf (not the self-service forgot-password OTP flow).
+func AdminPasswordResetEmail(firstName, email, password, loginURL string) (subject, html string) {
+	subject = "Your Vedex password has been reset"
+	html = fmt.Sprintf(`
+		<p>Hi %s,</p>
+		<p>Your password has been reset by an administrator.</p>
+		<p><strong>Email:</strong> %s<br><strong>New temporary password:</strong> %s</p>
+		<p>Please log in and change your password as soon as possible.</p>
+		<p><a href="%s">Log in to Vedex</a></p>
+		<p>— Vedex</p>`,
+		firstName, email, password, loginURL)
+	return
+}
+
 // LeaveDecisionEmail is sent when an admin approves or rejects a leave request.
 func LeaveDecisionEmail(firstName, status, fromDate, toDate, adminNote string) (subject, html string) {
 	verb := "approved"

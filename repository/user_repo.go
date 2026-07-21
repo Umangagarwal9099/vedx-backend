@@ -19,6 +19,20 @@ func NewUserRepository(pool *pgxpool.Pool) *UserRepository {
 	return &UserRepository{pool: pool}
 }
 
+// UpdateEmail changes a user's login email. Callers must check EmailExists
+// first — this does not enforce uniqueness itself beyond the DB's own
+// constraint, so a duplicate will surface as a generic DB error.
+func (r *UserRepository) UpdateEmail(ctx context.Context, id, email string) error {
+	tag, err := r.pool.Exec(ctx, `UPDATE users SET email = $1, updated_at = NOW() WHERE id = $2::UUID AND deleted_at IS NULL`, email, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
 func (r *UserRepository) EmailExists(ctx context.Context, email string) (bool, error) {
 	var exists bool
 	err := r.pool.QueryRow(ctx,
@@ -48,6 +62,21 @@ func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*models
 		return nil, err
 	}
 	return &u, nil
+}
+
+// GetCollegeID returns a user's college_id (empty string if unset). Kept as
+// its own query, separate from FindByEmail/FindByID, so that login and every
+// other pre-existing read path keep working unmodified if this column's
+// migration (schema_updates_college_v1.sql) hasn't been applied yet — a
+// failure here should be treated as "no college" by the caller, never as a
+// reason to fail the request it's part of.
+func (r *UserRepository) GetCollegeID(ctx context.Context, userID string) (string, error) {
+	var collegeID string
+	err := r.pool.QueryRow(ctx, `SELECT COALESCE(college_id::TEXT, '') FROM users WHERE id = $1::UUID`, userID).Scan(&collegeID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	return collegeID, err
 }
 
 func (r *UserRepository) FindByID(ctx context.Context, id string) (*models.User, error) {
@@ -129,6 +158,49 @@ func (r *UserRepository) SearchUsers(ctx context.Context, query string) ([]model
 		  )
 		ORDER BY created_at DESC`
 	return r.scanUsers(ctx, q, "%"+query+"%")
+}
+
+// FindStudentsForMentor returns students enrolled in any batch the given
+// mentor manages (batch_manager_id or additional_manager_id) — used to scope
+// a mentor's student list down to their own batches instead of every
+// student on the platform.
+func (r *UserRepository) FindStudentsForMentor(ctx context.Context, mentorID string) ([]models.User, error) {
+	const q = `
+		SELECT DISTINCT u.id, u.email, u.first_name, u.last_name,
+		       COALESCE(u.phone, ''), COALESCE(u.date_of_birth::TEXT, ''),
+		       u.role, u.is_active, u.created_at, u.updated_at
+		FROM users u
+		JOIN batch_students bs ON bs.user_id = u.id
+		JOIN batches b ON b.id = bs.batch_id AND b.deleted_at IS NULL
+		WHERE u.deleted_at IS NULL
+		  AND (b.batch_manager_id = $1 OR b.additional_manager_id = $1)
+		ORDER BY u.created_at DESC`
+	return r.scanUsers(ctx, q, mentorID)
+}
+
+// SearchStudentsForMentor mirrors SearchUsers but scoped to students in a
+// batch the given mentor manages, so a mentor can't look up a student
+// outside their own batches just by knowing a name/email/ID to search for.
+func (r *UserRepository) SearchStudentsForMentor(ctx context.Context, mentorID, query string) ([]models.User, error) {
+	const q = `
+		SELECT DISTINCT u.id, u.email, u.first_name, u.last_name,
+		       COALESCE(u.phone, ''), COALESCE(u.date_of_birth::TEXT, ''),
+		       u.role, u.is_active, u.created_at, u.updated_at
+		FROM users u
+		JOIN batch_students bs ON bs.user_id = u.id
+		JOIN batches b ON b.id = bs.batch_id AND b.deleted_at IS NULL
+		WHERE u.deleted_at IS NULL
+		  AND (b.batch_manager_id = $1 OR b.additional_manager_id = $1)
+		  AND (
+		        u.id::TEXT ILIKE $2
+		     OR u.email ILIKE $2
+		     OR u.phone ILIKE $2
+		     OR u.first_name ILIKE $2
+		     OR u.last_name ILIKE $2
+		     OR CONCAT(u.first_name, ' ', u.last_name) ILIKE $2
+		  )
+		ORDER BY u.created_at DESC`
+	return r.scanUsers(ctx, q, mentorID, "%"+query+"%")
 }
 
 func (r *UserRepository) scanUsers(ctx context.Context, q string, args ...interface{}) ([]models.User, error) {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -71,7 +72,12 @@ func (r *ProjectRepository) Create(ctx context.Context, in models.CreateProjectI
 	for attempt := 0; attempt < 3; attempt++ {
 		shortID := util.GenerateShortID()
 
-		p, err := scanProject(r.pool.QueryRow(ctx, fmt.Sprintf(`
+		// A data-modifying CTE and the main query share one snapshot, so a
+		// plain re-scan of projects (e.g. "WHERE p.id = (SELECT id FROM
+		// ins)") can never see the row ins just inserted — Postgres only
+		// guarantees visibility through the CTE's own RETURNING columns. So
+		// the outer SELECT reads FROM ins directly instead of FROM projects p.
+		p, err := scanProject(r.pool.QueryRow(ctx, `
 			WITH ins AS (
 				INSERT INTO projects (
 					short_id, title, problem_statement, requirements, expected_deliverables,
@@ -88,7 +94,21 @@ func (r *ProjectRepository) Create(ctx context.Context, in models.CreateProjectI
 				)
 				RETURNING *
 			)
-			%s`, insSelect),
+			SELECT ins.id, ins.short_id, ins.title,
+			       COALESCE(ins.problem_statement,''), COALESCE(ins.requirements,''),
+			       COALESCE(ins.expected_deliverables,''), COALESCE(ins.evaluation_criteria,''),
+			       COALESCE(ins.reference_files, '{}'),
+			       ins.category::TEXT, ins.is_team_project,
+			       b.short_id, b.batch_number,
+			       COALESCE(m.short_id, ''), COALESCE(m.module_name, ''),
+			       ins.max_marks, COALESCE(ins.start_date::TEXT, ''), ins.final_deadline,
+			       ins.allowed_submission_types, ins.status::TEXT,
+			       ins.created_by, CONCAT(u.first_name, ' ', u.last_name),
+			       ins.created_at, ins.updated_at
+			FROM ins
+			JOIN batches b ON ins.batch_id   = b.id
+			JOIN users   u ON ins.created_by = u.id AND u.deleted_at IS NULL
+			LEFT JOIN modules m ON ins.module_id = m.id AND m.deleted_at IS NULL`,
 			shortID, in.Title, in.ProblemStatement, in.Requirements, in.ExpectedDeliverables,
 			in.EvaluationCriteria, in.ReferenceFiles, in.Category, in.IsTeamProject,
 			in.BatchShortID, in.ModuleShortID, in.MaxMarks, in.StartDate, in.FinalDeadline,
@@ -161,6 +181,22 @@ func (r *ProjectRepository) FindAllForStudent(ctx context.Context, studentID str
 		WHERE p.deleted_at IS NULL AND p.status = 'active'
 		ORDER BY p.final_deadline ASC`, projectBaseSelect)
 	return r.scanAll(ctx, q, studentID)
+}
+
+// StudentHasAccess reports whether a student may view or submit to a project:
+// they must be enrolled in the project's batch and the project must be
+// published (status = 'active'). Mirrors the scoping FindAllForStudent
+// already applies at the list level, so the detail/submission endpoints
+// can't be reached by a student just by knowing a project's short_id.
+func (r *ProjectRepository) StudentHasAccess(ctx context.Context, projectShortID, studentID string) (bool, error) {
+	var exists bool
+	err := r.pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM projects p
+			JOIN batch_students bs ON bs.batch_id = p.batch_id AND bs.user_id = $2
+			WHERE p.short_id = $1 AND p.deleted_at IS NULL AND p.status = 'active'
+		)`, projectShortID, studentID).Scan(&exists)
+	return exists, err
 }
 
 // FindDueForDeadlineReminder returns active projects whose final deadline
@@ -556,6 +592,12 @@ func (r *ProjectRepository) FindStudentTeam(ctx context.Context, projectShortID,
 
 // ── Submissions ──────────────────────────────────────────────────────────────
 
+// projectSubmissionSelect deliberately does NOT include result_published_at —
+// a new column (schema_updates_submission_flow_v1.sql). This backs
+// CreateOrResubmitSubmission/FindMySubmission/FindAllSubmissions, pre-existing,
+// constantly-hit paths that must keep working even if that migration hasn't
+// landed yet. Publish-state is read separately (GetResultPublishedAt), only
+// where results are actually gated, with a graceful fallback.
 const projectSubmissionSelect = `
 	SELECT ps.id, ps.short_id, pm.short_id,
 	       COALESCE(ps.student_id::TEXT, ''), COALESCE(CONCAT(su.first_name, ' ', su.last_name), ''),
@@ -581,6 +623,33 @@ func scanProjectSubmission(row pgx.Row) (models.ProjectSubmission, error) {
 		&s.CreatedAt, &s.UpdatedAt,
 	)
 	return s, err
+}
+
+// GetResultPublishedAt reads a submission's result_published_at via an
+// isolated query (see projectSubmissionSelect's comment). ok=false means the
+// migration hasn't been applied yet — callers should treat that as "not
+// gated" (fail open to pre-existing behavior), not "unpublished."
+func (r *ProjectRepository) GetResultPublishedAt(ctx context.Context, submissionShortID string) (publishedAt *time.Time, ok bool) {
+	err := r.pool.QueryRow(ctx, `SELECT result_published_at FROM project_submissions WHERE short_id = $1`, submissionShortID).Scan(&publishedAt)
+	return publishedAt, err == nil
+}
+
+// PublishResults makes every graded submission for this milestone visible to
+// students at once — grading (GradeSubmission) never sets this itself.
+func (r *ProjectRepository) PublishResults(ctx context.Context, milestoneShortID string) error {
+	result, err := r.pool.Exec(ctx, `
+		UPDATE project_submissions SET result_published_at = NOW(), updated_at = NOW()
+		WHERE milestone_id = (SELECT id FROM project_milestones WHERE short_id = $1)
+		  AND status = 'evaluated' AND result_published_at IS NULL`,
+		milestoneShortID,
+	)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
 }
 
 // CreateOrResubmitSubmission inserts a submission for a milestone, keyed by either
@@ -625,6 +694,12 @@ func (r *ProjectRepository) CreateOrResubmitSubmission(ctx context.Context, mile
 			identifierValue = identifierArg
 		}
 
+		// A data-modifying CTE and the main query share one snapshot, so a
+		// plain re-scan of project_submissions (e.g. "WHERE ps.id = (SELECT
+		// id FROM ins)") can never see the row ins just inserted/updated —
+		// Postgres only guarantees visibility through the CTE's own
+		// RETURNING columns. So the outer SELECT reads FROM ins directly
+		// instead of FROM project_submissions ps.
 		s, err := scanProjectSubmission(r.pool.QueryRow(ctx, fmt.Sprintf(`
 			WITH ins AS (
 				INSERT INTO project_submissions (
@@ -644,7 +719,17 @@ func (r *ProjectRepository) CreateOrResubmitSubmission(ctx context.Context, mile
 					updated_at = NOW()
 				RETURNING *
 			)
-			%s`, identifierSelect, conflictCol, insSelect),
+			SELECT ins.id, ins.short_id, pm.short_id,
+			       COALESCE(ins.student_id::TEXT, ''), COALESCE(CONCAT(su.first_name, ' ', su.last_name), ''),
+			       COALESCE(t.short_id, ''), COALESCE(t.name, ''),
+			       ins.submission_type::TEXT, COALESCE(ins.content,''), COALESCE(ins.file_url,''),
+			       ins.status::TEXT, ins.marks, COALESCE(ins.feedback,''),
+			       ins.submitted_at, ins.evaluated_at, COALESCE(ins.evaluated_by::TEXT,''),
+			       ins.created_at, ins.updated_at
+			FROM ins
+			JOIN project_milestones pm ON ins.milestone_id = pm.id
+			LEFT JOIN users su ON ins.student_id = su.id AND su.deleted_at IS NULL
+			LEFT JOIN project_teams t ON ins.team_id = t.id`, identifierSelect, conflictCol),
 			shortID, in.SubmissionType, in.Content, in.FileURL, milestoneShortID, identifierValue,
 		))
 		if err == nil {

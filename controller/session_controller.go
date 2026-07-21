@@ -88,6 +88,41 @@ func (ctrl *SessionController) sessionStartTime(sessionDate, startTime string) (
 	return time.ParseInLocation("2006-01-02 15:04", sessionDate+" "+startTime, loc)
 }
 
+// withStatus computes and sets s.Status — upcoming/live/completed/cancelled —
+// from is_active plus session_date/start_time/end_time, in the app's
+// configured timezone. This used to be inferred client-side from the
+// viewer's own local clock (drifting from other clients/timezones); the
+// backend is now the single source of truth every response goes through.
+func (ctrl *SessionController) withStatus(s *models.Session) *models.Session {
+	if s == nil {
+		return s
+	}
+	if !s.IsActive {
+		s.Status = "cancelled"
+		return s
+	}
+	loc, err := time.LoadLocation(ctrl.timezone)
+	if err != nil {
+		loc = time.UTC
+	}
+	start, errStart := time.ParseInLocation("2006-01-02 15:04", s.SessionDate+" "+s.StartTime, loc)
+	end, errEnd := time.ParseInLocation("2006-01-02 15:04", s.SessionDate+" "+s.EndTime, loc)
+	if errStart != nil || errEnd != nil {
+		s.Status = "upcoming"
+		return s
+	}
+	now := time.Now().In(loc)
+	switch {
+	case now.Before(start):
+		s.Status = "upcoming"
+	case now.After(end):
+		s.Status = "completed"
+	default:
+		s.Status = "live"
+	}
+	return s
+}
+
 // sessionDurationMinutes returns the gap between two "HH:MM" times, defaulting to
 // 60 minutes if either is unparseable or the range is non-positive.
 func sessionDurationMinutes(startTime, endTime string) int {
@@ -284,6 +319,7 @@ func (ctrl *SessionController) GetAll(c *gin.Context) {
 		ctrl.withShareLink(&sessions[i])
 		sanitizeForRole(&sessions[i], role)
 		ctrl.stripRecordingIfUnpaid(c.Request.Context(), &sessions[i], role, userID)
+		ctrl.withStatus(&sessions[i])
 	}
 	c.JSON(http.StatusOK, sessions)
 }
@@ -320,6 +356,7 @@ func (ctrl *SessionController) GetByBatch(c *gin.Context) {
 		ctrl.withShareLink(&sessions[i])
 		sanitizeForRole(&sessions[i], role)
 		ctrl.stripRecordingIfUnpaid(c.Request.Context(), &sessions[i], role, userID)
+		ctrl.withStatus(&sessions[i])
 	}
 	c.JSON(http.StatusOK, sessions)
 }
@@ -420,6 +457,7 @@ func (ctrl *SessionController) GetByShortID(c *gin.Context) {
 	ctrl.withShareLink(session)
 	sanitizeForRole(session, role)
 	ctrl.stripRecordingIfUnpaid(c.Request.Context(), session, role, userID)
+	ctrl.withStatus(session)
 
 	c.JSON(http.StatusOK, session)
 }
@@ -498,7 +536,7 @@ func (ctrl *SessionController) Update(c *gin.Context) {
 		BatchShortID: session.BatchShortID,
 	})
 
-	c.JSON(http.StatusOK, sanitizeForRole(ctrl.withShareLink(session), c.GetString("role")))
+	c.JSON(http.StatusOK, sanitizeForRole(ctrl.withStatus(ctrl.withShareLink(session)), c.GetString("role")))
 }
 
 // DeleteSession godoc

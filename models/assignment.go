@@ -78,28 +78,44 @@ type AssignmentFilter struct {
 
 // AssignmentSubmission is a single student's submission for an assignment.
 type AssignmentSubmission struct {
-	ID                string     `json:"id"`
-	ShortID           string     `json:"short_id"`
-	AssignmentShortID string     `json:"assignment_short_id"`
+	ID                string `json:"id"`
+	ShortID           string `json:"short_id"`
+	AssignmentShortID string `json:"assignment_short_id"`
 	// AssignmentTitle/BatchShortID/BatchNumber are only populated by the
 	// cross-assignment workspace listing (FindAllSubmissionsForMentor).
-	AssignmentTitle   string     `json:"assignment_title,omitempty"`
-	BatchShortID      string     `json:"batch_short_id,omitempty"`
-	BatchNumber       string     `json:"batch_number,omitempty"`
-	StudentID         string     `json:"student_id"`
-	StudentName       string     `json:"student_name,omitempty"`
-	StudentEmail      string     `json:"student_email,omitempty"`
-	SubmissionType    string     `json:"submission_type"` // link | text | file
-	Content           string     `json:"content,omitempty"`
-	FileURL           string     `json:"file_url,omitempty"`
-	Status            string     `json:"status"` // submitted | late | evaluated | resubmission_required
-	Marks             *int       `json:"marks,omitempty"`
-	Feedback          string     `json:"feedback,omitempty"`
-	SubmittedAt       time.Time  `json:"submitted_at"`
-	EvaluatedAt       *time.Time `json:"evaluated_at,omitempty"`
-	EvaluatedBy       string     `json:"evaluated_by,omitempty"`
+	AssignmentTitle string     `json:"assignment_title,omitempty"`
+	BatchShortID    string     `json:"batch_short_id,omitempty"`
+	BatchNumber     string     `json:"batch_number,omitempty"`
+	StudentID       string     `json:"student_id"`
+	StudentName     string     `json:"student_name,omitempty"`
+	StudentEmail    string     `json:"student_email,omitempty"`
+	SubmissionType  string     `json:"submission_type"` // link | text | file
+	Content         string     `json:"content,omitempty"`
+	FileURL         string     `json:"file_url,omitempty"`
+	Status          string     `json:"status"` // submitted | late | evaluated | resubmission_required
+	Marks           *int       `json:"marks,omitempty"`
+	Feedback        string     `json:"feedback,omitempty"`
+	SubmittedAt     time.Time  `json:"submitted_at"`
+	EvaluatedAt     *time.Time `json:"evaluated_at,omitempty"`
+	EvaluatedBy     string     `json:"evaluated_by,omitempty"`
+	// ResultPublishedAt gates student-visible marks/grade/feedback — set only
+	// by the explicit bulk "publish results" action, never by grading itself.
+	ResultPublishedAt *time.Time `json:"result_published_at,omitempty"`
 	CreatedAt         time.Time  `json:"created_at"`
 	UpdatedAt         time.Time  `json:"updated_at"`
+}
+
+// ResultsVisibleWith reports whether this submission's marks/feedback may be
+// shown to the student who made it. publishedAt/found come from
+// AssignmentRepository.GetResultPublishedAt, a query isolated from this
+// submission's own base select — when found is false (that migration hasn't
+// been applied yet), this falls back to "visible," i.e. pre-existing
+// behavior (marks show immediately once graded) is unaffected.
+func (s *AssignmentSubmission) ResultsVisibleWith(publishedAt *time.Time, found bool) bool {
+	if !found {
+		return true
+	}
+	return publishedAt != nil
 }
 
 // CreateAssignmentSubmissionInput carries a student's submission for an assignment.

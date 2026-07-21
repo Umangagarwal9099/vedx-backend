@@ -36,10 +36,36 @@ type Assessment struct {
 	IsActive                  bool       `json:"is_active"`
 	CancelledAt               *time.Time `json:"cancelled_at,omitempty"`
 	CancelledBy               string     `json:"cancelled_by,omitempty"`
-	CreatedBy                 string     `json:"created_by"`
-	CreatedAt                 time.Time  `json:"created_at"`
-	UpdatedAt                 time.Time  `json:"updated_at"`
-	DeletedAt                 *time.Time `json:"deleted_at,omitempty"`
+	// ResultPublishedAt gates student-visible marks/grade/feedback — set only
+	// by the explicit "publish results" action, never by grading itself.
+	ResultPublishedAt     *time.Time `json:"result_published_at,omitempty"`
+	CloseOnTabSwitch      bool       `json:"close_on_tab_switch"`
+	CloseOnWindowBlur     bool       `json:"close_on_window_blur"`
+	CloseOnFullscreenExit bool       `json:"close_on_fullscreen_exit"`
+	AllowedWarningCount   int        `json:"allowed_warning_count"`
+	AutoSubmitOnViolation bool       `json:"auto_submit_on_violation"`
+	CreatedBy             string     `json:"created_by"`
+	CreatedAt             time.Time  `json:"created_at"`
+	UpdatedAt             time.Time  `json:"updated_at"`
+	DeletedAt             *time.Time `json:"deleted_at,omitempty"`
+}
+
+// ResultsVisibleWith reports whether this assessment's marks/grade/feedback
+// may be shown to students — either the result has been explicitly
+// published, or the assessment declares automatic (immediate) results.
+// publishedAt/configFound come from AssessmentRepository.GetSecurityConfig,
+// a query isolated from the assessment's own base select (see that
+// repository for why) — when configFound is false (that migration hasn't
+// been applied yet), this falls back to "automatic" semantics, i.e. results
+// stay visible exactly as they were before result-publication gating existed.
+func (a *Assessment) ResultsVisibleWith(publishedAt *time.Time, configFound bool) bool {
+	if a.ResultDeclaration == "automatic" {
+		return true
+	}
+	if !configFound {
+		return true
+	}
+	return publishedAt != nil
 }
 
 type CreateAssessmentInput struct {
@@ -64,6 +90,11 @@ type CreateAssessmentInput struct {
 	AutoSubmit                bool       `json:"auto_submit"                                                                             example:"true"`
 	ShowCorrectAnswers        bool       `json:"show_correct_answers"                                                                    example:"false"`
 	RequiresProctoring        bool       `json:"requires_proctoring"                                                                     example:"false"`
+	CloseOnTabSwitch          bool       `json:"close_on_tab_switch"                                                                     example:"false"`
+	CloseOnWindowBlur         bool       `json:"close_on_window_blur"                                                                    example:"false"`
+	CloseOnFullscreenExit     bool       `json:"close_on_fullscreen_exit"                                                                example:"false"`
+	AllowedWarningCount       int        `json:"allowed_warning_count"                                                                   example:"1"`
+	AutoSubmitOnViolation     bool       `json:"auto_submit_on_violation"                                                                example:"true"`
 }
 
 type UpdateAssessmentInput struct {
@@ -89,6 +120,11 @@ type UpdateAssessmentInput struct {
 	ShowCorrectAnswers        *bool      `json:"show_correct_answers"         example:"true"`
 	RequiresProctoring        *bool      `json:"requires_proctoring"          example:"true"`
 	IsActive                  *bool      `json:"is_active"                    example:"false"`
+	CloseOnTabSwitch          *bool      `json:"close_on_tab_switch"          example:"true"`
+	CloseOnWindowBlur         *bool      `json:"close_on_window_blur"         example:"true"`
+	CloseOnFullscreenExit     *bool      `json:"close_on_fullscreen_exit"     example:"true"`
+	AllowedWarningCount       *int       `json:"allowed_warning_count"        example:"1"`
+	AutoSubmitOnViolation     *bool      `json:"auto_submit_on_violation"     example:"true"`
 }
 
 type AssessmentFilter struct {

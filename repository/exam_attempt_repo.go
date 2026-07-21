@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
+	"log"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -22,6 +22,13 @@ func NewExamAttemptRepository(pool *pgxpool.Pool) *ExamAttemptRepository {
 	return &ExamAttemptRepository{pool: pool}
 }
 
+// attemptBaseSelect deliberately does NOT include submission_type — a new
+// column (schema_updates_submission_flow_v1.sql). This query backs
+// FindInProgressAttempt/CreateAttempt/FindAttemptByShortID/FindMyAttempts/
+// FindAllAttempts, all pre-existing, constantly-hit paths (starting, resuming,
+// listing attempts) that must keep working even if that migration hasn't
+// been applied yet. submission_type is read separately (GetSubmissionType),
+// only where it's actually displayed, with a graceful empty-string fallback.
 const attemptBaseSelect = `
 	SELECT ea.id, ea.short_id, a.short_id,
 	       ea.student_id, CONCAT(u.first_name, ' ', u.last_name),
@@ -42,6 +49,17 @@ func scanAttempt(row pgx.Row) (models.ExamAttempt, error) {
 	return a, err
 }
 
+// GetSubmissionType reads an attempt's submission_type via an isolated query
+// (see attemptBaseSelect's comment) — returns "" if the migration adding this
+// column hasn't been applied yet, rather than erroring.
+func (r *ExamAttemptRepository) GetSubmissionType(ctx context.Context, attemptShortID string) string {
+	var submissionType string
+	if err := r.pool.QueryRow(ctx, `SELECT COALESCE(submission_type, '') FROM exam_attempts WHERE short_id = $1`, attemptShortID).Scan(&submissionType); err != nil {
+		return ""
+	}
+	return submissionType
+}
+
 func (r *ExamAttemptRepository) FindInProgressAttempt(ctx context.Context, assessmentShortID, studentID string) (*models.ExamAttempt, error) {
 	q := attemptBaseSelect + " WHERE a.short_id = $1 AND ea.student_id = $2 AND ea.status = 'in_progress' ORDER BY ea.started_at DESC LIMIT 1"
 	a, err := scanAttempt(r.pool.QueryRow(ctx, q, assessmentShortID, studentID))
@@ -59,7 +77,13 @@ func (r *ExamAttemptRepository) CreateAttempt(ctx context.Context, assessmentSho
 	for attempt := 0; attempt < 3; attempt++ {
 		shortID := util.GenerateShortID()
 
-		a, err := scanAttempt(r.pool.QueryRow(ctx, fmt.Sprintf(`
+		// A data-modifying CTE and the main query share one snapshot, so a
+		// plain re-scan of exam_attempts (e.g. "WHERE ea.id = (SELECT id FROM
+		// ins)") can never see the row ins just inserted — Postgres only
+		// guarantees visibility through the CTE's own RETURNING columns. So
+		// the outer SELECT reads FROM ins directly instead of FROM
+		// exam_attempts ea.
+		a, err := scanAttempt(r.pool.QueryRow(ctx, `
 			WITH ins AS (
 				INSERT INTO exam_attempts (
 					short_id, assessment_id, student_id, attempt_number,
@@ -69,7 +93,13 @@ func (r *ExamAttemptRepository) CreateAttempt(ctx context.Context, assessmentSho
 				FROM assessments a WHERE a.short_id = $8 AND a.deleted_at IS NULL
 				RETURNING *
 			)
-			%s`, insSelect),
+			SELECT ins.id, ins.short_id, a.short_id,
+			       ins.student_id, CONCAT(u.first_name, ' ', u.last_name),
+			       ins.attempt_number, ins.started_at, ins.ends_at, ins.submitted_at, ins.auto_submitted,
+			       ins.status::TEXT, ins.total_score, ins.max_score, ins.passed
+			FROM ins
+			JOIN assessments a ON ins.assessment_id = a.id
+			JOIN users       u ON ins.student_id    = u.id AND u.deleted_at IS NULL`,
 			shortID, studentID, attemptNumber, startedAt, endsAt, maxScore, questionOrder, assessmentShortID,
 		))
 		if err == nil {
@@ -264,7 +294,16 @@ func (r *ExamAttemptRepository) CreateReattemptGrant(ctx context.Context, assess
 	return nil, fmt.Errorf("could not generate a unique short ID after 3 attempts")
 }
 
-func (r *ExamAttemptRepository) MarkSubmitted(ctx context.Context, attemptShortID string, autoSubmitted bool) error {
+// MarkSubmitted finalizes an attempt's submission. submissionType is one of
+// manual | timer_expired | violation | admin_closed | exam_window_closed —
+// recorded so the student/mentor can see exactly how the attempt ended.
+// MarkSubmitted finalizes an attempt's submission. submissionType is one of
+// manual | timer_expired | violation | admin_closed | exam_window_closed —
+// recorded best-effort in a separate statement (see attemptBaseSelect's
+// comment) so that submitting an exam — a pre-existing, constantly-hit
+// path — keeps working even if schema_updates_submission_flow_v1.sql (which
+// adds the submission_type column) hasn't been applied yet.
+func (r *ExamAttemptRepository) MarkSubmitted(ctx context.Context, attemptShortID string, autoSubmitted bool, submissionType string) error {
 	result, err := r.pool.Exec(ctx, `
 		UPDATE exam_attempts SET status = 'submitted', submitted_at = NOW(), auto_submitted = $2, updated_at = NOW()
 		WHERE short_id = $1 AND status = 'in_progress'`,
@@ -275,6 +314,9 @@ func (r *ExamAttemptRepository) MarkSubmitted(ctx context.Context, attemptShortI
 	}
 	if result.RowsAffected() == 0 {
 		return pgx.ErrNoRows
+	}
+	if _, err := r.pool.Exec(ctx, `UPDATE exam_attempts SET submission_type = $2 WHERE short_id = $1`, attemptShortID, submissionType); err != nil {
+		log.Printf("record submission_type for %s (migration pending?): %v", attemptShortID, err)
 	}
 	return nil
 }
@@ -392,4 +434,74 @@ func (r *ExamAttemptRepository) SumMarks(ctx context.Context, attemptShortID str
 		attemptShortID,
 	).Scan(&total)
 	return total, err
+}
+
+// ── Violation tracking ───────────────────────────────────────────────────
+
+// CountViolations returns how many violations have been recorded for an
+// attempt so far — computed at read time rather than stored redundantly.
+func (r *ExamAttemptRepository) CountViolations(ctx context.Context, attemptShortID string) (int, error) {
+	var n int
+	err := r.pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM exam_attempt_violations v
+		JOIN exam_attempts ea ON v.attempt_id = ea.id
+		WHERE ea.short_id = $1`,
+		attemptShortID,
+	).Scan(&n)
+	return n, err
+}
+
+// RecordViolation appends one violation event for an attempt. warningNumber
+// is the 1-based count of violations for this attempt including this one
+// (i.e. CountViolations-before-insert + 1) — callers compute it beforehand
+// so it can also drive the close/auto-submit decision without a second query.
+func (r *ExamAttemptRepository) RecordViolation(ctx context.Context, attemptShortID, studentID, violationType, browserInfo string, warningNumber int, actionTaken string) (*models.ExamViolation, error) {
+	for attempt := 0; attempt < 3; attempt++ {
+		shortID := util.GenerateShortID()
+		var v models.ExamViolation
+		err := r.pool.QueryRow(ctx, `
+			INSERT INTO exam_attempt_violations (short_id, attempt_id, student_id, violation_type, warning_number, browser_info, action_taken)
+			VALUES ($1, (SELECT id FROM exam_attempts WHERE short_id = $2), $3::UUID, $4::exam_violation_type, $5, NULLIF($6,''), $7)
+			RETURNING short_id, violation_type::TEXT, violation_time, warning_number, COALESCE(browser_info,''), action_taken`,
+			shortID, attemptShortID, studentID, violationType, warningNumber, browserInfo, actionTaken,
+		).Scan(&v.ShortID, &v.ViolationType, &v.ViolationTime, &v.WarningNumber, &v.BrowserInfo, &v.ActionTaken)
+		if err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+				continue
+			}
+			return nil, err
+		}
+		v.AttemptShortID = attemptShortID
+		v.StudentID = studentID
+		return &v, nil
+	}
+	return nil, fmt.Errorf("could not generate a unique short ID after 3 attempts")
+}
+
+// FindViolations returns every violation recorded for an attempt, oldest first.
+func (r *ExamAttemptRepository) FindViolations(ctx context.Context, attemptShortID string) ([]models.ExamViolation, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT v.short_id, v.student_id, v.violation_type::TEXT, v.violation_time, v.warning_number, COALESCE(v.browser_info,''), v.action_taken
+		FROM exam_attempt_violations v
+		JOIN exam_attempts ea ON v.attempt_id = ea.id
+		WHERE ea.short_id = $1
+		ORDER BY v.violation_time ASC`,
+		attemptShortID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.ExamViolation
+	for rows.Next() {
+		var v models.ExamViolation
+		if err := rows.Scan(&v.ShortID, &v.StudentID, &v.ViolationType, &v.ViolationTime, &v.WarningNumber, &v.BrowserInfo, &v.ActionTaken); err != nil {
+			return nil, err
+		}
+		v.AttemptShortID = attemptShortID
+		out = append(out, v)
+	}
+	return out, rows.Err()
 }

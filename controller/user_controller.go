@@ -14,13 +14,33 @@ import (
 )
 
 type UserController struct {
-	userRepo  *repository.UserRepository
-	emailSvc  *service.EmailService
-	publicURL string
+	userRepo     *repository.UserRepository
+	emailSvc     *service.EmailService
+	publicURL    string
+	auditLogRepo *repository.AuditLogRepository
 }
 
-func NewUserController(userRepo *repository.UserRepository, emailSvc *service.EmailService, publicURL string) *UserController {
-	return &UserController{userRepo: userRepo, emailSvc: emailSvc, publicURL: publicURL}
+func NewUserController(userRepo *repository.UserRepository, emailSvc *service.EmailService, publicURL string, auditLogRepo *repository.AuditLogRepository) *UserController {
+	return &UserController{userRepo: userRepo, emailSvc: emailSvc, publicURL: publicURL, auditLogRepo: auditLogRepo}
+}
+
+// stripStudentPIIForMentor removes a student's phone/email/date-of-birth from
+// the response when the caller is a mentor. Mentors keep academic visibility
+// (enrollments, attendance, scores) but should never see a student's contact
+// or personal details — see the Mentor role lockdown requirements.
+func stripStudentPIIForMentor(users []models.User, callerRole string) []models.User {
+	if callerRole != string(models.RoleMentor) {
+		return users
+	}
+	for i := range users {
+		if users[i].Role != models.RoleStudent {
+			continue
+		}
+		users[i].Email = ""
+		users[i].Phone = ""
+		users[i].DateOfBirth = ""
+	}
+	return users
 }
 
 // roleLabels maps a role to the human-readable label used in the welcome email.
@@ -210,7 +230,17 @@ func (ctrl *UserController) CreateStudent(c *gin.Context) {
 //	@Security		BearerAuth
 //	@Router			/users [get]
 func (ctrl *UserController) GetAll(c *gin.Context) {
-	users, err := ctrl.userRepo.FindAll(c.Request.Context())
+	role := c.GetString("role")
+
+	var users []models.User
+	var err error
+	if role == string(models.RoleMentor) {
+		// A mentor's "Users" list is scoped to students in their own
+		// batches only — never the full platform roster.
+		users, err = ctrl.userRepo.FindStudentsForMentor(c.Request.Context(), c.GetString("user_id"))
+	} else {
+		users, err = ctrl.userRepo.FindAll(c.Request.Context())
+	}
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch users"})
 		return
@@ -218,6 +248,7 @@ func (ctrl *UserController) GetAll(c *gin.Context) {
 	if users == nil {
 		users = []models.User{}
 	}
+	users = stripStudentPIIForMentor(users, role)
 	c.JSON(http.StatusOK, users)
 }
 
@@ -284,7 +315,17 @@ func (ctrl *UserController) Search(c *gin.Context) {
 		return
 	}
 
-	users, err := ctrl.userRepo.SearchUsers(c.Request.Context(), q)
+	role := c.GetString("role")
+
+	var users []models.User
+	var err error
+	if role == string(models.RoleMentor) {
+		// A mentor can only look up students in their own batches — never
+		// any student on the platform just by knowing a name/email/ID.
+		users, err = ctrl.userRepo.SearchStudentsForMentor(c.Request.Context(), c.GetString("user_id"), q)
+	} else {
+		users, err = ctrl.userRepo.SearchUsers(c.Request.Context(), q)
+	}
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not search users"})
 		return
@@ -292,6 +333,7 @@ func (ctrl *UserController) Search(c *gin.Context) {
 	if users == nil {
 		users = []models.User{}
 	}
+	users = stripStudentPIIForMentor(users, role)
 	c.JSON(http.StatusOK, users)
 }
 
@@ -330,6 +372,12 @@ func (ctrl *UserController) Update(c *gin.Context) {
 		return
 	}
 
+	before, err := ctrl.userRepo.FindByID(c.Request.Context(), id)
+	if err != nil || before == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+
 	if err := ctrl.userRepo.UpdateUser(c.Request.Context(), id, input); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
@@ -349,7 +397,36 @@ func (ctrl *UserController) Update(c *gin.Context) {
 		return
 	}
 
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "update", EntityType: "user",
+		EntityID: user.ID, EntityLabel: user.FirstName + " " + user.LastName,
+		Metadata: userUpdateDiff(before, input),
+	})
+
 	c.JSON(http.StatusOK, user)
+}
+
+// userUpdateDiff builds a { field: {from, to} } metadata map for only the
+// fields actually present in the request, so the audit log shows exactly
+// what changed rather than a full before/after snapshot.
+func userUpdateDiff(before *models.User, input models.UpdateUserInput) map[string]interface{} {
+	diff := map[string]interface{}{}
+	if input.FirstName != nil && *input.FirstName != before.FirstName {
+		diff["first_name"] = map[string]string{"from": before.FirstName, "to": *input.FirstName}
+	}
+	if input.LastName != nil && *input.LastName != before.LastName {
+		diff["last_name"] = map[string]string{"from": before.LastName, "to": *input.LastName}
+	}
+	if input.Phone != nil && *input.Phone != before.Phone {
+		diff["phone"] = map[string]string{"from": before.Phone, "to": *input.Phone}
+	}
+	if input.DateOfBirth != nil && *input.DateOfBirth != before.DateOfBirth {
+		diff["date_of_birth"] = map[string]string{"from": before.DateOfBirth, "to": *input.DateOfBirth}
+	}
+	if input.IsActive != nil && *input.IsActive != before.IsActive {
+		diff["is_active"] = map[string]interface{}{"from": before.IsActive, "to": *input.IsActive}
+	}
+	return diff
 }
 
 // ChangeRoleRequest holds the target role for a promotion.
@@ -381,6 +458,12 @@ func (ctrl *UserController) ChangeRole(c *gin.Context) {
 		return
 	}
 
+	before, err := ctrl.userRepo.FindByID(c.Request.Context(), id)
+	if err != nil || before == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+
 	if err := ctrl.userRepo.ChangeUserRole(c.Request.Context(), id, models.Role(req.Role)); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
@@ -395,6 +478,83 @@ func (ctrl *UserController) ChangeRole(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch updated user"})
 		return
 	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "update", EntityType: "user",
+		EntityID: user.ID, EntityLabel: user.FirstName + " " + user.LastName,
+		Metadata: map[string]interface{}{"role": map[string]string{"from": string(before.Role), "to": string(user.Role)}},
+	})
+
+	c.JSON(http.StatusOK, user)
+}
+
+// ChangeEmailRequest holds the new login email.
+type ChangeEmailRequest struct {
+	Email string `json:"email" binding:"required,email" example:"new.address@example.com"`
+}
+
+// ChangeEmail godoc
+//
+//	@Summary		Change a user's login email
+//	@Description	Changes a user's email — a sensitive change, restricted to super_admin/team_lead. Rejects the change if the new address is already in use.
+//	@Tags			users
+//	@Accept			json
+//	@Produce		json
+//	@Param			id		path		string				true	"User ID (UUID)"
+//	@Param			body	body		ChangeEmailRequest	true	"New email"
+//	@Success		200		{object}	models.User
+//	@Failure		400		{object}	map[string]string	"Invalid email / already in use"
+//	@Failure		404		{object}	map[string]string	"User not found"
+//	@Failure		500		{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/users/{id}/email [patch]
+func (ctrl *UserController) ChangeEmail(c *gin.Context) {
+	id := c.Param("id")
+
+	var req ChangeEmailRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	before, err := ctrl.userRepo.FindByID(c.Request.Context(), id)
+	if err != nil || before == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+
+	if before.Email != req.Email {
+		exists, err := ctrl.userRepo.EmailExists(c.Request.Context(), req.Email)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not verify email"})
+			return
+		}
+		if exists {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "this email is already in use"})
+			return
+		}
+	}
+
+	if err := ctrl.userRepo.UpdateEmail(c.Request.Context(), id, req.Email); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not change email"})
+		return
+	}
+
+	user, err := ctrl.userRepo.FindByID(c.Request.Context(), id)
+	if err != nil || user == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch updated user"})
+		return
+	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "update", EntityType: "user",
+		EntityID: user.ID, EntityLabel: user.FirstName + " " + user.LastName,
+		Metadata: map[string]interface{}{"email": map[string]string{"from": before.Email, "to": user.Email}},
+	})
 
 	c.JSON(http.StatusOK, user)
 }
@@ -424,4 +584,64 @@ func (ctrl *UserController) Delete(c *gin.Context) {
 	}
 
 	c.Status(http.StatusNoContent)
+}
+
+// AdminResetPasswordResponse returns the one-time-shown new temporary
+// password and whether the notification email was sent successfully.
+type AdminResetPasswordResponse struct {
+	TemporaryPassword string `json:"temporary_password"`
+	EmailSent         bool   `json:"email_sent"`
+}
+
+// ResetPassword godoc
+//
+//	@Summary		Admin-triggered password reset
+//	@Description	Generates a new temporary password for a user and emails it to them — unlike /auth/forgot-password, this is triggered by staff, not the user themselves. Restricted to super_admin/team_lead.
+//	@Tags			users
+//	@Produce		json
+//	@Param			id	path		string	true	"User ID (UUID)"
+//	@Success		200	{object}	AdminResetPasswordResponse
+//	@Failure		404	{object}	map[string]string	"User not found"
+//	@Failure		500	{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/users/{id}/reset-password [post]
+func (ctrl *UserController) ResetPassword(c *gin.Context) {
+	id := c.Param("id")
+
+	user, err := ctrl.userRepo.FindByID(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch user"})
+		return
+	}
+	if user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+
+	tempPassword := util.GenerateTemporaryPassword()
+	hash, err := bcrypt.GenerateFromPassword([]byte(tempPassword), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not reset password"})
+		return
+	}
+
+	if err := ctrl.userRepo.UpdatePassword(c.Request.Context(), id, string(hash)); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not reset password"})
+		return
+	}
+
+	emailSent := false
+	if ctrl.emailSvc != nil && ctrl.emailSvc.Configured() {
+		subject, html := service.AdminPasswordResetEmail(user.FirstName, user.Email, tempPassword, ctrl.publicURL)
+		ctrl.emailSvc.SendAsync(user.Email, subject, html)
+		emailSent = true
+	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "update", EntityType: "user",
+		EntityID: user.ID, EntityLabel: user.FirstName + " " + user.LastName,
+		Metadata: map[string]interface{}{"action": "admin_reset_password", "email_sent": emailSent},
+	})
+
+	c.JSON(http.StatusOK, AdminResetPasswordResponse{TemporaryPassword: tempPassword, EmailSent: emailSent})
 }

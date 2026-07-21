@@ -8,17 +8,19 @@ import (
 )
 
 type Claims struct {
-	UserID string `json:"user_id"`
-	Email  string `json:"email"`
-	Role   string `json:"role"`
+	UserID    string `json:"user_id"`
+	Email     string `json:"email"`
+	Role      string `json:"role"`
+	CollegeID string `json:"college_id,omitempty"` // empty for super_admin / legacy users predating multi-tenancy
 	jwt.RegisteredClaims
 }
 
-func GenerateToken(userID, email, role, secret string) (string, error) {
+func GenerateToken(userID, email, role, collegeID, secret string) (string, error) {
 	claims := Claims{
-		UserID: userID,
-		Email:  email,
-		Role:   role,
+		UserID:    userID,
+		Email:     email,
+		Role:      role,
+		CollegeID: collegeID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),

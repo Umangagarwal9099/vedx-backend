@@ -92,6 +92,30 @@ func (r *CommunityRepository) FindAll(ctx context.Context) ([]models.Community, 
 	return r.scanCommunities(ctx, q)
 }
 
+// FindAllForUser returns the non-deleted, active communities the given user
+// is a member of — used to scope a student's Community page to their own
+// batch(es) instead of every community on the platform.
+func (r *CommunityRepository) FindAllForUser(ctx context.Context, userID string) ([]models.Community, error) {
+	q := communityBaseSelect + `
+		JOIN community_members cm ON cm.community_id = c.id AND cm.user_id = $1
+		WHERE c.deleted_at IS NULL AND c.is_active = TRUE
+		ORDER BY c.created_at DESC`
+	return r.scanCommunities(ctx, q, userID)
+}
+
+// IsMember reports whether userID belongs to the community identified by
+// communityShortID — used to gate posting/commenting/liking to members.
+func (r *CommunityRepository) IsMember(ctx context.Context, communityShortID, userID string) (bool, error) {
+	var exists bool
+	err := r.pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM community_members cm
+			JOIN communities c ON c.id = cm.community_id
+			WHERE c.short_id = $1 AND cm.user_id = $2
+		)`, communityShortID, userID).Scan(&exists)
+	return exists, err
+}
+
 // FindByShortID returns a single non-deleted community.
 func (r *CommunityRepository) FindByShortID(ctx context.Context, shortID string) (*models.Community, error) {
 	q := communityBaseSelect + ` WHERE c.short_id = $1 AND c.deleted_at IS NULL LIMIT 1`

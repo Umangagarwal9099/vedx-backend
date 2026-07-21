@@ -204,6 +204,18 @@ func (ctrl *ExamAttemptController) StartAttempt(c *gin.Context) {
 		return
 	}
 
+	if assessment.BatchShortID != "" {
+		enrolled, err := ctrl.batchRepo.IsStudentEnrolled(c.Request.Context(), assessment.BatchShortID, studentID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not verify batch enrollment"})
+			return
+		}
+		if !enrolled {
+			c.JSON(http.StatusForbidden, gin.H{"error": "you are not enrolled in this assessment's batch"})
+			return
+		}
+	}
+
 	now := time.Now()
 	if assessment.StartAt != nil && now.Before(*assessment.StartAt) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "this assessment has not started yet"})
@@ -285,6 +297,175 @@ func (ctrl *ExamAttemptController) StartAttempt(c *gin.Context) {
 	})
 }
 
+// deriveCompletedDisplayStatus maps a finished (submitted/evaluated) attempt
+// to the student-facing display_status the spec defines, respecting result
+// publication — an "evaluated" attempt still reads as "evaluation_pending"
+// to the student until the assessment's results are published.
+func deriveCompletedDisplayStatus(attempt *models.ExamAttempt, resultsVisible bool) string {
+	switch attempt.Status {
+	case "evaluated":
+		if resultsVisible {
+			return "graded"
+		}
+		return "evaluation_pending"
+	case "cancelled":
+		return "cancelled"
+	default: // "submitted"
+		if attempt.AutoSubmitted {
+			return "auto_submitted"
+		}
+		return "submitted"
+	}
+}
+
+// GetAccessStatus godoc
+//
+//	@Summary		Resolve exam access/display status
+//	@Description	The single source of truth the student frontend must render Start/Resume/Closed/Missed/Submitted state from — do not recompute this client-side. Returns can_start, can_resume, display_status, reason, attempt_status, starts_at, ends_at.
+//	@Tags			exam-attempts
+//	@Produce		json
+//	@Param			short_id	path		string	true	"Assessment short ID"
+//	@Success		200			{object}	models.ExamAccessStatus
+//	@Failure		404			{object}	map[string]string	"Assessment not found"
+//	@Failure		500			{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/assessments/{short_id}/access-status [get]
+func (ctrl *ExamAttemptController) GetAccessStatus(c *gin.Context) {
+	assessmentShortID := c.Param("short_id")
+	studentID := c.GetString("user_id")
+
+	assessment, err := ctrl.assessmentRepo.FindByShortID(c.Request.Context(), assessmentShortID)
+	if err != nil || assessment == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "assessment not found"})
+		return
+	}
+
+	secCfg, secCfgFound := ctrl.assessmentRepo.GetSecurityConfig(c.Request.Context(), assessmentShortID)
+	resp := models.ExamAccessStatus{
+		StartsAt:       assessment.StartAt,
+		EndsAt:         assessment.EndAt,
+		MaxAttempts:    assessment.MaxAttempts,
+		ResultsVisible: assessment.ResultsVisibleWith(secCfg.ResultPublishedAt, secCfgFound),
+	}
+
+	if assessment.CancelledAt != nil {
+		resp.DisplayStatus = "cancelled"
+		resp.Reason = "This examination has been cancelled."
+		c.JSON(http.StatusOK, resp)
+		return
+	}
+
+	if assessment.BatchShortID != "" {
+		enrolled, err := ctrl.batchRepo.IsStudentEnrolled(c.Request.Context(), assessment.BatchShortID, studentID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not verify batch enrollment"})
+			return
+		}
+		if !enrolled {
+			resp.DisplayStatus = "not_available"
+			resp.Reason = "You are not enrolled in this assessment's batch."
+			c.JSON(http.StatusOK, resp)
+			return
+		}
+	}
+
+	attempts, err := ctrl.attemptRepo.FindMyAttempts(c.Request.Context(), assessmentShortID, studentID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not check previous attempts"})
+		return
+	}
+	resp.AttemptNumber = len(attempts)
+
+	// An in_progress attempt always takes priority — resumable regardless of
+	// the window, since the sweep (or the student) will close it out.
+	for i := range attempts {
+		if attempts[i].Status == "in_progress" {
+			resp.CanResume = true
+			resp.AttemptStatus = "in_progress"
+			resp.DisplayStatus = "in_progress"
+			resp.AttemptShortID = attempts[i].ShortID
+			c.JSON(http.StatusOK, resp)
+			return
+		}
+	}
+
+	hasPassed := false
+	var mostRecent *models.ExamAttempt
+	for i := range attempts {
+		if attempts[i].Passed != nil && *attempts[i].Passed {
+			hasPassed = true
+		}
+		if mostRecent == nil || attempts[i].AttemptNumber > mostRecent.AttemptNumber {
+			mostRecent = &attempts[i]
+		}
+	}
+
+	grantCount, err := ctrl.attemptRepo.CountReattemptGrants(c.Request.Context(), assessmentShortID, studentID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not check reattempt grants"})
+		return
+	}
+	maxAttempts := assessment.MaxAttempts
+	if maxAttempts <= 0 {
+		maxAttempts = 1
+	}
+	maxAttempts += grantCount
+	resp.MaxAttempts = maxAttempts
+	attemptsExhausted := len(attempts) >= maxAttempts
+	passedBlocked := hasPassed && !assessment.AllowAttemptsAfterPassing && grantCount == 0
+
+	now := time.Now()
+	beforeStart := assessment.StartAt != nil && now.Before(*assessment.StartAt)
+	afterEnd := assessment.EndAt != nil && now.After(*assessment.EndAt)
+
+	canStartMore := !beforeStart && !afterEnd && !attemptsExhausted && !passedBlocked
+
+	if afterEnd {
+		if mostRecent != nil {
+			resp.AttemptStatus = mostRecent.Status
+			resp.DisplayStatus = deriveCompletedDisplayStatus(mostRecent, resp.ResultsVisible)
+			resp.Reason = "The examination window has closed."
+		} else {
+			resp.DisplayStatus = "missed"
+			resp.Reason = "The examination window has closed. You did not submit this examination."
+		}
+		c.JSON(http.StatusOK, resp)
+		return
+	}
+
+	if canStartMore {
+		resp.CanStart = true
+		resp.DisplayStatus = "not_started"
+		c.JSON(http.StatusOK, resp)
+		return
+	}
+
+	if beforeStart {
+		resp.DisplayStatus = "not_started"
+		resp.Reason = "This examination has not started yet."
+		c.JSON(http.StatusOK, resp)
+		return
+	}
+
+	// Window is open but the student can't start another attempt (exhausted
+	// or already passed) — show their most recent completed attempt's state.
+	if mostRecent != nil {
+		resp.AttemptStatus = mostRecent.Status
+		resp.DisplayStatus = deriveCompletedDisplayStatus(mostRecent, resp.ResultsVisible)
+		if passedBlocked {
+			resp.Reason = "You've already passed this assessment."
+		} else {
+			resp.Reason = "You've used all your attempts for this assessment."
+		}
+	} else {
+		// No attempts at all, yet can't start — only reachable if
+		// max_attempts is 0/misconfigured; report plainly rather than crash.
+		resp.DisplayStatus = "not_available"
+		resp.Reason = "You cannot start this assessment."
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
 // checkAttemptAccess enforces that only the student who owns this attempt, or
 // staff with access to its batch (mentor/employee scoped via checkBatchAccess,
 // super_admin/team_lead unrestricted), may view or act on it. Without this,
@@ -330,13 +511,29 @@ func (ctrl *ExamAttemptController) respondAttemptDetail(c *gin.Context, attempt 
 		return
 	}
 
-	reveal := attempt.Status != "in_progress" && assessment.ShowCorrectAnswers
+	role := c.GetString("role")
+	isStudent := role == string(models.RoleStudent)
+	secCfg, secCfgFound := ctrl.assessmentRepo.GetSecurityConfig(c.Request.Context(), attempt.AssessmentShortID)
+	resultsVisible := assessment.ResultsVisibleWith(secCfg.ResultPublishedAt, secCfgFound)
+
+	// Correct answers/explanations are only ever revealed once the attempt is
+	// finished, the assessment allows it, and — for the student themselves —
+	// only once results are actually published. Staff reviewing/grading
+	// always see them regardless of publish status.
+	reveal := attempt.Status != "in_progress" && assessment.ShowCorrectAnswers && (!isStudent || resultsVisible)
+
+	sanitized := *attempt
+	if isStudent && attempt.Status == "evaluated" && !resultsVisible {
+		sanitized.TotalScore = nil
+		sanitized.Passed = nil
+	}
+
 	status := http.StatusOK
 	if notFoundIfMissing {
 		status = http.StatusCreated
 	}
 	c.JSON(status, models.AttemptDetail{
-		ExamAttempt: *attempt,
+		ExamAttempt: sanitized,
 		Questions:   buildQuestionViews(attempt, order, questions, answers, reveal),
 	})
 }
@@ -389,6 +586,88 @@ func (ctrl *ExamAttemptController) SubmitAnswer(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// RecordViolation godoc
+//
+//	@Summary		Report an exam-integrity violation
+//	@Description	Records a proctoring-integrity event (tab switch, fullscreen exit, etc.) for an in-progress attempt. Applies the assessment's configured thresholds — allowed_warning_count and auto_submit_on_violation — and auto-submits the attempt once the threshold is reached. A normal browser cannot fully prevent a student from leaving the exam; this only detects and responds to what the browser can observe.
+//	@Tags			exam-attempts
+//	@Accept			json
+//	@Produce		json
+//	@Param			short_id			path		string							true	"Assessment short ID"
+//	@Param			attempt_short_id	path		string							true	"Attempt short ID"
+//	@Param			body				body		models.RecordViolationInput	true	"Violation details"
+//	@Success		200					{object}	models.RecordViolationResponse
+//	@Failure		400					{object}	map[string]string	"Validation error, or attempt is no longer in progress"
+//	@Failure		404					{object}	map[string]string	"Attempt not found"
+//	@Failure		500					{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/assessments/{short_id}/attempts/{attempt_short_id}/violations [post]
+func (ctrl *ExamAttemptController) RecordViolation(c *gin.Context) {
+	attemptShortID := c.Param("attempt_short_id")
+
+	attempt, err := ctrl.attemptRepo.FindAttemptByShortID(c.Request.Context(), attemptShortID)
+	if err != nil || attempt == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "attempt not found"})
+		return
+	}
+	if !ctrl.checkAttemptAccess(c, attempt) {
+		return
+	}
+	if attempt.Status != "in_progress" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "attempt is no longer in progress"})
+		return
+	}
+
+	assessment, err := ctrl.assessmentRepo.FindByShortID(c.Request.Context(), attempt.AssessmentShortID)
+	if err != nil || assessment == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not resolve assessment"})
+		return
+	}
+
+	var input models.RecordViolationInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	priorCount, err := ctrl.attemptRepo.CountViolations(c.Request.Context(), attemptShortID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not check violation history"})
+		return
+	}
+	warningNumber := priorCount + 1
+
+	allowedWarnings := assessment.AllowedWarningCount
+	if allowedWarnings <= 0 {
+		allowedWarnings = 1
+	}
+	shouldAutoSubmit := assessment.AutoSubmitOnViolation && warningNumber > allowedWarnings
+	actionTaken := "warned"
+	if shouldAutoSubmit {
+		actionTaken = "auto_submitted"
+	}
+
+	if _, err := ctrl.attemptRepo.RecordViolation(c.Request.Context(), attemptShortID, attempt.StudentID, input.ViolationType, input.BrowserInfo, warningNumber, actionTaken); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not record violation: " + err.Error()})
+		return
+	}
+
+	resp := models.RecordViolationResponse{WarningNumber: warningNumber, ActionTaken: actionTaken, AttemptStatus: attempt.Status}
+
+	if shouldAutoSubmit {
+		if err := ctrl.attemptRepo.MarkSubmitted(c.Request.Context(), attemptShortID, true, "violation"); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not auto-submit after violation"})
+			return
+		}
+		if err := ctrl.GradeObjectiveQuestions(c.Request.Context(), attempt, assessment); err != nil {
+			log.Printf("grade after violation auto-submit %s: %v", attemptShortID, err)
+		}
+		resp.AttemptStatus = "submitted"
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
+
 // SubmitAttempt godoc
 //
 //	@Summary		Submit an attempt
@@ -420,7 +699,7 @@ func (ctrl *ExamAttemptController) SubmitAttempt(c *gin.Context) {
 		return
 	}
 
-	if err := ctrl.attemptRepo.MarkSubmitted(c.Request.Context(), attemptShortID, false); err != nil {
+	if err := ctrl.attemptRepo.MarkSubmitted(c.Request.Context(), attemptShortID, false, "manual"); err != nil {
 		if !errors.Is(err, pgx.ErrNoRows) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not submit attempt"})
 			return
@@ -507,6 +786,23 @@ func (ctrl *ExamAttemptController) GetMyAttempts(c *gin.Context) {
 	}
 	if attempts == nil {
 		attempts = []models.ExamAttempt{}
+	}
+
+	// This is the calling student's own list — redact score/pass-fail on any
+	// evaluated attempt until the assessment's results are published.
+	assessment, assErr := ctrl.assessmentRepo.FindByShortID(c.Request.Context(), assessmentShortID)
+	resultsVisible := true
+	if assErr == nil && assessment != nil {
+		secCfg, secCfgFound := ctrl.assessmentRepo.GetSecurityConfig(c.Request.Context(), assessmentShortID)
+		resultsVisible = assessment.ResultsVisibleWith(secCfg.ResultPublishedAt, secCfgFound)
+	}
+	if !resultsVisible {
+		for i := range attempts {
+			if attempts[i].Status == "evaluated" {
+				attempts[i].TotalScore = nil
+				attempts[i].Passed = nil
+			}
+		}
 	}
 	c.JSON(http.StatusOK, attempts)
 }
@@ -653,7 +949,7 @@ func (ctrl *ExamAttemptController) GradeAnswer(c *gin.Context) {
 		Action: "grade", EntityType: "exam_answer",
 		EntityShortID: attemptShortID, EntityLabel: assessment.Name,
 		BatchShortID: assessment.BatchShortID,
-		Metadata: map[string]interface{}{"question_short_id": questionShortID, "marks_awarded": input.MarksAwarded},
+		Metadata:     map[string]interface{}{"question_short_id": questionShortID, "marks_awarded": input.MarksAwarded},
 	})
 
 	ungraded, err := ctrl.attemptRepo.CountUngradedAnswers(c.Request.Context(), attemptShortID)
@@ -757,7 +1053,7 @@ func (ctrl *ExamAttemptController) AutoSubmitExpired(ctx context.Context) (int, 
 	processed := 0
 	for i := range expired {
 		attempt := &expired[i]
-		if err := ctrl.attemptRepo.MarkSubmitted(ctx, attempt.ShortID, true); err != nil {
+		if err := ctrl.attemptRepo.MarkSubmitted(ctx, attempt.ShortID, true, "timer_expired"); err != nil {
 			log.Printf("auto-submit: mark submitted %s: %v", attempt.ShortID, err)
 			continue
 		}
@@ -829,7 +1125,7 @@ func (ctrl *ExamAttemptController) GrantReattempt(c *gin.Context) {
 		Action: "grant_reattempt", EntityType: "exam_attempt",
 		EntityShortID: input.StudentID, EntityLabel: assessment.Name,
 		BatchShortID: assessment.BatchShortID,
-		Metadata: map[string]interface{}{"reason": input.Reason, "attempt_number": len(pastAttempts) + 1},
+		Metadata:     map[string]interface{}{"reason": input.Reason, "attempt_number": len(pastAttempts) + 1},
 	})
 
 	c.JSON(http.StatusCreated, grant)

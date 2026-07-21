@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -73,7 +74,14 @@ func (r *AssignmentRepository) Create(ctx context.Context, in models.CreateAssig
 	for attempt := 0; attempt < 3; attempt++ {
 		shortID := util.GenerateShortID()
 
-		a, err := scanAssignment(r.pool.QueryRow(ctx, fmt.Sprintf(`
+		// A data-modifying CTE and the main query share one snapshot, so a
+		// plain re-scan of assignments (e.g. "WHERE a.id = (SELECT id FROM
+		// ins)") can never see the row ins just inserted — Postgres only
+		// guarantees visibility through the CTE's own RETURNING columns. So
+		// the outer SELECT reads FROM ins directly instead of FROM
+		// assignments a. A brand-new assignment has zero submissions, so the
+		// submission-count subqueries collapse to literal 0s.
+		a, err := scanAssignment(r.pool.QueryRow(ctx, `
 			WITH ins AS (
 				INSERT INTO assignments (
 					short_id, title, description, batch_id, module_id, session_id,
@@ -91,7 +99,22 @@ func (r *AssignmentRepository) Create(ctx context.Context, in models.CreateAssig
 				)
 				RETURNING *
 			)
-			%s`, insSelect),
+			SELECT ins.id, ins.short_id, ins.title, COALESCE(ins.description,''),
+			       ins.batch_id, b.short_id, b.batch_number,
+			       COALESCE(m.short_id, ''), COALESCE(m.module_name, ''),
+			       COALESCE(s.short_id, ''), COALESCE(s.name, ''),
+			       ins.max_marks, ins.deadline,
+			       ins.allowed_submission_types, COALESCE(ins.allowed_file_formats, '{}'),
+			       COALESCE(ins.max_file_size_mb, 0),
+			       ins.late_submission_allowed, COALESCE(ins.late_penalty_percent, 0),
+			       ins.status::TEXT, ins.created_by, CONCAT(u.first_name, ' ', u.last_name),
+			       0, 0,
+			       ins.created_at, ins.updated_at
+			FROM ins
+			JOIN batches b ON ins.batch_id   = b.id
+			JOIN users   u ON ins.created_by = u.id AND u.deleted_at IS NULL
+			LEFT JOIN modules  m ON ins.module_id  = m.id AND m.deleted_at IS NULL
+			LEFT JOIN sessions s ON ins.session_id = s.id AND s.deleted_at IS NULL`,
 			shortID, in.Title, in.Description, in.BatchShortID, in.ModuleShortID, in.SessionShortID,
 			in.MaxMarks, in.Deadline, in.AllowedSubmissionTypes, in.AllowedFileFormats,
 			in.MaxFileSizeMB, in.LateSubmissionAllowed, in.LatePenaltyPercent,
@@ -276,6 +299,12 @@ func (r *AssignmentRepository) Delete(ctx context.Context, shortID string) error
 
 // ── Submissions ──────────────────────────────────────────────────────────────
 
+// submissionBaseSelect deliberately does NOT include result_published_at — a
+// new column (schema_updates_submission_flow_v1.sql). This backs
+// CreateOrResubmit/FindMySubmission/FindAllSubmissions, pre-existing,
+// constantly-hit paths that must keep working even if that migration hasn't
+// landed yet. Publish-state is read separately (GetResultPublishedAt), only
+// where results are actually gated, with a graceful fallback.
 const submissionBaseSelect = `
 	SELECT asub.id, asub.short_id, a.short_id,
 	       asub.student_id, CONCAT(u.first_name, ' ', u.last_name), u.email,
@@ -300,9 +329,27 @@ func scanSubmission(row pgx.Row) (models.AssignmentSubmission, error) {
 	return s, err
 }
 
+// StudentHasAccess reports whether a student may view or submit to an
+// assignment: they must be enrolled in the assignment's batch and the
+// assignment must be published (status = 'active'). Mirrors
+// ProjectRepository.StudentHasAccess.
+func (r *AssignmentRepository) StudentHasAccess(ctx context.Context, assignmentShortID, studentID string) (bool, error) {
+	var exists bool
+	err := r.pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM assignments a
+			JOIN batch_students bs ON bs.batch_id = a.batch_id AND bs.user_id = $2
+			WHERE a.short_id = $1 AND a.deleted_at IS NULL AND a.status = 'active'
+		)`, assignmentShortID, studentID).Scan(&exists)
+	return exists, err
+}
+
 // CreateOrResubmit inserts a student's submission for an assignment, or overwrites
 // an existing one that's in "resubmission_required" state. Returns an error if a
-// submission already exists in any other state (call this "already submitted").
+// submission already exists in any other state (call this "already submitted"),
+// or if there's no submission yet and the deadline has passed with late
+// submissions disabled (a mentor-approved resubmission always overrides the
+// deadline — that's the whole point of granting one).
 func (r *AssignmentRepository) CreateOrResubmit(ctx context.Context, assignmentShortID, studentID string, in models.CreateAssignmentSubmissionInput) (*models.AssignmentSubmission, error) {
 	var existingStatus string
 	err := r.pool.QueryRow(ctx, `
@@ -317,15 +364,27 @@ func (r *AssignmentRepository) CreateOrResubmit(ctx context.Context, assignmentS
 	if err == nil && existingStatus != "resubmission_required" {
 		return nil, fmt.Errorf("already submitted")
 	}
-
-	// See the comment on assessment_repo.go's Create for why this reads FROM
-	// ins rather than FROM assignment_submissions.
-	insSelect := strings.Replace(submissionBaseSelect, "FROM assignment_submissions asub", "FROM ins asub", 1)
+	if existingStatus != "resubmission_required" {
+		var deadline time.Time
+		var lateAllowed bool
+		if err := r.pool.QueryRow(ctx, `SELECT deadline, late_submission_allowed FROM assignments WHERE short_id = $1 AND deleted_at IS NULL`, assignmentShortID).Scan(&deadline, &lateAllowed); err != nil {
+			return nil, fmt.Errorf("check assignment deadline: %w", err)
+		}
+		if !lateAllowed && time.Now().After(deadline) {
+			return nil, fmt.Errorf("the submission deadline has passed and late submissions are not allowed")
+		}
+	}
 
 	for attempt := 0; attempt < 3; attempt++ {
 		shortID := util.GenerateShortID()
 
-		s, err := scanSubmission(r.pool.QueryRow(ctx, fmt.Sprintf(`
+		// A data-modifying CTE and the main query share one snapshot, so a
+		// plain re-scan of assignment_submissions (e.g. "WHERE asub.id =
+		// (SELECT id FROM ins)") can never see the row ins just
+		// inserted/updated — Postgres only guarantees visibility through the
+		// CTE's own RETURNING columns. So the outer SELECT reads FROM ins
+		// directly instead of FROM assignment_submissions asub.
+		s, err := scanSubmission(r.pool.QueryRow(ctx, `
 			WITH target AS (
 				SELECT id, deadline FROM assignments WHERE short_id = $6 AND deleted_at IS NULL
 			), ins AS (
@@ -350,7 +409,15 @@ func (r *AssignmentRepository) CreateOrResubmit(ctx context.Context, assignmentS
 					updated_at = NOW()
 				RETURNING *
 			)
-			%s`, insSelect),
+			SELECT ins.id, ins.short_id, a.short_id,
+			       ins.student_id, CONCAT(u.first_name, ' ', u.last_name), u.email,
+			       ins.submission_type::TEXT, COALESCE(ins.content, ''), COALESCE(ins.file_url, ''),
+			       ins.status::TEXT, ins.marks, COALESCE(ins.feedback, ''),
+			       ins.submitted_at, ins.evaluated_at, COALESCE(ins.evaluated_by::TEXT, ''),
+			       ins.created_at, ins.updated_at
+			FROM ins
+			JOIN assignments a ON ins.assignment_id = a.id
+			JOIN users       u ON ins.student_id    = u.id AND u.deleted_at IS NULL`,
 			shortID, studentID, in.SubmissionType, in.Content, in.FileURL, assignmentShortID,
 		))
 		if err == nil {
@@ -456,6 +523,33 @@ func (r *AssignmentRepository) Grade(ctx context.Context, assignmentShortID, sub
 		WHERE short_id = $5
 		  AND assignment_id = (SELECT id FROM assignments WHERE short_id = $6 AND deleted_at IS NULL)`,
 		in.Marks, in.Feedback, status, evaluatedBy, submissionShortID, assignmentShortID,
+	)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+// GetResultPublishedAt reads a submission's result_published_at via an
+// isolated query (see submissionBaseSelect's comment). ok=false means the
+// migration hasn't been applied yet — callers should treat that as "not
+// gated" (fail open to pre-existing behavior), not "unpublished."
+func (r *AssignmentRepository) GetResultPublishedAt(ctx context.Context, submissionShortID string) (publishedAt *time.Time, ok bool) {
+	err := r.pool.QueryRow(ctx, `SELECT result_published_at FROM assignment_submissions WHERE short_id = $1`, submissionShortID).Scan(&publishedAt)
+	return publishedAt, err == nil
+}
+
+// PublishResults makes every graded submission for this assignment visible
+// to students at once — grading (Grade) never sets this itself.
+func (r *AssignmentRepository) PublishResults(ctx context.Context, assignmentShortID string) error {
+	result, err := r.pool.Exec(ctx, `
+		UPDATE assignment_submissions SET result_published_at = NOW(), updated_at = NOW()
+		WHERE assignment_id = (SELECT id FROM assignments WHERE short_id = $1 AND deleted_at IS NULL)
+		  AND status = 'evaluated' AND result_published_at IS NULL`,
+		assignmentShortID,
 	)
 	if err != nil {
 		return err

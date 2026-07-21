@@ -96,6 +96,28 @@ func (ctrl *CommunityController) GetAll(c *gin.Context) {
 	c.JSON(http.StatusOK, communities)
 }
 
+// GetMyCommunities godoc
+//
+//	@Summary		List my communities
+//	@Description	Returns the active communities the calling user is a member of — used by the student Community page, scoped to their own batch(es) instead of every community on the platform.
+//	@Tags			communities
+//	@Produce		json
+//	@Success		200	{array}		models.Community
+//	@Failure		500	{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/communities/me [get]
+func (ctrl *CommunityController) GetMyCommunities(c *gin.Context) {
+	communities, err := ctrl.communityRepo.FindAllForUser(c.Request.Context(), c.GetString("user_id"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch communities"})
+		return
+	}
+	if communities == nil {
+		communities = []models.Community{}
+	}
+	c.JSON(http.StatusOK, communities)
+}
+
 // GetCommunity godoc
 //
 //	@Summary		Get community
