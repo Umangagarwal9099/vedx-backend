@@ -41,21 +41,21 @@ type ProjectDetail struct {
 }
 
 type CreateProjectInput struct {
-	Title                  string   `json:"title"                    binding:"required"                                                     example:"E-Commerce Capstone"`
-	ProblemStatement       string   `json:"problem_statement"                                                                                 example:"Build a full-stack e-commerce platform with cart, checkout, and admin panel."`
-	Requirements           string   `json:"requirements"                                                                                       example:"React frontend, Node.js backend, PostgreSQL database."`
-	ExpectedDeliverables   string   `json:"expected_deliverables"                                                                              example:"GitHub repo, deployed app, final report."`
-	EvaluationCriteria     string   `json:"evaluation_criteria"                                                                                example:"Functionality 40%, code quality 30%, presentation 30%."`
-	ReferenceFiles         []string `json:"reference_files"                                                                                    example:"[\"https://cdn.example.com/brief.pdf\"]"`
-	Category               string   `json:"category"                 binding:"required,oneof=individual group module capstone internship final_course" example:"capstone"`
-	IsTeamProject          bool     `json:"is_team_project"                                                                                    example:"true"`
-	BatchShortID           string   `json:"batch_short_id"           binding:"required"                                                       example:"use GET /batches to pick a real short_id"`
-	ModuleShortID          string   `json:"module_short_id"                                                                                    example:"use GET /modules to pick a real short_id"`
-	MaxMarks               int      `json:"max_marks"                binding:"required,min=1"                                                 example:"200"`
-	StartDate              string   `json:"start_date"                                                                                         example:"2026-07-01"`
+	Title                  string    `json:"title"                    binding:"required"                                                     example:"E-Commerce Capstone"`
+	ProblemStatement       string    `json:"problem_statement"                                                                                 example:"Build a full-stack e-commerce platform with cart, checkout, and admin panel."`
+	Requirements           string    `json:"requirements"                                                                                       example:"React frontend, Node.js backend, PostgreSQL database."`
+	ExpectedDeliverables   string    `json:"expected_deliverables"                                                                              example:"GitHub repo, deployed app, final report."`
+	EvaluationCriteria     string    `json:"evaluation_criteria"                                                                                example:"Functionality 40%, code quality 30%, presentation 30%."`
+	ReferenceFiles         []string  `json:"reference_files"                                                                                    example:"[\"https://cdn.example.com/brief.pdf\"]"`
+	Category               string    `json:"category"                 binding:"required,oneof=individual group module capstone internship final_course" example:"capstone"`
+	IsTeamProject          bool      `json:"is_team_project"                                                                                    example:"true"`
+	BatchShortID           string    `json:"batch_short_id"           binding:"required"                                                       example:"use GET /batches to pick a real short_id"`
+	ModuleShortID          string    `json:"module_short_id"                                                                                    example:"use GET /modules to pick a real short_id"`
+	MaxMarks               int       `json:"max_marks"                binding:"required,min=1"                                                 example:"200"`
+	StartDate              string    `json:"start_date"                                                                                         example:"2026-07-01"`
 	FinalDeadline          time.Time `json:"final_deadline"          binding:"required"                                                       example:"2026-08-15T23:59:00Z"`
-	AllowedSubmissionTypes []string `json:"allowed_submission_types" binding:"required,min=1,dive,oneof=link text file"                        example:"[\"link\",\"file\"]"`
-	Status                 string   `json:"status"                   binding:"omitempty,oneof=draft active"                                  example:"active"`
+	AllowedSubmissionTypes []string  `json:"allowed_submission_types" binding:"required,min=1,dive,oneof=link text file"                        example:"[\"link\",\"file\"]"`
+	Status                 string    `json:"status"                   binding:"omitempty,oneof=draft active"                                  example:"active"`
 }
 
 type UpdateProjectInput struct {
@@ -133,7 +133,7 @@ type ProjectTeamMember struct {
 }
 
 type CreateTeamInput struct {
-	Name      string   `json:"name"       binding:"required"       example:"Team Phoenix"`
+	Name       string   `json:"name"       binding:"required"       example:"Team Phoenix"`
 	StudentIDs []string `json:"student_ids"                        example:"[\"11111111-1111-1111-1111-111111111111\"]"`
 }
 
@@ -145,30 +145,46 @@ type AddTeamMembersInput struct {
 
 // ProjectSubmission is one student's (or one team's) submission for a milestone.
 type ProjectSubmission struct {
-	ID              string     `json:"id"`
-	ShortID         string     `json:"short_id"`
-	MilestoneShortID string    `json:"milestone_short_id"`
+	ID               string `json:"id"`
+	ShortID          string `json:"short_id"`
+	MilestoneShortID string `json:"milestone_short_id"`
 	// ProjectTitle/MilestoneTitle/BatchShortID/BatchNumber are only populated
 	// by the cross-project workspace listing (FindAllSubmissionsForMentor).
-	ProjectTitle    string     `json:"project_title,omitempty"`
-	MilestoneTitle  string     `json:"milestone_title,omitempty"`
-	BatchShortID    string     `json:"batch_short_id,omitempty"`
-	BatchNumber     string     `json:"batch_number,omitempty"`
-	StudentID       string     `json:"student_id,omitempty"`
-	StudentName     string     `json:"student_name,omitempty"`
-	TeamShortID     string     `json:"team_short_id,omitempty"`
-	TeamName        string     `json:"team_name,omitempty"`
-	SubmissionType  string     `json:"submission_type"` // link | text | file
-	Content         string     `json:"content,omitempty"`
-	FileURL         string     `json:"file_url,omitempty"`
-	Status          string     `json:"status"` // submitted | late | evaluated | resubmission_required
-	Marks           *int       `json:"marks,omitempty"`
-	Feedback        string     `json:"feedback,omitempty"`
-	SubmittedAt     time.Time  `json:"submitted_at"`
-	EvaluatedAt     *time.Time `json:"evaluated_at,omitempty"`
-	EvaluatedBy     string     `json:"evaluated_by,omitempty"`
-	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at"`
+	ProjectTitle   string     `json:"project_title,omitempty"`
+	MilestoneTitle string     `json:"milestone_title,omitempty"`
+	BatchShortID   string     `json:"batch_short_id,omitempty"`
+	BatchNumber    string     `json:"batch_number,omitempty"`
+	StudentID      string     `json:"student_id,omitempty"`
+	StudentName    string     `json:"student_name,omitempty"`
+	TeamShortID    string     `json:"team_short_id,omitempty"`
+	TeamName       string     `json:"team_name,omitempty"`
+	SubmissionType string     `json:"submission_type"` // link | text | file
+	Content        string     `json:"content,omitempty"`
+	FileURL        string     `json:"file_url,omitempty"`
+	Status         string     `json:"status"` // submitted | late | evaluated | resubmission_required
+	Marks          *int       `json:"marks,omitempty"`
+	Feedback       string     `json:"feedback,omitempty"`
+	SubmittedAt    time.Time  `json:"submitted_at"`
+	EvaluatedAt    *time.Time `json:"evaluated_at,omitempty"`
+	EvaluatedBy    string     `json:"evaluated_by,omitempty"`
+	// ResultPublishedAt gates student-visible marks/feedback — set only by
+	// the explicit bulk "publish results" action, never by grading itself.
+	ResultPublishedAt *time.Time `json:"result_published_at,omitempty"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
+}
+
+// ResultsVisibleWith reports whether this submission's marks/feedback may be
+// shown to the student(s) who made it. publishedAt/found come from
+// ProjectRepository.GetResultPublishedAt, a query isolated from this
+// submission's own base select — when found is false (that migration hasn't
+// been applied yet), this falls back to "visible," i.e. pre-existing
+// behavior (marks show immediately once graded) is unaffected.
+func (s *ProjectSubmission) ResultsVisibleWith(publishedAt *time.Time, found bool) bool {
+	if !found {
+		return true
+	}
+	return publishedAt != nil
 }
 
 type CreateProjectSubmissionInput struct {

@@ -39,8 +39,14 @@ func (r *AuditLogRepository) Log(ctx context.Context, e models.AuditEntry) error
 			(SELECT id FROM batches WHERE short_id = NULLIF($8,'') AND deleted_at IS NULL),
 			$9::JSONB
 		)`,
+		// metadataJSON must go in as a string, not []byte — pgx sends a
+		// []byte query param in binary (bytea) format, and Postgres can't
+		// reinterpret that as a JSONB text cast. This was silently failing
+		// every single audit-log write in the app (0 rows ever landed in
+		// audit_logs) until this fix — logAudit() only ever logs failures
+		// to stdout, never surfaces them, so nothing user-visible caught it.
 		util.GenerateShortID(), e.ActorID, e.Action, e.EntityType, e.EntityID, e.EntityShortID,
-		e.EntityLabel, e.BatchShortID, metadataJSON,
+		e.EntityLabel, e.BatchShortID, string(metadataJSON),
 	)
 	return err
 }

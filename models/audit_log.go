@@ -7,7 +7,7 @@ import "time"
 type AuditEntry struct {
 	ActorID       string
 	Action        string // create | update | delete | grade | issue | revoke | transfer | schedule | unschedule | cancel | grant_reattempt | enroll | remove
-	EntityType    string // batch | session | attendance | assignment | assignment_submission | project | project_submission | assessment | exam_attempt | exam_answer | resource | certificate | module_schedule | score_weights | enrollment | fees
+	EntityType    string // batch | session | attendance | assignment | assignment_submission | project | project_submission | assessment | exam_attempt | exam_answer | resource | certificate | module_schedule | score_weights | enrollment | fees | user
 	EntityID      string
 	EntityShortID string
 	EntityLabel   string

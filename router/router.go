@@ -36,6 +36,8 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	moduleRepo := repository.NewModuleRepository(pool)
 	assessmentRepo := repository.NewAssessmentRepository(pool)
 	communityRepo := repository.NewCommunityRepository(pool)
+	communityPostRepo := repository.NewCommunityPostRepository(pool)
+	collegeRepo := repository.NewCollegeRepository(pool)
 	notificationRepo := repository.NewNotificationRepository(pool)
 	sessionRepo := repository.NewSessionRepository(pool)
 	assignmentRepo := repository.NewAssignmentRepository(pool)
@@ -51,6 +53,9 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	auditLogRepo := repository.NewAuditLogRepository(pool)
 	profileRepo := repository.NewProfileRepository(pool)
 	passwordResetRepo := repository.NewPasswordResetRepository(pool)
+	studentRegistrationRepo := repository.NewStudentRegistrationRepository(pool)
+	studentNoteRepo := repository.NewStudentNoteRepository(pool)
+	loginActivityRepo := repository.NewLoginActivityRepository(pool)
 	analyticsRepo := repository.NewAnalyticsRepository(pool)
 	leadRepo := repository.NewLeadRepository(pool)
 	leadAssignmentHistoryRepo := repository.NewLeadAssignmentHistoryRepository(pool)
@@ -66,8 +71,10 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	emailSvc := service.NewEmailService(cfg.Resend)
 
 	// Controllers
-	authCtrl := controller.NewAuthController(userRepo, passwordResetRepo, emailSvc, cfg.JWT.Secret)
-	userCtrl := controller.NewUserController(userRepo, emailSvc, cfg.App.PublicURL)
+	authCtrl := controller.NewAuthController(userRepo, passwordResetRepo, loginActivityRepo, emailSvc, cfg.JWT.Secret)
+	userCtrl := controller.NewUserController(userRepo, emailSvc, cfg.App.PublicURL, auditLogRepo)
+	studentRegistrationCtrl := controller.NewStudentRegistrationController(studentRegistrationRepo, studentNoteRepo, auditLogRepo)
+	loginActivityCtrl := controller.NewLoginActivityController(loginActivityRepo)
 	courseCtrl := controller.NewCourseController(courseRepo, notificationRepo)
 	batchCtrl := controller.NewBatchController(batchRepo, enrollmentRepo, notificationRepo, userRepo, emailSvc, auditLogRepo)
 	eventCtrl := controller.NewEventController(eventRepo, notificationRepo)
@@ -81,6 +88,8 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	bannerCtrl := controller.NewBannerController(bannerRepo, notificationRepo)
 	assessmentCtrl := controller.NewAssessmentController(assessmentRepo, questionBankRepo, batchRepo, notificationRepo, auditLogRepo)
 	communityCtrl := controller.NewCommunityController(communityRepo, notificationRepo, userRepo, batchRepo, emailSvc)
+	collegeCtrl := controller.NewCollegeController(collegeRepo)
+	communityPostCtrl := controller.NewCommunityPostController(communityPostRepo, communityRepo)
 	notificationCtrl := controller.NewNotificationController(notificationRepo)
 	sessionCtrl := controller.NewSessionController(sessionRepo, batchRepo, notificationRepo, userRepo, zoomSvc, emailSvc, cfg.App.PublicURL, cfg.App.Timezone, auditLogRepo)
 	zoomWebhookCtrl := controller.NewZoomWebhookController(zoomSvc, sessionRepo)
@@ -135,6 +144,20 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			// Lead-CRM routes: team_lead carries a personal lead quota alongside employees.
 			leadOrAbove := middleware.RequireRole(models.RoleSuperAdmin, models.RoleTeamLead, models.RoleEmployee)
 
+			// Colleges — multi-tenancy configuration. Managing colleges/feature
+			// toggles is super_admin only; any authenticated user can read their
+			// OWN resolved features (used to drive every frontend's sidebar).
+			protected.GET("/colleges/me/features", collegeCtrl.GetMyFeatures)
+			colleges := protected.Group("/colleges", middleware.RequireRole(models.RoleSuperAdmin))
+			{
+				colleges.POST("", collegeCtrl.Create)
+				colleges.GET("", collegeCtrl.GetAll)
+				colleges.GET("/:short_id", collegeCtrl.GetByShortID)
+				colleges.PATCH("/:short_id", collegeCtrl.Update)
+				colleges.PATCH("/:short_id/features", collegeCtrl.UpdateFeatures)
+				colleges.DELETE("/:short_id", collegeCtrl.Delete)
+			}
+
 			// Change password — logged-in user, requires the current password.
 			protected.POST("/auth/change-password", authCtrl.ChangePassword)
 
@@ -149,6 +172,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			protected.POST("/users/student", adminOrAbove, userCtrl.CreateStudent)
 			protected.PATCH("/users/:id", userCtrl.Update)
 			protected.PATCH("/users/:id/role", middleware.RequireRole(models.RoleSuperAdmin), userCtrl.ChangeRole)
+			protected.PATCH("/users/:id/email", adminOrAbove, userCtrl.ChangeEmail)
 			// Deleting an account is destructive and irreversible from the API's
 			// perspective (soft-delete, but still removes access) — super_admin only.
 			protected.DELETE("/users/:id", middleware.RequireRole(models.RoleSuperAdmin), userCtrl.Delete)
@@ -168,7 +192,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			// Lead CRM — admin imports/assigns/monitors; employees (and team_lead's
 			// own quota) work only their assigned leads. Static paths registered
 			// before /:short_id so Gin matches them first.
-			leads := protected.Group("/leads")
+			leads := protected.Group("/leads", middleware.RequireFeature(collegeRepo, models.FeatureCRM))
 			{
 				leads.POST("", adminOrAbove, leadCtrl.Create)
 				leads.POST("/import", adminOrAbove, leadCtrl.BulkImport)
@@ -294,6 +318,20 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			protected.GET("/users/:id/streak", middleware.RequireSelfOrRole("id", models.RoleSuperAdmin, models.RoleTeamLead, models.RoleMentor), engagementCtrl.GetStudentStreak)
 			protected.GET("/users/:id/profile-details", middleware.RequireSelfOrRole("id", models.RoleSuperAdmin, models.RoleTeamLead), profileCtrl.GetDetails)
 			protected.PATCH("/users/:id/profile-details", middleware.RequireSelfOrRole("id", models.RoleSuperAdmin, models.RoleTeamLead), profileCtrl.UpdateDetails)
+
+			// Rich learner-detail page support — registration/demographic profile,
+			// status lifecycle, learner notes, admin password reset, login activity.
+			protected.GET("/users/:id/registration-details", middleware.RequireSelfOrRole("id", models.RoleSuperAdmin, models.RoleTeamLead), studentRegistrationCtrl.GetDetails)
+			protected.PATCH("/users/:id/registration-details", middleware.RequireSelfOrRole("id", models.RoleSuperAdmin, models.RoleTeamLead), studentRegistrationCtrl.UpdateDetails)
+			protected.POST("/users/:id/status", adminOrAbove, studentRegistrationCtrl.UpdateStatus)
+			protected.GET("/users/:id/status-history", adminOrAbove, studentRegistrationCtrl.GetStatusHistory)
+			// Notes and login/device activity are administrative/counsellor-facing
+			// information — admin only, never mentor (see Mentor role lockdown).
+			protected.POST("/users/:id/notes", adminOrAbove, studentRegistrationCtrl.AddNote)
+			protected.GET("/users/:id/notes", adminOrAbove, studentRegistrationCtrl.GetNotes)
+			protected.POST("/users/:id/reset-password", adminOrAbove, userCtrl.ResetPassword)
+			protected.GET("/users/:id/login-activity", adminOrAbove, loginActivityCtrl.GetForUser)
+			protected.DELETE("/users/:id/login-activity/:deviceId", adminOrAbove, loginActivityCtrl.RemoveDevice)
 
 			// Global audit log browse — admin only.
 			protected.GET("/audit-logs", adminOrAbove, auditLogCtrl.GetAll)
@@ -422,6 +460,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				assessments.PATCH("/:short_id", staffOrAbove, assessmentCtrl.Update)
 				assessments.DELETE("/:short_id", staffOrAbove, assessmentCtrl.Delete)
 				assessments.POST("/:short_id/cancel", staffOrAbove, examAttemptCtrl.CancelAssessment)
+				assessments.POST("/:short_id/publish-results", staffOrAbove, assessmentCtrl.PublishResults)
 
 				// Question links — attach/reorder/detach bank questions on an assessment
 				assessments.POST("/:short_id/questions", staffOrAbove, assessmentCtrl.AttachQuestion)
@@ -430,18 +469,20 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				assessments.DELETE("/:short_id/questions/:question_short_id", staffOrAbove, assessmentCtrl.DetachQuestion)
 
 				// Attempts — students start/answer/submit their own; staff monitor and grade
+				assessments.GET("/:short_id/access-status", examAttemptCtrl.GetAccessStatus)
 				assessments.POST("/:short_id/attempts", examAttemptCtrl.StartAttempt)
 				assessments.GET("/:short_id/attempts", staffOrAbove, examAttemptCtrl.GetAllAttempts)
 				assessments.GET("/:short_id/attempts/me", examAttemptCtrl.GetMyAttempts)
 				assessments.GET("/:short_id/attempts/:attempt_short_id", examAttemptCtrl.GetAttempt)
 				assessments.POST("/:short_id/attempts/:attempt_short_id/answers", examAttemptCtrl.SubmitAnswer)
 				assessments.POST("/:short_id/attempts/:attempt_short_id/submit", examAttemptCtrl.SubmitAttempt)
+				assessments.POST("/:short_id/attempts/:attempt_short_id/violations", examAttemptCtrl.RecordViolation)
 				assessments.PATCH("/:short_id/attempts/:attempt_short_id/answers/:question_short_id/grade", staffOrAbove, examAttemptCtrl.GradeAnswer)
 				assessments.POST("/:short_id/reattempts", staffOrAbove, examAttemptCtrl.GrantReattempt)
 			}
 
 			// Question bank — private/course/global visibility; staff manage, everyone reads what they can see
-			questions := protected.Group("/questions")
+			questions := protected.Group("/questions", middleware.RequireFeature(collegeRepo, models.FeatureCodingQuestionBank))
 			{
 				questions.POST("", staffOrAbove, questionBankCtrl.Create)
 				questions.GET("", questionBankCtrl.GetAll)
@@ -451,7 +492,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			}
 
 			// Question bank taxonomy — Subject -> Topic -> Subtopic reference tree + per-subject stats
-			questionBank := protected.Group("/question-bank")
+			questionBank := protected.Group("/question-bank", middleware.RequireFeature(collegeRepo, models.FeatureCodingQuestionBank))
 			{
 				questionBank.GET("/taxonomy", questionBankCtrl.GetTaxonomy)
 				questionBank.GET("/stats", questionBankCtrl.GetStats)
@@ -459,10 +500,11 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 
 			// Communities — scoped to a batch. super_admin / team_lead / mentor manage them;
 			// any authenticated user can read.
-			communities := protected.Group("/communities")
+			communities := protected.Group("/communities", middleware.RequireFeature(collegeRepo, models.FeatureCommunity))
 			{
 				communities.POST("", staffOrAbove, communityCtrl.Create)
 				communities.GET("", communityCtrl.GetAll)
+				communities.GET("/me", communityCtrl.GetMyCommunities)
 				communities.GET("/:short_id", communityCtrl.GetByShortID)
 				communities.PATCH("/:short_id", staffOrAbove, communityCtrl.Update)
 				communities.DELETE("/:short_id", staffOrAbove, communityCtrl.Delete)
@@ -471,17 +513,37 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				communities.GET("/:short_id/members", communityCtrl.GetMembers)
 				communities.POST("/:short_id/members", staffOrAbove, communityCtrl.AddMembers)
 				communities.DELETE("/:short_id/members/:user_id", staffOrAbove, communityCtrl.RemoveMember)
+
+				// Posts — a community's feed. Any member can post/comment/like;
+				// checkCommunityMembership inside the controller enforces that
+				// per-request (staff bypass, since they moderate every community).
+				communities.POST("/:short_id/posts", communityPostCtrl.CreatePost)
+				communities.GET("/:short_id/posts", communityPostCtrl.GetPosts)
 			}
 
-			// Sessions — scoped to a batch. super_admin / team_lead / mentor manage them;
-			// any authenticated user can read.
-			sessions := protected.Group("/sessions")
+			// Post-level actions, not nested under a specific community (the
+			// post already carries its community).
+			posts := protected.Group("/posts")
 			{
-				sessions.POST("", staffOrAbove, sessionCtrl.Create)
+				posts.DELETE("/:short_id", communityPostCtrl.DeletePost)
+				posts.PATCH("/:short_id/pin", staffOrAbove, communityPostCtrl.SetPostPinned)
+				posts.POST("/:short_id/like", communityPostCtrl.ToggleLike)
+				posts.POST("/:short_id/comments", communityPostCtrl.AddComment)
+				posts.GET("/:short_id/comments", communityPostCtrl.GetComments)
+			}
+			protected.DELETE("/comments/:short_id", communityPostCtrl.DeleteComment)
+
+			// Sessions — scoped to a batch. Scheduling (create/reschedule/cancel) is
+			// super_admin / team_lead only — mentors view sessions for batches they
+			// manage but never create/edit/cancel them (see Mentor role lockdown).
+			// Any authenticated user can read.
+			sessions := protected.Group("/sessions", middleware.RequireFeature(collegeRepo, models.FeatureLiveSessions))
+			{
+				sessions.POST("", adminOrAbove, sessionCtrl.Create)
 				sessions.GET("", sessionCtrl.GetAll)
 				sessions.GET("/:short_id", sessionCtrl.GetByShortID)
-				sessions.PATCH("/:short_id", staffOrAbove, sessionCtrl.Update)
-				sessions.DELETE("/:short_id", staffOrAbove, sessionCtrl.Delete)
+				sessions.PATCH("/:short_id", adminOrAbove, sessionCtrl.Update)
+				sessions.DELETE("/:short_id", adminOrAbove, sessionCtrl.Delete)
 
 				// Attendance — taken per session by super_admin / team_lead / mentor.
 				sessions.GET("/:short_id/attendance", staffOrAbove, attendanceCtrl.GetSessionAttendance)
@@ -498,6 +560,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				assignments.GET("/:short_id", assignmentCtrl.GetByShortID)
 				assignments.PATCH("/:short_id", staffOrAbove, assignmentCtrl.Update)
 				assignments.DELETE("/:short_id", staffOrAbove, assignmentCtrl.Delete)
+				assignments.POST("/:short_id/publish-results", staffOrAbove, assignmentCtrl.PublishResults)
 
 				// Submissions — nested under an assignment
 				assignments.POST("/:short_id/submissions", assignmentCtrl.CreateSubmission)
@@ -519,7 +582,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 
 			// Projects — scoped to a batch, made up of milestones. Team-based projects
 			// use nested teams; individual projects submit directly per student.
-			projects := protected.Group("/projects")
+			projects := protected.Group("/projects", middleware.RequireFeature(collegeRepo, models.FeatureProjects))
 			{
 				projects.POST("", staffOrAbove, projectCtrl.Create)
 				projects.GET("", projectCtrl.GetAll)
@@ -543,6 +606,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				projects.GET("/:short_id/milestones/:milestone_short_id/submissions/me", projectCtrl.GetMySubmission)
 				projects.GET("/:short_id/milestones/:milestone_short_id/submissions", staffOrAbove, projectCtrl.GetAllSubmissions)
 				projects.PATCH("/:short_id/milestones/:milestone_short_id/submissions/:submission_short_id", staffOrAbove, projectCtrl.GradeSubmission)
+				projects.POST("/:short_id/milestones/:milestone_short_id/publish-results", staffOrAbove, projectCtrl.PublishResults)
 			}
 
 			// Notifications — GET/read are per-user (my inbox); manage-content is admin-only

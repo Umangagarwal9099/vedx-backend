@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"context"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -18,14 +20,15 @@ import (
 const otpExpiry = 5 * time.Minute
 
 type AuthController struct {
-	userRepo   *repository.UserRepository
-	otpRepo    *repository.PasswordResetRepository
-	emailSvc   *service.EmailService
-	jwtSecret  string
+	userRepo          *repository.UserRepository
+	otpRepo           *repository.PasswordResetRepository
+	loginActivityRepo *repository.LoginActivityRepository
+	emailSvc          *service.EmailService
+	jwtSecret         string
 }
 
-func NewAuthController(userRepo *repository.UserRepository, otpRepo *repository.PasswordResetRepository, emailSvc *service.EmailService, jwtSecret string) *AuthController {
-	return &AuthController{userRepo: userRepo, otpRepo: otpRepo, emailSvc: emailSvc, jwtSecret: jwtSecret}
+func NewAuthController(userRepo *repository.UserRepository, otpRepo *repository.PasswordResetRepository, loginActivityRepo *repository.LoginActivityRepository, emailSvc *service.EmailService, jwtSecret string) *AuthController {
+	return &AuthController{userRepo: userRepo, otpRepo: otpRepo, loginActivityRepo: loginActivityRepo, emailSvc: emailSvc, jwtSecret: jwtSecret}
 }
 
 // ── Login ─────────────────────────────────────────────────────────────────────
@@ -82,10 +85,27 @@ func (ctrl *AuthController) Login(c *gin.Context) {
 		return
 	}
 
-	token, err := auth.GenerateToken(user.ID, user.Email, string(user.Role), ctrl.jwtSecret)
+	// Best-effort — a query failure here (e.g. this column's migration not
+	// applied yet) must never block login; it just means this session is
+	// treated as unscoped/full-access, same as before multi-tenancy existed.
+	collegeID, err := ctrl.userRepo.GetCollegeID(c.Request.Context(), user.ID)
+	if err != nil {
+		log.Printf("fetch college_id for login: %v", err)
+		collegeID = ""
+	}
+
+	token, err := auth.GenerateToken(user.ID, user.Email, string(user.Role), collegeID, ctrl.jwtSecret)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not generate token"})
 		return
+	}
+
+	// Best-effort device/login tracking — never blocks or fails the login itself.
+	if deviceID := c.GetHeader("X-Device-Id"); deviceID != "" && ctrl.loginActivityRepo != nil {
+		ua := util.ParseUserAgent(c.GetHeader("User-Agent"))
+		go func() {
+			_ = ctrl.loginActivityRepo.Upsert(context.Background(), user.ID, deviceID, ua)
+		}()
 	}
 
 	c.JSON(http.StatusOK, LoginResponse{

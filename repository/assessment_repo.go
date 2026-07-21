@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -21,6 +23,14 @@ func NewAssessmentRepository(pool *pgxpool.Pool) *AssessmentRepository {
 	return &AssessmentRepository{pool: pool}
 }
 
+// assessmentBaseSelect deliberately does NOT include the newer security/
+// result-publication columns (result_published_at, close_on_tab_switch,
+// etc. — schema_updates_submission_flow_v1.sql). This query backs
+// GetAll/GetByShortID/Create/Update, which are pre-existing, constantly-hit
+// endpoints — if that migration hasn't been applied yet, they must keep
+// working exactly as before. The new columns are read separately, via
+// GetSecurityConfig, only by the new code paths that need them, with a
+// graceful fallback if that migration is pending.
 const assessmentBaseSelect = `
 	SELECT a.id, a.short_id, a.name,
 	       COALESCE(a.description, ''), COALESCE(a.thumbnail, ''), COALESCE(a.file_url, ''),
@@ -61,6 +71,34 @@ func scanAssessment(row pgx.Row) (*models.Assessment, error) {
 	return &a, nil
 }
 
+// AssessmentSecurityConfig holds the exam-security/result-publication columns
+// that live outside assessmentBaseSelect (see the comment above it).
+type AssessmentSecurityConfig struct {
+	ResultPublishedAt     *time.Time
+	CloseOnTabSwitch      bool
+	CloseOnWindowBlur     bool
+	CloseOnFullscreenExit bool
+	AllowedWarningCount   int
+	AutoSubmitOnViolation bool
+}
+
+// GetSecurityConfig reads the exam-security/result-publication columns for an
+// assessment via a query isolated from assessmentBaseSelect. Returns ok=false
+// if schema_updates_submission_flow_v1.sql hasn't been applied yet (or any
+// other error) — callers must treat that as "config unknown," not "config is
+// all zero values," and fall back to pre-existing (ungated) behavior.
+func (r *AssessmentRepository) GetSecurityConfig(ctx context.Context, shortID string) (AssessmentSecurityConfig, bool) {
+	var cfg AssessmentSecurityConfig
+	err := r.pool.QueryRow(ctx, `
+		SELECT result_published_at, close_on_tab_switch, close_on_window_blur, close_on_fullscreen_exit,
+		       allowed_warning_count, auto_submit_on_violation
+		FROM assessments WHERE short_id = $1 AND deleted_at IS NULL`,
+		shortID,
+	).Scan(&cfg.ResultPublishedAt, &cfg.CloseOnTabSwitch, &cfg.CloseOnWindowBlur, &cfg.CloseOnFullscreenExit,
+		&cfg.AllowedWarningCount, &cfg.AutoSubmitOnViolation)
+	return cfg, err == nil
+}
+
 func (r *AssessmentRepository) Create(ctx context.Context, in models.CreateAssessmentInput, createdBy string) (*models.Assessment, error) {
 	// The final SELECT reads FROM ins (not FROM assessments) because a
 	// data-modifying CTE's effects are only visible via its own RETURNING —
@@ -71,7 +109,13 @@ func (r *AssessmentRepository) Create(ctx context.Context, in models.CreateAsses
 	for attempt := 0; attempt < 3; attempt++ {
 		shortID := util.GenerateShortID()
 
-		a, err := scanAssessment(r.pool.QueryRow(ctx, fmt.Sprintf(`
+		// A data-modifying CTE and the main query share one snapshot, so a
+		// plain re-scan of assessments (e.g. "WHERE a.id = (SELECT id FROM
+		// ins)") can never see the row ins just inserted — Postgres only
+		// guarantees visibility through the CTE's own RETURNING columns. So
+		// the outer SELECT reads FROM ins directly instead of FROM
+		// assessments a.
+		a, err := scanAssessment(r.pool.QueryRow(ctx, `
 			WITH ins AS (
 				INSERT INTO assessments (
 					short_id, name, description, thumbnail, file_url,
@@ -93,7 +137,21 @@ func (r *AssessmentRepository) Create(ctx context.Context, in models.CreateAsses
 				)
 				RETURNING *
 			)
-			%s`, insSelect),
+			SELECT ins.id, ins.short_id, ins.name,
+			       COALESCE(ins.description, ''), COALESCE(ins.thumbnail, ''), COALESCE(ins.file_url, ''),
+			       COALESCE(ins.general_instructions, ''),
+			       ins.total_marks, ins.passing_percentage::FLOAT8,
+			       ins.result_declaration::TEXT, ins.result_display::TEXT,
+			       ins.allow_attempts_after_passing,
+			       COALESCE(b.short_id, ''), COALESCE(b.batch_number, ''),
+			       ins.start_at, ins.end_at, ins.duration_minutes,
+			       ins.max_attempts, ins.negative_marking, ins.randomize_questions, ins.randomize_options,
+			       ins.auto_submit, ins.show_correct_answers, ins.requires_proctoring,
+			       0,
+			       ins.is_active, ins.cancelled_at, COALESCE(ins.cancelled_by::TEXT, ''), ins.created_by::TEXT,
+			       ins.created_at, ins.updated_at
+			FROM ins
+			LEFT JOIN batches b ON ins.batch_id = b.id AND b.deleted_at IS NULL`,
 			shortID, in.Name, in.Description, in.Thumbnail, in.FileURL,
 			in.GeneralInstructions, in.TotalMarks, in.PassingPercentage,
 			in.ResultDeclaration, in.ResultDisplay, in.AllowAttemptsAfterPassing,
@@ -103,6 +161,19 @@ func (r *AssessmentRepository) Create(ctx context.Context, in models.CreateAsses
 			createdBy,
 		))
 		if err == nil {
+			// Best-effort — the exam-security columns are new
+			// (schema_updates_submission_flow_v1.sql); if it's applied, set
+			// whatever the caller passed. If not, silently skip rather than
+			// fail the whole assessment creation over an optional feature.
+			if _, secErr := r.pool.Exec(ctx, `
+				UPDATE assessments SET close_on_tab_switch = $2, close_on_window_blur = $3,
+				       close_on_fullscreen_exit = $4, allowed_warning_count = $5, auto_submit_on_violation = $6
+				WHERE id = $1`,
+				a.ID, in.CloseOnTabSwitch, in.CloseOnWindowBlur, in.CloseOnFullscreenExit,
+				allowedWarningCountOrDefault(in.AllowedWarningCount), in.AutoSubmitOnViolation,
+			); secErr != nil {
+				log.Printf("set exam-security config for new assessment %s (migration pending?): %v", a.ShortID, secErr)
+			}
 			return a, nil
 		}
 		var pgErr *pgconn.PgError
@@ -115,6 +186,13 @@ func (r *AssessmentRepository) Create(ctx context.Context, in models.CreateAsses
 }
 
 func maxAttemptsOrDefault(n int) int {
+	if n <= 0 {
+		return 1
+	}
+	return n
+}
+
+func allowedWarningCountOrDefault(n int) int {
 	if n <= 0 {
 		return 1
 	}
@@ -280,6 +358,21 @@ func (r *AssessmentRepository) Update(ctx context.Context, shortID string, in mo
 	if in.IsActive != nil {
 		add("is_active = $%d", *in.IsActive)
 	}
+	if in.CloseOnTabSwitch != nil {
+		add("close_on_tab_switch = $%d", *in.CloseOnTabSwitch)
+	}
+	if in.CloseOnWindowBlur != nil {
+		add("close_on_window_blur = $%d", *in.CloseOnWindowBlur)
+	}
+	if in.CloseOnFullscreenExit != nil {
+		add("close_on_fullscreen_exit = $%d", *in.CloseOnFullscreenExit)
+	}
+	if in.AllowedWarningCount != nil {
+		add("allowed_warning_count = $%d", *in.AllowedWarningCount)
+	}
+	if in.AutoSubmitOnViolation != nil {
+		add("auto_submit_on_violation = $%d", *in.AutoSubmitOnViolation)
+	}
 
 	if len(setClauses) == 0 {
 		return fmt.Errorf("no fields to update")
@@ -323,6 +416,25 @@ func (r *AssessmentRepository) Cancel(ctx context.Context, shortID, cancelledBy 
 		UPDATE assessments SET cancelled_at = NOW(), cancelled_by = $2::UUID, updated_at = NOW()
 		WHERE short_id = $1 AND deleted_at IS NULL AND cancelled_at IS NULL`,
 		shortID, cancelledBy,
+	)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+// PublishResults marks every graded attempt's results visible at once —
+// grading itself (FinalizeAttempt) never sets this; it's a deliberate,
+// separate action so a mentor can grade over time and reveal to the whole
+// class together.
+func (r *AssessmentRepository) PublishResults(ctx context.Context, shortID string) error {
+	result, err := r.pool.Exec(ctx, `
+		UPDATE assessments SET result_published_at = NOW(), updated_at = NOW()
+		WHERE short_id = $1 AND deleted_at IS NULL`,
+		shortID,
 	)
 	if err != nil {
 		return err

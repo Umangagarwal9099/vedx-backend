@@ -28,6 +28,7 @@ func JWTAuth(jwtSecret string) gin.HandlerFunc {
 		c.Set("user_id", claims.UserID)
 		c.Set("email", claims.Email)
 		c.Set("role", claims.Role)
+		c.Set("college_id", claims.CollegeID)
 		c.Next()
 	}
 }

@@ -68,6 +68,27 @@ func (ctrl *ProjectController) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, p)
 }
 
+// checkStudentProjectAccess enforces that a student caller can only reach a
+// project they're actually enrolled in the batch for, and only once it's
+// published — staff roles bypass entirely (checkBatchAccess already scopes
+// them by managed batch). Writes the error response itself on failure; the
+// caller should return immediately when this returns false.
+func checkStudentProjectAccess(c *gin.Context, projectRepo *repository.ProjectRepository, projectShortID string) bool {
+	if c.GetString("role") != string(models.RoleStudent) {
+		return true
+	}
+	ok, err := projectRepo.StudentHasAccess(c.Request.Context(), projectShortID, c.GetString("user_id"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not verify project access"})
+		return false
+	}
+	if !ok {
+		c.JSON(http.StatusForbidden, gin.H{"error": "this project is not available for your course or batch"})
+		return false
+	}
+	return true
+}
+
 func (ctrl *ProjectController) notifyPublished(c *gin.Context, p *models.Project, actorID string) {
 	title := "New project: " + p.Title
 	message := fmt.Sprintf("A new project %q has been published for batch %s. Final deadline: %s.", p.Title, p.BatchNumber, p.FinalDeadline.Format("Jan 2, 2006 3:04 PM"))
@@ -162,6 +183,9 @@ func (ctrl *ProjectController) GetByShortID(c *gin.Context) {
 		return
 	}
 	if !checkBatchAccess(c, ctrl.batchRepo, p.BatchShortID) {
+		return
+	}
+	if !checkStudentProjectAccess(c, ctrl.projectRepo, shortID) {
 		return
 	}
 
@@ -623,6 +647,9 @@ func (ctrl *ProjectController) CreateSubmission(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
 		return
 	}
+	if !checkStudentProjectAccess(c, ctrl.projectRepo, projectShortID) {
+		return
+	}
 
 	teamID := ""
 	individualID := studentID
@@ -675,6 +702,9 @@ func (ctrl *ProjectController) GetMySubmission(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
 		return
 	}
+	if !checkStudentProjectAccess(c, ctrl.projectRepo, projectShortID) {
+		return
+	}
 
 	teamID := ""
 	individualID := studentID
@@ -697,7 +727,61 @@ func (ctrl *ProjectController) GetMySubmission(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "no submission yet"})
 		return
 	}
+	// Grading is finalized internally the moment a mentor scores it, but the
+	// student only sees marks/feedback once results are explicitly published —
+	// otherwise this reads as "Submitted — Evaluation Pending".
+	if s.Status == "evaluated" {
+		publishedAt, found := ctrl.projectRepo.GetResultPublishedAt(c.Request.Context(), s.ShortID)
+		if !s.ResultsVisibleWith(publishedAt, found) {
+			s.Marks = nil
+			s.Feedback = ""
+		}
+	}
 	c.JSON(http.StatusOK, s)
+}
+
+// PublishResults godoc
+//
+//	@Summary		Publish a milestone's results
+//	@Description	Makes every graded submission for this milestone visible to students at once. Grading itself never publishes — this is a deliberate, separate action. Restricted to super_admin / team_lead / mentor (of a batch they manage).
+//	@Tags			projects
+//	@Produce		json
+//	@Param			short_id			path	string	true	"Project short ID"
+//	@Param			milestone_short_id	path	string	true	"Milestone short ID"
+//	@Success		204	"No Content"
+//	@Failure		404	{object}	map[string]string	"Project not found, or nothing to publish"
+//	@Failure		500	{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/projects/{short_id}/milestones/{milestone_short_id}/publish-results [post]
+func (ctrl *ProjectController) PublishResults(c *gin.Context) {
+	projectShortID := c.Param("short_id")
+	milestoneShortID := c.Param("milestone_short_id")
+
+	p, err := ctrl.projectRepo.FindByShortID(c.Request.Context(), projectShortID)
+	if err != nil || p == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, p.BatchShortID) {
+		return
+	}
+
+	if err := ctrl.projectRepo.PublishResults(c.Request.Context(), milestoneShortID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "no graded submissions to publish"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not publish results"})
+		return
+	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "publish_results", EntityType: "project",
+		EntityID: p.ID, EntityShortID: p.ShortID, EntityLabel: p.Title,
+		BatchShortID: p.BatchShortID,
+	})
+
+	c.Status(http.StatusNoContent)
 }
 
 // GetAllSubmissions godoc
@@ -814,7 +898,7 @@ func (ctrl *ProjectController) GradeSubmission(c *gin.Context) {
 		Action: "grade", EntityType: "project_submission",
 		EntityShortID: submissionShortID, EntityLabel: project.Title,
 		BatchShortID: project.BatchShortID,
-		Metadata: map[string]interface{}{"marks": input.Marks, "status": input.Status},
+		Metadata:     map[string]interface{}{"marks": input.Marks, "status": input.Status},
 	})
 
 	c.Status(http.StatusNoContent)

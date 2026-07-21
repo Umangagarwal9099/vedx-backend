@@ -290,6 +290,48 @@ func (ctrl *AssessmentController) Delete(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// PublishResults godoc
+//
+//	@Summary		Publish this assessment's results
+//	@Description	Makes every graded attempt's marks/grade/pass-fail visible to students at once. Grading itself never publishes — this is a deliberate, separate action so a mentor can grade over time and reveal to the whole class together. Restricted to super_admin / team_lead / mentor (of a batch they manage).
+//	@Tags			assessments
+//	@Produce		json
+//	@Param			short_id	path	string	true	"Assessment short ID"
+//	@Success		204			"No Content"
+//	@Failure		404			{object}	map[string]string	"Assessment not found"
+//	@Failure		500			{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/assessments/{short_id}/publish-results [post]
+func (ctrl *AssessmentController) PublishResults(c *gin.Context) {
+	shortID := c.Param("short_id")
+
+	existing, err := ctrl.assessmentRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil || existing == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "assessment not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, existing.BatchShortID) {
+		return
+	}
+
+	if err := ctrl.assessmentRepo.PublishResults(c.Request.Context(), shortID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "assessment not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not publish results"})
+		return
+	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "publish_results", EntityType: "assessment",
+		EntityID: existing.ID, EntityShortID: existing.ShortID, EntityLabel: existing.Name,
+		BatchShortID: existing.BatchShortID,
+	})
+
+	c.Status(http.StatusNoContent)
+}
+
 // ── Questions attached to an assessment ─────────────────────────────────────
 
 // AttachQuestion godoc

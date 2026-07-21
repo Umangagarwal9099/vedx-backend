@@ -23,6 +23,26 @@ func NewAssignmentController(assignmentRepo *repository.AssignmentRepository, ba
 	return &AssignmentController{assignmentRepo: assignmentRepo, batchRepo: batchRepo, notificationRepo: notificationRepo, auditLogRepo: auditLogRepo}
 }
 
+// checkStudentAssignmentAccess mirrors checkStudentProjectAccess — a student
+// can only reach an assignment they're enrolled in the batch for, and only
+// once it's published. Staff bypass entirely (checkBatchAccess scopes them
+// by managed batch elsewhere).
+func checkStudentAssignmentAccess(c *gin.Context, assignmentRepo *repository.AssignmentRepository, assignmentShortID string) bool {
+	if c.GetString("role") != string(models.RoleStudent) {
+		return true
+	}
+	ok, err := assignmentRepo.StudentHasAccess(c.Request.Context(), assignmentShortID, c.GetString("user_id"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not verify assignment access"})
+		return false
+	}
+	if !ok {
+		c.JSON(http.StatusForbidden, gin.H{"error": "this assignment is not available for your course or batch"})
+		return false
+	}
+	return true
+}
+
 // CreateAssignment godoc
 //
 //	@Summary		Create assignment
@@ -298,6 +318,10 @@ func (ctrl *AssignmentController) Delete(c *gin.Context) {
 func (ctrl *AssignmentController) CreateSubmission(c *gin.Context) {
 	shortID := c.Param("short_id")
 
+	if !checkStudentAssignmentAccess(c, ctrl.assignmentRepo, shortID) {
+		return
+	}
+
 	var input models.CreateAssignmentSubmissionInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -308,11 +332,14 @@ func (ctrl *AssignmentController) CreateSubmission(c *gin.Context) {
 
 	submission, err := ctrl.assignmentRepo.CreateOrResubmit(c.Request.Context(), shortID, studentID, input)
 	if err != nil {
-		if err.Error() == "already submitted" {
+		switch err.Error() {
+		case "already submitted":
 			c.JSON(http.StatusBadRequest, gin.H{"error": "you've already submitted this assignment; ask your mentor to request a resubmission"})
-			return
+		case "the submission deadline has passed and late submissions are not allowed":
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not submit assignment: " + err.Error()})
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not submit assignment: " + err.Error()})
 		return
 	}
 
@@ -335,6 +362,10 @@ func (ctrl *AssignmentController) GetMySubmission(c *gin.Context) {
 	shortID := c.Param("short_id")
 	studentID := c.GetString("user_id")
 
+	if !checkStudentAssignmentAccess(c, ctrl.assignmentRepo, shortID) {
+		return
+	}
+
 	s, err := ctrl.assignmentRepo.FindMySubmission(c.Request.Context(), shortID, studentID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch submission"})
@@ -344,7 +375,59 @@ func (ctrl *AssignmentController) GetMySubmission(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "no submission yet"})
 		return
 	}
+	// Grading is finalized internally the moment a mentor scores it, but the
+	// student only sees marks/feedback once results are explicitly published —
+	// otherwise this reads as "Submitted — Evaluation Pending".
+	if s.Status == "evaluated" {
+		publishedAt, found := ctrl.assignmentRepo.GetResultPublishedAt(c.Request.Context(), s.ShortID)
+		if !s.ResultsVisibleWith(publishedAt, found) {
+			s.Marks = nil
+			s.Feedback = ""
+		}
+	}
 	c.JSON(http.StatusOK, s)
+}
+
+// PublishResults godoc
+//
+//	@Summary		Publish this assignment's results
+//	@Description	Makes every graded submission's marks/feedback visible to students at once. Grading itself never publishes — this is a deliberate, separate action. Restricted to super_admin / team_lead / mentor (of a batch they manage).
+//	@Tags			assignments
+//	@Produce		json
+//	@Param			short_id	path	string	true	"Assignment short ID"
+//	@Success		204			"No Content"
+//	@Failure		404			{object}	map[string]string	"Assignment not found, or nothing to publish"
+//	@Failure		500			{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/assignments/{short_id}/publish-results [post]
+func (ctrl *AssignmentController) PublishResults(c *gin.Context) {
+	shortID := c.Param("short_id")
+
+	existing, err := ctrl.assignmentRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil || existing == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "assignment not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, existing.BatchShortID) {
+		return
+	}
+
+	if err := ctrl.assignmentRepo.PublishResults(c.Request.Context(), shortID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "no graded submissions to publish"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not publish results"})
+		return
+	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "publish_results", EntityType: "assignment",
+		EntityID: existing.ID, EntityShortID: existing.ShortID, EntityLabel: existing.Title,
+		BatchShortID: existing.BatchShortID,
+	})
+
+	c.Status(http.StatusNoContent)
 }
 
 // GetAllSubmissions godoc
@@ -459,7 +542,7 @@ func (ctrl *AssignmentController) GradeSubmission(c *gin.Context) {
 		Action: "grade", EntityType: "assignment_submission",
 		EntityShortID: submissionShortID, EntityLabel: assignment.Title,
 		BatchShortID: assignment.BatchShortID,
-		Metadata: map[string]interface{}{"marks": input.Marks, "status": input.Status},
+		Metadata:     map[string]interface{}{"marks": input.Marks, "status": input.Status},
 	})
 
 	c.Status(http.StatusNoContent)

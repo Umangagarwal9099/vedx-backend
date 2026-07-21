@@ -21,6 +21,7 @@ type User struct {
 	Phone        string     `json:"phone,omitempty"`
 	DateOfBirth  string     `json:"date_of_birth,omitempty"`
 	Role         Role       `json:"role"`
+	CollegeID    string     `json:"college_id,omitempty"` // empty for super_admin / legacy users predating multi-tenancy
 	IsActive     bool       `json:"is_active"`
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`

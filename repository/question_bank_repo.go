@@ -80,7 +80,13 @@ func (r *QuestionBankRepository) Create(ctx context.Context, in models.CreateQue
 	for attempt := 0; attempt < 3; attempt++ {
 		shortID := util.GenerateShortID()
 
-		q, err := scanAssessmentQuestion(r.pool.QueryRow(ctx, fmt.Sprintf(`
+		// A data-modifying CTE and the main query share one snapshot, so a
+		// plain re-scan of assessment_questions (e.g. "WHERE q.id = (SELECT
+		// id FROM ins)") can never see the row ins just inserted — Postgres
+		// only guarantees visibility through the CTE's own RETURNING
+		// columns. So the outer SELECT reads FROM ins directly instead of
+		// FROM assessment_questions q.
+		q, err := scanAssessmentQuestion(r.pool.QueryRow(ctx, `
 			WITH ins AS (
 				INSERT INTO assessment_questions (
 					short_id, question_type, question_text, options, correct_option_ids,
@@ -94,7 +100,15 @@ func (r *QuestionBankRepository) Create(ctx context.Context, in models.CreateQue
 				)
 				RETURNING *
 			)
-			%s`, insSelect),
+			SELECT ins.id, ins.short_id, ins.question_type::TEXT, COALESCE(ins.question_text, ''),
+			       ins.options, ins.correct_option_ids, COALESCE(ins.correct_text, ''), COALESCE(ins.explanation, ''),
+			       ins.marks, ins.negative_marks, COALESCE(ins.subject, ''), COALESCE(ins.topic, ''), COALESCE(ins.subtopic, ''), COALESCE(ins.difficulty, ''),
+			       COALESCE(cq.short_id, ''), COALESCE(cq.title, ''),
+			       ins.visibility::TEXT, ins.created_by, CONCAT(u.first_name, ' ', u.last_name),
+			       ins.created_at, ins.updated_at
+			FROM ins
+			JOIN users u ON ins.created_by = u.id AND u.deleted_at IS NULL
+			LEFT JOIN coding_questions cq ON ins.coding_question_id = cq.id AND cq.deleted_at IS NULL`,
 			shortID, in.QuestionType, in.QuestionText, optionsJSON, correctOptionIDs,
 			in.CorrectText, in.Explanation, in.Marks, in.NegativeMarks, in.Subject, in.Topic, in.Subtopic, in.Difficulty,
 			in.CodingQuestionShortID, visibilityOrDefault(in.Visibility), createdBy,
