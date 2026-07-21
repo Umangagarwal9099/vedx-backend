@@ -65,10 +65,6 @@ func (r *ProjectRepository) Create(ctx context.Context, in models.CreateProjectI
 		status = "draft"
 	}
 
-	// See the comment on assessment_repo.go's Create for why this reads FROM
-	// ins rather than FROM projects.
-	insSelect := strings.Replace(projectBaseSelect, "FROM projects p", "FROM ins p", 1)
-
 	for attempt := 0; attempt < 3; attempt++ {
 		shortID := util.GenerateShortID()
 
@@ -676,10 +672,6 @@ func (r *ProjectRepository) CreateOrResubmitSubmission(ctx context.Context, mile
 	if teamID != "" {
 		conflictCol = "team_id"
 	}
-
-	// See the comment on assessment_repo.go's Create for why this reads FROM
-	// ins rather than FROM project_submissions.
-	insSelect := strings.Replace(projectSubmissionSelect, "FROM project_submissions ps", "FROM ins ps", 1)
 
 	for attempt := 0; attempt < 3; attempt++ {
 		shortID := util.GenerateShortID()
