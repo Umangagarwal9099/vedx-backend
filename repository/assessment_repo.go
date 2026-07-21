@@ -100,12 +100,6 @@ func (r *AssessmentRepository) GetSecurityConfig(ctx context.Context, shortID st
 }
 
 func (r *AssessmentRepository) Create(ctx context.Context, in models.CreateAssessmentInput, createdBy string) (*models.Assessment, error) {
-	// The final SELECT reads FROM ins (not FROM assessments) because a
-	// data-modifying CTE's effects are only visible via its own RETURNING —
-	// a later part of the same statement re-querying the base table runs
-	// against the pre-insert snapshot and would always find zero rows.
-	insSelect := strings.Replace(assessmentBaseSelect, "FROM assessments a", "FROM ins a", 1)
-
 	for attempt := 0; attempt < 3; attempt++ {
 		shortID := util.GenerateShortID()
 

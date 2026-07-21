@@ -67,10 +67,6 @@ func (r *AssignmentRepository) Create(ctx context.Context, in models.CreateAssig
 		status = "draft"
 	}
 
-	// See the comment on assessment_repo.go's Create for why this reads FROM
-	// ins rather than FROM assignments.
-	insSelect := strings.Replace(assignmentBaseSelect, "FROM assignments a", "FROM ins a", 1)
-
 	for attempt := 0; attempt < 3; attempt++ {
 		shortID := util.GenerateShortID()
 
