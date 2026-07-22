@@ -1,5 +1,34 @@
 basePath: /api/v1
 definitions:
+  controller.AdminResetPasswordResponse:
+    properties:
+      email_sent:
+        type: boolean
+      temporary_password:
+        type: string
+    type: object
+  controller.AssignCollegeInput:
+    properties:
+      access_end_date:
+        example: "2027-07-31"
+        type: string
+      access_start_date:
+        example: "2026-08-01"
+        type: string
+      college_short_id:
+        example: ABCENG
+        type: string
+    required:
+    - college_short_id
+    type: object
+  controller.ChangeEmailRequest:
+    properties:
+      email:
+        example: new.address@example.com
+        type: string
+    required:
+    - email
+    type: object
   controller.ChangePasswordRequest:
     properties:
       new_password:
@@ -25,6 +54,100 @@ definitions:
         type: string
     required:
     - role
+    type: object
+  controller.CreateStaffUserRequest:
+    properties:
+      college_short_id:
+        description: |-
+          CollegeShortID is REQUIRED when role is college_admin/college_staff
+          (only super_admin may create those roles, and every College Admin must
+          be permanently linked to one specific college — there is no sensible
+          default). Ignored for mentor/employee/team_lead, which always land on
+          the Internal EdTech Platform.
+        example: use GET /colleges to pick a real short_id — required for college_admin/college_staff
+        type: string
+      email:
+        example: jane@example.com
+        type: string
+      first_name:
+        example: Jane
+        type: string
+      last_name:
+        example: Doe
+        type: string
+      phone:
+        example: "+919876543210"
+        type: string
+      role:
+        enum:
+        - mentor
+        - employee
+        - team_lead
+        - college_admin
+        - college_staff
+        example: employee
+        type: string
+    required:
+    - email
+    - first_name
+    - last_name
+    - role
+    type: object
+  controller.CreateStaffUserResponse:
+    properties:
+      email_sent:
+        type: boolean
+      temporary_password:
+        type: string
+      user:
+        $ref: '#/definitions/models.User'
+    type: object
+  controller.CreateStudentRequest:
+    properties:
+      college_short_id:
+        description: |-
+          CollegeShortID is only honored for super_admin callers (picks which
+          college this student belongs to; omit for the Internal EdTech
+          Platform). A College Admin/College Staff caller is always forced onto
+          their own college_id server-side, regardless of what's sent here — the
+          frontend must never show them a college picker.
+        example: use GET /colleges to pick a real short_id, or omit for the Internal
+          EdTech Platform
+        type: string
+      date_of_birth:
+        example: "1998-05-20"
+        type: string
+      email:
+        example: jane@example.com
+        type: string
+      first_name:
+        example: Jane
+        type: string
+      last_name:
+        example: Doe
+        type: string
+      phone:
+        example: "+919876543210"
+        type: string
+    required:
+    - email
+    - first_name
+    - last_name
+    type: object
+  controller.CreateSubscriptionInput:
+    properties:
+      end_date:
+        example: "2027-07-31"
+        type: string
+      plan_id:
+        example: standard-annual
+        type: string
+      start_date:
+        example: "2026-08-01"
+        type: string
+    required:
+    - end_date
+    - start_date
     type: object
   controller.ForgotPasswordRequest:
     properties:
@@ -71,6 +194,21 @@ definitions:
         example: 550e8400-e29b-41d4-a716-446655440000
         type: string
     type: object
+  controller.MyFeaturesResponse:
+    properties:
+      college_id:
+        type: string
+      college_name:
+        type: string
+      features:
+        additionalProperties:
+          type: boolean
+        type: object
+      unscoped:
+        description: true for super_admin / legacy users with no college_id — treated
+          as full access
+        type: boolean
+    type: object
   controller.RegisterRequest:
     properties:
       date_of_birth:
@@ -97,6 +235,7 @@ definitions:
     - first_name
     - last_name
     - password
+    - phone
     type: object
   controller.RegisterResponse:
     properties:
@@ -123,6 +262,20 @@ definitions:
     - email
     - new_password
     - otp
+    type: object
+  controller.TransferCollegeRequest:
+    properties:
+      college_short_id:
+        example: ABCENG
+        type: string
+      force:
+        example: false
+        type: boolean
+      reason:
+        example: Student transferred to partner college
+        type: string
+    required:
+    - college_short_id
     type: object
   models.AddBatchStudentsInput:
     properties:
@@ -206,7 +359,11 @@ definitions:
     properties:
       allow_attempts_after_passing:
         type: boolean
+      allowed_warning_count:
+        type: integer
       auto_submit:
+        type: boolean
+      auto_submit_on_violation:
         type: boolean
       batch_number:
         type: string
@@ -216,6 +373,12 @@ definitions:
         type: string
       cancelled_by:
         type: string
+      close_on_fullscreen_exit:
+        type: boolean
+      close_on_tab_switch:
+        type: boolean
+      close_on_window_blur:
+        type: boolean
       created_at:
         type: string
       created_by:
@@ -255,6 +418,11 @@ definitions:
       result_declaration:
         type: string
       result_display:
+        type: string
+      result_published_at:
+        description: |-
+          ResultPublishedAt gates student-visible marks/grade/feedback — set only
+          by the explicit "publish results" action, never by grading itself.
         type: string
       short_id:
         type: string
@@ -316,6 +484,10 @@ definitions:
         type: string
       short_id:
         type: string
+      subject:
+        type: string
+      subtopic:
+        type: string
       topic:
         type: string
       updated_at:
@@ -323,6 +495,28 @@ definitions:
       visibility:
         description: private | course | global
         type: string
+    type: object
+  models.AssignLeadsInput:
+    properties:
+      employee_id:
+        type: string
+      lead_short_ids:
+        items:
+          type: string
+        minItems: 1
+        type: array
+      next_follow_up_at:
+        type: string
+      priority:
+        enum:
+        - low
+        - medium
+        - high
+        - urgent
+        type: string
+    required:
+    - employee_id
+    - lead_short_ids
     type: object
   models.Assignment:
     properties:
@@ -413,6 +607,11 @@ definitions:
         type: string
       marks:
         type: integer
+      result_published_at:
+        description: |-
+          ResultPublishedAt gates student-visible marks/grade/feedback — set only
+          by the explicit bulk "publish results" action, never by grading itself.
+        type: string
       short_id:
         type: string
       status:
@@ -505,9 +704,19 @@ definitions:
         type: string
       student_name:
         type: string
+      submission_type:
+        description: |-
+          SubmissionType records how the attempt ended: manual | timer_expired |
+          violation | admin_closed | exam_window_closed. Empty while in_progress.
+        type: string
       submitted_at:
         type: string
       total_score:
+        type: integer
+      violation_count:
+        description: |-
+          ViolationCount is computed at read time from exam_attempt_violations —
+          not stored redundantly on the attempt row.
         type: integer
     type: object
   models.AttemptQuestionView:
@@ -588,6 +797,16 @@ definitions:
       short_id:
         type: string
     type: object
+  models.AutoAssignInput:
+    properties:
+      lead_short_ids:
+        items:
+          type: string
+        minItems: 1
+        type: array
+    required:
+    - lead_short_ids
+    type: object
   models.Banner:
     properties:
       branches:
@@ -629,6 +848,10 @@ definitions:
         type: string
       batch_number:
         type: string
+      college_id:
+        type: string
+      college_short_id:
+        type: string
       course_id:
         type: string
       course_name:
@@ -667,6 +890,36 @@ definitions:
       student_count:
         type: integer
       updated_at:
+        type: string
+    type: object
+  models.BatchAnalyticsRow:
+    properties:
+      at_risk_count:
+        description: |-
+          AtRiskCount is a lightweight proxy (students under 60% attendance) —
+          not the full 3-factor at-risk algorithm behind GET /batches/:id/at-risk,
+          which is per-batch only. Good enough for a summary card across batches.
+        type: integer
+      avg_attendance_rate:
+        type: number
+      avg_completion_percentage:
+        type: number
+      batch_number:
+        type: string
+      batch_short_id:
+        type: string
+      certificates_issued:
+        type: integer
+      course_name:
+        type: string
+      student_count:
+        type: integer
+    type: object
+  models.BatchAttendanceTrendPoint:
+    properties:
+      attendance_rate:
+        type: number
+      week_start:
         type: string
     type: object
   models.BatchRecordingsResponse:
@@ -830,6 +1083,10 @@ definitions:
         type: string
       starter_code:
         $ref: '#/definitions/models.StarterCode'
+      subject:
+        type: string
+      subtopic:
+        type: string
       test_cases:
         items:
           $ref: '#/definitions/models.CodingTestCase'
@@ -851,6 +1108,49 @@ definitions:
         type: string
       is_hidden:
         type: boolean
+    type: object
+  models.College:
+    properties:
+      address:
+        type: string
+      code:
+        type: string
+      contact_email:
+        type: string
+      contact_person:
+        type: string
+      contact_phone:
+        type: string
+      created_at:
+        type: string
+      employee_count:
+        type: integer
+      enabled_features:
+        additionalProperties:
+          type: boolean
+        type: object
+      id:
+        type: string
+      logo_url:
+        type: string
+      max_employees:
+        type: integer
+      max_students:
+        type: integer
+      name:
+        type: string
+      short_id:
+        type: string
+      status:
+        type: string
+      student_count:
+        type: integer
+      subscription_end_date:
+        type: string
+      subscription_start_date:
+        type: string
+      updated_at:
+        type: string
     type: object
   models.Community:
     properties:
@@ -883,9 +1183,63 @@ definitions:
       updated_at:
         type: string
     type: object
+  models.CommunityComment:
+    properties:
+      author_id:
+        type: string
+      author_name:
+        type: string
+      author_role:
+        type: string
+      content:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      post_id:
+        type: string
+      short_id:
+        type: string
+    type: object
+  models.CommunityPost:
+    properties:
+      author_id:
+        type: string
+      author_name:
+        type: string
+      author_role:
+        type: string
+      comment_count:
+        type: integer
+      community_id:
+        type: string
+      community_short_id:
+        type: string
+      content:
+        type: string
+      created_at:
+        type: string
+      deleted_at:
+        type: string
+      id:
+        type: string
+      is_pinned:
+        type: boolean
+      like_count:
+        type: integer
+      liked_by_me:
+        type: boolean
+      short_id:
+        type: string
+      updated_at:
+        type: string
+    type: object
   models.Course:
     properties:
       category:
+        type: string
+      college_id:
         type: string
       created_at:
         type: string
@@ -958,12 +1312,27 @@ definitions:
       allow_attempts_after_passing:
         example: false
         type: boolean
+      allowed_warning_count:
+        example: 1
+        type: integer
       auto_submit:
+        example: true
+        type: boolean
+      auto_submit_on_violation:
         example: true
         type: boolean
       batch_short_id:
         example: use GET /batches to pick a real short_id, or omit for global visibility
         type: string
+      close_on_fullscreen_exit:
+        example: false
+        type: boolean
+      close_on_tab_switch:
+        example: false
+        type: boolean
+      close_on_window_blur:
+        example: false
+        type: boolean
       description:
         example: Test your knowledge of Go basics.
         type: string
@@ -1152,6 +1521,15 @@ definitions:
       batch_number:
         example: BATCH-2024-001
         type: string
+      college_short_id:
+        description: |-
+          CollegeShortID is only honored for super_admin callers (picks which
+          college owns this batch; omit for the Internal EdTech Platform).
+          Every other caller is always forced onto their own college_id
+          server-side, regardless of what's sent here.
+        example: use GET /colleges to pick a real short_id, or omit for the Internal
+          EdTech Platform
+        type: string
       course_short_id:
         example: A3F72C1D
         type: string
@@ -1229,6 +1607,39 @@ definitions:
     - status
     - title
     type: object
+  models.CreateCallLogInput:
+    properties:
+      next_follow_up_at:
+        type: string
+      notes:
+        example: Asked for a callback next week
+        type: string
+      outcome:
+        enum:
+        - connected
+        - no_answer
+        - busy
+        - switched_off
+        - invalid_number
+        - callback_requested
+        example: connected
+        type: string
+      status:
+        enum:
+        - new
+        - contacted
+        - interested
+        - follow_up
+        - not_reachable
+        - converted
+        - not_interested
+        - lost
+        example: interested
+        type: string
+    required:
+    - outcome
+    - status
+    type: object
   models.CreateCodingQuestionInput:
     properties:
       constraints:
@@ -1249,6 +1660,10 @@ definitions:
         type: array
       starter_code:
         $ref: '#/definitions/models.StarterCode'
+      subject:
+        type: string
+      subtopic:
+        type: string
       test_cases:
         items:
           $ref: '#/definitions/models.CodingTestCase'
@@ -1267,6 +1682,16 @@ definitions:
     - test_cases
     - title
     type: object
+  models.CreateCollegeInput:
+    type: object
+  models.CreateCommunityCommentInput:
+    properties:
+      content:
+        example: Same here!
+        type: string
+    required:
+    - content
+    type: object
   models.CreateCommunityInput:
     properties:
       batch_short_id:
@@ -1282,9 +1707,33 @@ definitions:
     - batch_short_id
     - name
     type: object
+  models.CreateCommunityPostInput:
+    properties:
+      content:
+        example: Excited for tomorrow's session!
+        type: string
+    required:
+    - content
+    type: object
   models.CreateCourseInput:
     properties:
       category:
+        type: string
+      college_short_id:
+        description: |-
+          CollegeShortID is only honored for super_admin callers; every other
+          caller is forced onto their own college_id server-side. Omit for the
+          Internal EdTech Platform.
+        type: string
+      course_scope:
+        description: |-
+          CourseScope: "organization" (default, owned by exactly the one college
+          above) or "global" (a reusable master course assignable to many
+          colleges via POST /courses/{short_id}/assign).
+        enum:
+        - global
+        - organization
+        example: organization
         type: string
       description:
         type: string
@@ -1437,6 +1886,77 @@ definitions:
     required:
     - question_text
     - question_type
+    type: object
+  models.CreateLeadInput:
+    properties:
+      city:
+        example: Bengaluru
+        type: string
+      college_short_id:
+        description: |-
+          CollegeShortID is only honored for super_admin callers; every other
+          caller is forced onto their own college_id server-side. Omit for the
+          Internal EdTech Platform's own direct-website leads.
+        example: use GET /colleges to pick a real short_id, or omit for the Internal
+          EdTech Platform
+        type: string
+      course_interest:
+        example: Full Stack Development
+        type: string
+      email:
+        example: priya@example.com
+        type: string
+      name:
+        example: Priya Sharma
+        type: string
+      notes:
+        type: string
+      phone:
+        example: "+919876543210"
+        type: string
+      priority:
+        enum:
+        - low
+        - medium
+        - high
+        - urgent
+        example: medium
+        type: string
+      source:
+        enum:
+        - excel_import
+        - manual
+        - website
+        - referral
+        - other
+        example: manual
+        type: string
+    required:
+    - course_interest
+    - name
+    - phone
+    type: object
+  models.CreateLeaveRequestInput:
+    properties:
+      from_date:
+        example: "2026-08-01"
+        type: string
+      leave_type:
+        enum:
+        - full_day
+        - half_day
+        example: full_day
+        type: string
+      reason:
+        example: Family function
+        type: string
+      to_date:
+        example: "2026-08-02"
+        type: string
+    required:
+    - from_date
+    - reason
+    - to_date
     type: object
   models.CreateMaterialInput:
     properties:
@@ -1775,6 +2295,14 @@ definitions:
     - session_type
     - start_time
     type: object
+  models.CreateStudentNoteInput:
+    properties:
+      note:
+        example: Called about pending assignment, will submit by Friday.
+        type: string
+    required:
+    - note
+    type: object
   models.CreateSubmissionInput:
     properties:
       code:
@@ -1853,6 +2381,44 @@ definitions:
           $ref: '#/definitions/models.DashboardSession'
         type: array
     type: object
+  models.EmployeeAttendance:
+    properties:
+      check_in_at:
+        type: string
+      check_out_at:
+        type: string
+      created_at:
+        type: string
+      date:
+        type: string
+      employee_id:
+        type: string
+      employee_name:
+        type: string
+      id:
+        type: string
+      notes:
+        type: string
+      short_id:
+        type: string
+      status:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.EmployeeLeadSummary:
+    properties:
+      active_leads:
+        type: integer
+      calls_today:
+        type: integer
+      conversions:
+        type: integer
+      employee_id:
+        type: string
+      employee_name:
+        type: string
+    type: object
   models.EnrollmentTrendPoint:
     properties:
       count:
@@ -1903,6 +2469,31 @@ definitions:
       updated_at:
         type: string
     type: object
+  models.ExamAccessStatus:
+    properties:
+      attempt_number:
+        type: integer
+      attempt_short_id:
+        type: string
+      attempt_status:
+        type: string
+      can_resume:
+        type: boolean
+      can_start:
+        type: boolean
+      display_status:
+        type: string
+      ends_at:
+        type: string
+      max_attempts:
+        type: integer
+      reason:
+        type: string
+      results_visible:
+        type: boolean
+      starts_at:
+        type: string
+    type: object
   models.ExamAttempt:
     properties:
       assessment_name:
@@ -1939,9 +2530,19 @@ definitions:
         type: string
       student_name:
         type: string
+      submission_type:
+        description: |-
+          SubmissionType records how the attempt ended: manual | timer_expired |
+          violation | admin_closed | exam_window_closed. Empty while in_progress.
+        type: string
       submitted_at:
         type: string
       total_score:
+        type: integer
+      violation_count:
+        description: |-
+          ViolationCount is computed at read time from exam_attempt_violations —
+          not stored redundantly on the attempt row.
         type: integer
     type: object
   models.FeedbackForm:
@@ -2100,6 +2701,230 @@ definitions:
     required:
     - student_id
     type: object
+  models.Lead:
+    properties:
+      assigned_at:
+        type: string
+      assigned_by:
+        type: string
+      assigned_to:
+        type: string
+      assigned_to_name:
+        type: string
+      city:
+        type: string
+      college_id:
+        type: string
+      converted_at:
+        type: string
+      course_interest:
+        type: string
+      course_short_id:
+        type: string
+      created_at:
+        type: string
+      created_by:
+        type: string
+      created_by_name:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      last_contacted_at:
+        type: string
+      name:
+        type: string
+      next_follow_up_at:
+        type: string
+      notes:
+        type: string
+      phone:
+        type: string
+      priority:
+        type: string
+      short_id:
+        type: string
+      source:
+        type: string
+      status:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.LeadAssignmentHistoryEntry:
+    properties:
+      action:
+        type: string
+      created_at:
+        type: string
+      follow_up_set_at:
+        type: string
+      from_employee_id:
+        type: string
+      from_employee_name:
+        type: string
+      id:
+        type: string
+      lead_short_id:
+        type: string
+      performed_by:
+        type: string
+      priority_set:
+        type: string
+      short_id:
+        type: string
+      to_employee_id:
+        type: string
+      to_employee_name:
+        type: string
+    type: object
+  models.LeadCallLog:
+    properties:
+      called_at:
+        type: string
+      created_at:
+        type: string
+      employee_id:
+        type: string
+      employee_name:
+        type: string
+      follow_up_set_at:
+        type: string
+      id:
+        type: string
+      lead_short_id:
+        type: string
+      notes:
+        type: string
+      outcome:
+        type: string
+      short_id:
+        type: string
+      status_after:
+        type: string
+    type: object
+  models.LeadDashboard:
+    properties:
+      calls_completed_today:
+        type: integer
+      calls_to_make_today:
+        type: integer
+      converted_leads:
+        type: integer
+      follow_ups_due_today:
+        type: integer
+      interested_leads:
+        type: integer
+      leads_assigned_today:
+        type: integer
+      new_leads:
+        type: integer
+      not_reachable_leads:
+        type: integer
+      overdue_follow_ups:
+        type: integer
+      pending_calls:
+        type: integer
+      total_active_leads:
+        type: integer
+    type: object
+  models.LeadImportResult:
+    properties:
+      imported:
+        type: integer
+      skipped:
+        items:
+          $ref: '#/definitions/models.LeadImportRowError'
+        type: array
+    type: object
+  models.LeadImportRowError:
+    properties:
+      reason:
+        type: string
+      row_number:
+        type: integer
+    type: object
+  models.LeaveBalance:
+    properties:
+      employee_id:
+        type: string
+      remaining_days:
+        type: number
+      total_days:
+        type: number
+      used_days:
+        type: number
+      year:
+        type: integer
+    type: object
+  models.LeaveRequest:
+    properties:
+      admin_note:
+        type: string
+      created_at:
+        type: string
+      employee_id:
+        type: string
+      employee_name:
+        type: string
+      from_date:
+        type: string
+      id:
+        type: string
+      leave_type:
+        type: string
+      reason:
+        type: string
+      reviewed_at:
+        type: string
+      reviewed_by:
+        type: string
+      short_id:
+        type: string
+      status:
+        type: string
+      to_date:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.LoginActivityDevice:
+    properties:
+      browser_name:
+        type: string
+      browser_version:
+        type: string
+      created_at:
+        type: string
+      device_id:
+        type: string
+      device_type:
+        type: string
+      id:
+        type: string
+      last_login_at:
+        type: string
+      login_count:
+        type: integer
+      os_name:
+        type: string
+      removed_at:
+        type: string
+    type: object
+  models.LoginActivitySummary:
+    properties:
+      devices:
+        items:
+          $ref: '#/definitions/models.LoginActivityDevice'
+        type: array
+      registered_device_count:
+        type: integer
+      removed_device_count:
+        type: integer
+      total_logins:
+        type: integer
+    type: object
   models.MarkAttendanceInput:
     properties:
       notes:
@@ -2255,6 +3080,29 @@ definitions:
       short_id:
         type: string
       watch_time_minutes:
+        type: integer
+    type: object
+  models.MonthlyTarget:
+    properties:
+      achieved:
+        type: integer
+      created_at:
+        type: string
+      employee_id:
+        type: string
+      employee_name:
+        type: string
+      id:
+        type: string
+      month:
+        type: integer
+      short_id:
+        type: string
+      target_conversions:
+        type: integer
+      updated_at:
+        type: string
+      year:
         type: integer
     type: object
   models.Notification:
@@ -2500,6 +3348,11 @@ definitions:
           ProjectTitle/MilestoneTitle/BatchShortID/BatchNumber are only populated
           by the cross-project workspace listing (FindAllSubmissionsForMentor).
         type: string
+      result_published_at:
+        description: |-
+          ResultPublishedAt gates student-visible marks/feedback — set only by
+          the explicit bulk "publish results" action, never by grading itself.
+        type: string
       short_id:
         type: string
       status:
@@ -2594,6 +3447,10 @@ definitions:
         type: string
       short_id:
         type: string
+      subject:
+        type: string
+      subtopic:
+        type: string
       topic:
         type: string
       updated_at:
@@ -2602,12 +3459,71 @@ definitions:
         description: private | course | global
         type: string
     type: object
+  models.QuestionBankStats:
+    properties:
+      by_difficulty:
+        additionalProperties:
+          type: integer
+        type: object
+      by_question_type:
+        additionalProperties:
+          type: integer
+        type: object
+      subject:
+        type: string
+      topics:
+        items:
+          $ref: '#/definitions/models.TopicCount'
+        type: array
+      total:
+        type: integer
+    type: object
+  models.QuestionBankTaxonomy:
+    properties:
+      subject:
+        type: string
+      topics:
+        items:
+          $ref: '#/definitions/models.QuestionBankTopic'
+        type: array
+    type: object
+  models.QuestionBankTopic:
+    properties:
+      subtopics:
+        items:
+          type: string
+        type: array
+      topic:
+        type: string
+    type: object
   models.QuestionOption:
     properties:
       id:
         type: string
       text:
         type: string
+    type: object
+  models.ReassignLeadsInput:
+    properties:
+      employee_id:
+        type: string
+      lead_short_ids:
+        items:
+          type: string
+        minItems: 1
+        type: array
+      next_follow_up_at:
+        type: string
+      priority:
+        enum:
+        - low
+        - medium
+        - high
+        - urgent
+        type: string
+    required:
+    - employee_id
+    - lead_short_ids
     type: object
   models.ReattemptGrant:
     properties:
@@ -2625,6 +3541,37 @@ definitions:
         type: string
       student_id:
         type: string
+    type: object
+  models.RecordViolationInput:
+    properties:
+      browser_info:
+        example: Mozilla/5.0 ...
+        type: string
+      violation_type:
+        enum:
+        - tab_switched
+        - window_blurred
+        - fullscreen_exited
+        - page_refreshed
+        - browser_back_attempt
+        - multiple_tab_attempt
+        - multiple_device_attempt
+        - network_disconnected
+        - exam_window_closed
+        example: tab_switched
+        type: string
+    required:
+    - violation_type
+    type: object
+  models.RecordViolationResponse:
+    properties:
+      action_taken:
+        description: warned | auto_submitted
+        type: string
+      attempt_status:
+        type: string
+      warning_number:
+        type: integer
     type: object
   models.RecordingListItem:
     properties:
@@ -2679,6 +3626,20 @@ definitions:
       url:
         type: string
     type: object
+  models.ReviewLeaveRequestInput:
+    properties:
+      admin_note:
+        example: Approved, enjoy!
+        type: string
+      status:
+        enum:
+        - approved
+        - rejected
+        example: approved
+        type: string
+    required:
+    - status
+    type: object
   models.Role:
     enum:
     - student
@@ -2686,6 +3647,9 @@ definitions:
     - employee
     - team_lead
     - super_admin
+    - platform_admin
+    - college_admin
+    - college_staff
     type: string
     x-enum-varnames:
     - RoleStudent
@@ -2693,6 +3657,9 @@ definitions:
     - RoleEmployee
     - RoleTeamLead
     - RoleSuperAdmin
+    - RolePlatformAdmin
+    - RoleCollegeAdmin
+    - RoleCollegeStaff
   models.SectionMaterial:
     properties:
       allow_access_on:
@@ -2803,6 +3770,15 @@ definitions:
         type: string
       start_time:
         type: string
+      status:
+        description: |-
+          Status is computed server-side (not stored) from is_active plus
+          session_date/start_time/end_time against the current time, in the
+          app's configured timezone — one of upcoming | live | completed |
+          cancelled. The frontend should render its Join/Watch Recording button
+          off this field instead of recomputing it from local wall-clock time,
+          so all clients agree regardless of the viewer's own timezone.
+        type: string
       topics:
         items:
           type: string
@@ -2906,6 +3882,25 @@ definitions:
     required:
     - release_date
     type: object
+  models.SetMonthlyTargetInput:
+    properties:
+      month:
+        example: 7
+        maximum: 12
+        minimum: 1
+        type: integer
+      target_conversions:
+        example: 10
+        minimum: 0
+        type: integer
+      year:
+        example: 2026
+        type: integer
+    required:
+    - month
+    - target_conversions
+    - year
+    type: object
   models.StarterCode:
     additionalProperties:
       type: string
@@ -2981,6 +3976,12 @@ definitions:
       enrollment_type:
         description: direct | invited | transferred
         type: string
+      fees_paid:
+        description: |-
+          FeesPaid mirrors batch_students.fees_paid for this student/batch pair —
+          gates access to session recordings, surfaced here so the admin can see
+          payment status directly from the student's own enrollment history.
+        type: boolean
       final_rank:
         type: integer
       final_score:
@@ -2998,6 +3999,94 @@ definitions:
       student_name:
         type: string
       updated_at:
+        type: string
+    type: object
+  models.StudentImportResult:
+    properties:
+      imported:
+        type: integer
+      skipped:
+        items:
+          $ref: '#/definitions/models.StudentImportRowError'
+        type: array
+    type: object
+  models.StudentImportRowError:
+    properties:
+      reason:
+        type: string
+      row_number:
+        type: integer
+    type: object
+  models.StudentNote:
+    properties:
+      created_at:
+        type: string
+      created_by:
+        type: string
+      created_by_name:
+        type: string
+      id:
+        type: string
+      note:
+        type: string
+      short_id:
+        type: string
+      student_user_id:
+        type: string
+    type: object
+  models.StudentRegistrationDetails:
+    properties:
+      alternate_contact:
+        type: string
+      area:
+        type: string
+      city:
+        type: string
+      enrollment_no:
+        description: the student's admission/roll number, from students.enrollment_no
+        type: string
+      gender:
+        type: string
+      occupation:
+        type: string
+      opt_email:
+        type: boolean
+      opt_push:
+        type: boolean
+      opt_sms:
+        type: boolean
+      opt_whatsapp:
+        type: boolean
+      parent_contact:
+        type: string
+      parent_email:
+        type: string
+      parent_name:
+        type: string
+      permanent_address:
+        type: string
+      pincode:
+        type: string
+      religion:
+        type: string
+      residential_address:
+        type: string
+      school_college_name:
+        type: string
+      standard:
+        type: string
+      state:
+        type: string
+      status:
+        description: empty for non-student roles
+        type: string
+      student_source:
+        type: string
+      timezone:
+        type: string
+      updated_at:
+        type: string
+      user_id:
         type: string
     type: object
   models.StudentScoreBreakdown:
@@ -3021,6 +4110,25 @@ definitions:
       student_id:
         type: string
       student_name:
+        type: string
+    type: object
+  models.StudentStatusHistoryEntry:
+    properties:
+      changed_by:
+        type: string
+      changed_by_name:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      notes:
+        type: string
+      short_id:
+        type: string
+      status:
+        type: string
+      student_user_id:
         type: string
     type: object
   models.StudentStreak:
@@ -3125,6 +4233,13 @@ definitions:
     required:
     - answers
     type: object
+  models.TopicCount:
+    properties:
+      count:
+        type: integer
+      topic:
+        type: string
+    type: object
   models.TransferStudentInput:
     properties:
       to_batch_short_id:
@@ -3132,6 +4247,16 @@ definitions:
         type: string
     required:
     - to_batch_short_id
+    type: object
+  models.UnassignLeadsInput:
+    properties:
+      lead_short_ids:
+        items:
+          type: string
+        minItems: 1
+        type: array
+    required:
+    - lead_short_ids
     type: object
   models.UpdateAnnouncementInput:
     properties:
@@ -3159,12 +4284,27 @@ definitions:
       allow_attempts_after_passing:
         example: true
         type: boolean
+      allowed_warning_count:
+        example: 1
+        type: integer
       auto_submit:
         example: false
+        type: boolean
+      auto_submit_on_violation:
+        example: true
         type: boolean
       batch_short_id:
         example: ""
         type: string
+      close_on_fullscreen_exit:
+        example: true
+        type: boolean
+      close_on_tab_switch:
+        example: true
+        type: boolean
+      close_on_window_blur:
+        example: true
+        type: boolean
       description:
         example: Updated description.
         type: string
@@ -3404,6 +4544,10 @@ definitions:
         type: array
       starter_code:
         $ref: '#/definitions/models.StarterCode'
+      subject:
+        type: string
+      subtopic:
+        type: string
       test_cases:
         items:
           $ref: '#/definitions/models.CodingTestCase'
@@ -3414,6 +4558,46 @@ definitions:
         items:
           type: string
         type: array
+    type: object
+  models.UpdateCollegeInput:
+    properties:
+      address:
+        example: 123 Main St, Springfield
+        type: string
+      contact_email:
+        example: admin@sit.edu
+        type: string
+      contact_person:
+        example: Jane Doe
+        type: string
+      contact_phone:
+        example: "+919876543210"
+        type: string
+      logo_url:
+        example: https://cdn.example.com/sit-logo.png
+        type: string
+      max_employees:
+        example: 20
+        type: integer
+      max_students:
+        example: 500
+        type: integer
+      name:
+        example: Springfield Institute of Technology
+        type: string
+      status:
+        enum:
+        - active
+        - suspended
+        - expired
+        example: active
+        type: string
+      subscription_end_date:
+        example: "2026-12-31"
+        type: string
+      subscription_start_date:
+        example: "2026-01-01"
+        type: string
     type: object
   models.UpdateCommunityInput:
     properties:
@@ -3519,6 +4703,8 @@ definitions:
         example: published
         type: string
     type: object
+  models.UpdateFeaturesInput:
+    type: object
   models.UpdateFeedbackFormInput:
     properties:
       description:
@@ -3570,6 +4756,41 @@ definitions:
         type: boolean
     required:
     - fees_paid
+    type: object
+  models.UpdateLeadInput:
+    properties:
+      city:
+        type: string
+      course_interest:
+        type: string
+      email:
+        type: string
+      name:
+        type: string
+      next_follow_up_at:
+        type: string
+      notes:
+        type: string
+      phone:
+        type: string
+      priority:
+        enum:
+        - low
+        - medium
+        - high
+        - urgent
+        type: string
+      status:
+        enum:
+        - new
+        - contacted
+        - interested
+        - follow_up
+        - not_reachable
+        - converted
+        - not_interested
+        - lost
+        type: string
     type: object
   models.UpdateMaterialInput:
     properties:
@@ -3858,6 +5079,70 @@ definitions:
           type: string
         type: array
     type: object
+  models.UpdateStudentRegistrationInput:
+    properties:
+      alternate_contact:
+        type: string
+      area:
+        type: string
+      city:
+        type: string
+      enrollment_no:
+        type: string
+      gender:
+        type: string
+      occupation:
+        type: string
+      opt_email:
+        type: boolean
+      opt_push:
+        type: boolean
+      opt_sms:
+        type: boolean
+      opt_whatsapp:
+        type: boolean
+      parent_contact:
+        type: string
+      parent_email:
+        type: string
+      parent_name:
+        type: string
+      permanent_address:
+        type: string
+      pincode:
+        type: string
+      religion:
+        type: string
+      residential_address:
+        type: string
+      school_college_name:
+        type: string
+      standard:
+        type: string
+      state:
+        type: string
+      student_source:
+        type: string
+      timezone:
+        type: string
+    type: object
+  models.UpdateStudentStatusInput:
+    properties:
+      notes:
+        example: Fees cleared, moved to active batch
+        type: string
+      status:
+        enum:
+        - registered
+        - enrolled
+        - completed
+        - on_leave
+        - archived
+        example: enrolled
+        type: string
+    required:
+    - status
+    type: object
   models.UpdateUserInput:
     properties:
       date_of_birth:
@@ -3878,6 +5163,9 @@ definitions:
     type: object
   models.User:
     properties:
+      college_id:
+        description: empty for super_admin / legacy users predating multi-tenancy
+        type: string
       created_at:
         type: string
       date_of_birth:
@@ -3911,6 +5199,66 @@ info:
   title: Vedex API
   version: "1.0"
 paths:
+  /analytics/batches:
+    get:
+      description: Returns one row per batch — student count, average completion %,
+        average attendance rate, an attendance-based at-risk count, and certificates
+        issued. Mentors/employees see only batches they manage.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.BatchAnalyticsRow'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Batch & Progress analytics
+      tags:
+      - analytics
+  /analytics/batches/{short_id}/attendance-trend:
+    get:
+      description: Returns average attendance % per week for one batch, oldest first.
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.BatchAttendanceTrendPoint'
+            type: array
+        "404":
+          description: Batch not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Batch attendance trend
+      tags:
+      - analytics
   /announcements:
     get:
       description: 'Returns all non-deleted announcements. Use query params to filter:
@@ -4258,6 +5606,41 @@ paths:
       summary: Update assessment
       tags:
       - assessments
+  /assessments/{short_id}/access-status:
+    get:
+      description: The single source of truth the student frontend must render Start/Resume/Closed/Missed/Submitted
+        state from — do not recompute this client-side. Returns can_start, can_resume,
+        display_status, reason, attempt_status, starts_at, ends_at.
+      parameters:
+      - description: Assessment short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ExamAccessStatus'
+        "404":
+          description: Assessment not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Resolve exam access/display status
+      tags:
+      - exam-attempts
   /assessments/{short_id}/attempts:
     get:
       description: Returns every attempt at an assessment across all students, for
@@ -4508,6 +5891,63 @@ paths:
       summary: Submit an attempt
       tags:
       - exam-attempts
+  /assessments/{short_id}/attempts/{attempt_short_id}/violations:
+    post:
+      consumes:
+      - application/json
+      description: Records a proctoring-integrity event (tab switch, fullscreen exit,
+        etc.) for an in-progress attempt. Applies the assessment's configured thresholds
+        — allowed_warning_count and auto_submit_on_violation — and auto-submits the
+        attempt once the threshold is reached. A normal browser cannot fully prevent
+        a student from leaving the exam; this only detects and responds to what the
+        browser can observe.
+      parameters:
+      - description: Assessment short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Attempt short ID
+        in: path
+        name: attempt_short_id
+        required: true
+        type: string
+      - description: Violation details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.RecordViolationInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.RecordViolationResponse'
+        "400":
+          description: Validation error, or attempt is no longer in progress
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Attempt not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Report an exam-integrity violation
+      tags:
+      - exam-attempts
   /assessments/{short_id}/attempts/me:
     get:
       description: Returns the calling student's attempts at an assessment, newest
@@ -4570,6 +6010,40 @@ paths:
       security:
       - BearerAuth: []
       summary: Cancel an assessment
+      tags:
+      - assessments
+  /assessments/{short_id}/publish-results:
+    post:
+      description: Makes every graded attempt's marks/grade/pass-fail visible to students
+        at once. Grading itself never publishes — this is a deliberate, separate action
+        so a mentor can grade over time and reveal to the whole class together. Restricted
+        to super_admin / team_lead / mentor (of a batch they manage).
+      parameters:
+      - description: Assessment short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Assessment not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Publish this assessment's results
       tags:
       - assessments
   /assessments/{short_id}/questions:
@@ -4966,6 +6440,39 @@ paths:
       summary: Update assignment
       tags:
       - assignments
+  /assignments/{short_id}/publish-results:
+    post:
+      description: Makes every graded submission's marks/feedback visible to students
+        at once. Grading itself never publishes — this is a deliberate, separate action.
+        Restricted to super_admin / team_lead / mentor (of a batch they manage).
+      parameters:
+      - description: Assignment short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Assignment not found, or nothing to publish
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Publish this assignment's results
+      tags:
+      - assignments
   /assignments/{short_id}/submissions:
     get:
       description: Returns every submission for an assignment, newest first. Restricted
@@ -5123,6 +6630,109 @@ paths:
       summary: Get my submission
       tags:
       - assignments
+  /attendance/employee/check-in:
+    post:
+      description: Self-service check-in for the calling employee/team_lead — creates
+        today's attendance row if it doesn't exist yet.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.EmployeeAttendance'
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Check in for today
+      tags:
+      - attendance
+  /attendance/employee/check-out:
+    post:
+      description: Self-service check-out for the calling employee/team_lead — requires
+        a check-in already recorded today.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.EmployeeAttendance'
+        "400":
+          description: No check-in found for today
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Check out for today
+      tags:
+      - attendance
+  /attendance/employee/me:
+    get:
+      description: Returns the calling employee/team_lead's own attendance history
+        (last 90 rows) plus today's status.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.EmployeeAttendance'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: My attendance history
+      tags:
+      - attendance
+  /attendance/employee/team:
+    get:
+      description: Returns every employee/team_lead's attendance row for a given date
+        (?date=YYYY-MM-DD, defaults to today). Restricted to super_admin/team_lead.
+      parameters:
+      - description: Date (YYYY-MM-DD), defaults to today
+        in: query
+        name: date
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.EmployeeAttendance'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Team attendance for a date
+      tags:
+      - attendance
   /attendance/reports:
     get:
       description: Returns a rollup per session (across every batch, most recent first)
@@ -7042,6 +8652,333 @@ paths:
       summary: List all coding questions (admin view)
       tags:
       - coding-questions
+  /colleges:
+    get:
+      description: Returns every non-deleted college, newest first. Super_admin only.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.College'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List colleges
+      tags:
+      - colleges
+    post:
+      consumes:
+      - application/json
+      description: Creates a college with an optional starting feature-toggle set.
+        Super_admin only.
+      parameters:
+      - description: College details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateCollegeInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.College'
+        "400":
+          description: Validation error / code already in use
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create a college
+      tags:
+      - colleges
+  /colleges/{short_id}:
+    delete:
+      description: Soft-delete a college by its short_id. Super_admin only.
+      parameters:
+      - description: College short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: College not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete college
+      tags:
+      - colleges
+    get:
+      description: Returns a single non-deleted college by its short_id. Super_admin
+        only.
+      parameters:
+      - description: College short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.College'
+        "404":
+          description: College not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get college
+      tags:
+      - colleges
+    patch:
+      consumes:
+      - application/json
+      description: Partially update a college's profile fields. Super_admin only.
+        Use PATCH /colleges/{short_id}/features to change feature toggles.
+      parameters:
+      - description: College short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Fields to update (all optional)
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateCollegeInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.College'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: College not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update college
+      tags:
+      - colleges
+  /colleges/{short_id}/features:
+    patch:
+      consumes:
+      - application/json
+      description: Merges the given feature-key/enabled pairs into the college's configuration
+        — send only the keys you're changing. Super_admin only. Disabled features
+        are hidden from that college's sidebar and blocked server-side via RequireFeature.
+      parameters:
+      - description: College short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Feature toggles to change
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateFeaturesInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.College'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: College not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update a college's feature toggles
+      tags:
+      - colleges
+  /colleges/{short_id}/subscriptions:
+    post:
+      consumes:
+      - application/json
+      description: Creates a new subscription period for a college (a renewal creates
+        a new row rather than editing the old one, preserving history). Super_admin
+        only.
+      parameters:
+      - description: College short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Subscription period
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/controller.CreateSubscriptionInput'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: College not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Record a college subscription period
+      tags:
+      - colleges
+  /colleges/me/features:
+    get:
+      description: Returns the calling user's own college's enabled features — used
+        to drive sidebar/nav visibility on every frontend. super_admin and users with
+        no college_id get unscoped=true (full access, since they either manage every
+        college or predate multi-tenancy).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/controller.MyFeaturesResponse'
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get my resolved feature access
+      tags:
+      - colleges
+  /comments/{short_id}:
+    delete:
+      description: Deletes a comment — the comment's author, or staff (moderation).
+      parameters:
+      - description: Comment short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "403":
+          description: Not your comment
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Comment not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete a comment
+      tags:
+      - community-posts
   /communities:
     get:
       description: Returns all non-deleted communities with batch details and a live
@@ -7327,6 +9264,107 @@ paths:
       summary: Remove community member
       tags:
       - communities
+  /communities/{short_id}/posts:
+    get:
+      description: Returns a community's feed, pinned posts first, then newest first.
+      parameters:
+      - description: Community short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.CommunityPost'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List a community's posts
+      tags:
+      - community-posts
+    post:
+      consumes:
+      - application/json
+      description: Creates a post in a community. The caller must be a member (staff
+        bypass this check).
+      parameters:
+      - description: Community short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Post content
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateCommunityPostInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.CommunityPost'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Not a member of this community
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create a community post
+      tags:
+      - community-posts
+  /communities/me:
+    get:
+      description: Returns the active communities the calling user is a member of
+        — used by the student Community page, scoped to their own batch(es) instead
+        of every community on the platform.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Community'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List my communities
+      tags:
+      - communities
   /courses:
     get:
       description: Returns all active and inactive non-deleted courses.
@@ -7424,6 +9462,38 @@ paths:
       summary: Delete course
       tags:
       - courses
+    get:
+      description: Returns a single non-deleted course by its short_id.
+      parameters:
+      - description: Course short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Course'
+        "404":
+          description: Course not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get course
+      tags:
+      - courses
     patch:
       consumes:
       - application/json
@@ -7469,6 +9539,53 @@ paths:
       security:
       - BearerAuth: []
       summary: Update course
+      tags:
+      - courses
+  /courses/{short_id}/assign:
+    post:
+      consumes:
+      - application/json
+      description: Grants a college access to a course marked course_scope=global,
+        with an optional access window. Super_admin only. Has no effect on organization-scoped
+        courses (those are only ever usable by the one college that owns them).
+      parameters:
+      - description: Course short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Target college
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/controller.AssignCollegeInput'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Course or college not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Assign a global course to a college
       tags:
       - courses
   /courses/search:
@@ -8095,6 +10212,720 @@ paths:
       summary: Health check
       tags:
       - system
+  /leads:
+    get:
+      description: Returns leads scoped to the caller — employees see only leads assigned
+        to them; team_lead/super_admin see (and can filter by employee_id) all leads.
+        Supports status/priority/course/city/employee_id/today/follow_up_due/overdue/date_from/date_to
+        filters.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Lead'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List leads
+      tags:
+      - leads
+    post:
+      consumes:
+      - application/json
+      description: Manually create a single sales lead. Restricted to super_admin/team_lead.
+      parameters:
+      - description: Lead details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateLeadInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Lead'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create lead
+      tags:
+      - leads
+  /leads/{short_id}:
+    delete:
+      description: Soft-deletes a lead. Restricted to super_admin/team_lead.
+      parameters:
+      - description: Lead short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Lead not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete lead
+      tags:
+      - leads
+    get:
+      description: Returns a single lead by its short_id. Employees may only fetch
+        their own assigned lead.
+      parameters:
+      - description: Lead short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Lead'
+        "403":
+          description: Not your lead
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Lead not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get lead
+      tags:
+      - leads
+    patch:
+      consumes:
+      - application/json
+      description: Partially update a lead. Employees may only change status/priority/next_follow_up_at/notes
+        on their own assigned lead; team_lead/super_admin can change everything.
+      parameters:
+      - description: Lead short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateLeadInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Lead'
+        "400":
+          description: Validation error or no fields provided
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Not your lead
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Lead not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update lead
+      tags:
+      - leads
+  /leads/{short_id}/calls:
+    get:
+      description: Returns every call log for one lead, newest first. Employees may
+        only view their own assigned lead's logs.
+      parameters:
+      - description: Lead short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.LeadCallLog'
+            type: array
+        "403":
+          description: Not your lead
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List call logs for a lead
+      tags:
+      - leads
+    post:
+      consumes:
+      - application/json
+      description: Records a call outcome + status + notes (and optionally a new next-follow-up
+        date) against a lead, updating the lead's own status/last_contacted_at/next_follow_up_at.
+        Employees may only log calls on their own assigned lead.
+      parameters:
+      - description: Lead short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Call details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateCallLogInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.LeadCallLog'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Not your lead
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Log a call against a lead
+      tags:
+      - leads
+  /leads/{short_id}/history:
+    get:
+      description: Returns every assign/reassign/unassign event for one lead, newest
+        first. Restricted to super_admin/team_lead.
+      parameters:
+      - description: Lead short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.LeadAssignmentHistoryEntry'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Lead assignment history
+      tags:
+      - leads
+  /leads/assign:
+    post:
+      consumes:
+      - application/json
+      description: Assigns one or many leads to an employee with an optional priority
+        + first follow-up date. Restricted to super_admin/team_lead.
+      parameters:
+      - description: Assignment details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.AssignLeadsInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: assigned count
+          schema:
+            additionalProperties:
+              type: integer
+            type: object
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Assign leads to an employee
+      tags:
+      - leads
+  /leads/auto-assign:
+    post:
+      consumes:
+      - application/json
+      description: Assigns each given lead to whichever eligible employee (role employee/team_lead)
+        currently has the fewest active leads, rebalancing after each assignment.
+        Restricted to super_admin/team_lead.
+      parameters:
+      - description: Lead short IDs to auto-assign
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.AutoAssignInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: assigned count
+          schema:
+            additionalProperties:
+              type: integer
+            type: object
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Auto-assign leads (least-loaded round robin)
+      tags:
+      - leads
+  /leads/dashboard/me:
+    get:
+      description: Returns the calling employee's (or team_lead's personal-quota)
+        daily lead-work summary cards.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.LeadDashboard'
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: My lead dashboard
+      tags:
+      - leads
+  /leads/dashboard/team:
+    get:
+      description: Returns one row per employee/team_lead — active leads, calls made
+        today, conversions. Restricted to super_admin/team_lead.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.EmployeeLeadSummary'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Team lead-monitoring dashboard
+      tags:
+      - leads
+  /leads/import:
+    post:
+      consumes:
+      - multipart/form-data
+      description: 'Uploads a .xlsx/.xls/.csv file of leads (columns: name/phone/email/city/course,
+        header names flexible) and bulk-inserts them as source=excel_import. Restricted
+        to super_admin/team_lead.'
+      parameters:
+      - description: Leads spreadsheet
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.LeadImportResult'
+        "400":
+          description: Missing/unreadable file
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Import leads from Excel/CSV
+      tags:
+      - leads
+  /leads/reassign:
+    post:
+      consumes:
+      - application/json
+      description: Moves already-assigned leads to a different employee. Restricted
+        to super_admin/team_lead.
+      parameters:
+      - description: Reassignment details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.ReassignLeadsInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: assigned count
+          schema:
+            additionalProperties:
+              type: integer
+            type: object
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Reassign leads to a different employee
+      tags:
+      - leads
+  /leads/unassign:
+    post:
+      consumes:
+      - application/json
+      description: Clears assignment on the given leads. Restricted to super_admin/team_lead.
+      parameters:
+      - description: Lead short IDs to unassign
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UnassignLeadsInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: unassigned count
+          schema:
+            additionalProperties:
+              type: integer
+            type: object
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Unassign leads
+      tags:
+      - leads
+  /leaves:
+    get:
+      description: Returns every leave request across all employees regardless of
+        status, newest first. Restricted to super_admin/team_lead.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.LeaveRequest'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: All leave requests
+      tags:
+      - leaves
+    post:
+      consumes:
+      - application/json
+      description: Submits a leave request in 'pending' status for the calling employee/team_lead.
+      parameters:
+      - description: Leave request details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateLeaveRequestInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.LeaveRequest'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Apply for leave
+      tags:
+      - leaves
+  /leaves/{short_id}/review:
+    patch:
+      consumes:
+      - application/json
+      description: Records the admin's decision. On approval, increments the employee's
+        used-days balance and emails them the decision. Restricted to super_admin/team_lead.
+      parameters:
+      - description: Leave request short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Decision
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.ReviewLeaveRequestInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.LeaveRequest'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Leave request not found or already reviewed
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Approve or reject a leave request
+      tags:
+      - leaves
+  /leaves/me:
+    get:
+      description: Returns the calling employee/team_lead's own leave requests, newest
+        first.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.LeaveRequest'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: My leave requests
+      tags:
+      - leaves
+  /leaves/me/balance:
+    get:
+      description: Returns the calling employee/team_lead's leave balance for the
+        current year.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.LeaveBalance'
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: My leave balance
+      tags:
+      - leaves
+  /leaves/pending:
+    get:
+      description: Returns every pending leave request across all employees, oldest
+        first. Restricted to super_admin/team_lead.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.LeaveRequest'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Pending leave requests
+      tags:
+      - leaves
   /mentors:
     get:
       description: Returns all active mentors. Use this to populate the batch manager
@@ -8897,6 +11728,206 @@ paths:
       summary: Mark notification read/unread
       tags:
       - notifications
+  /posts/{short_id}:
+    delete:
+      description: Deletes a post — the post's author, or staff (moderation).
+      parameters:
+      - description: Post short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "403":
+          description: Not your post
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Post not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete a community post
+      tags:
+      - community-posts
+  /posts/{short_id}/comments:
+    get:
+      description: Returns every comment on a post, oldest first.
+      parameters:
+      - description: Post short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.CommunityComment'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List a post's comments
+      tags:
+      - community-posts
+    post:
+      consumes:
+      - application/json
+      description: Adds a comment to a post. The caller must be a member of the post's
+        community (staff bypass this check).
+      parameters:
+      - description: Post short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Comment content
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateCommunityCommentInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.CommunityComment'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Not a member of this community
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Post not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Comment on a community post
+      tags:
+      - community-posts
+  /posts/{short_id}/like:
+    post:
+      description: Toggles the caller's like on a post. Returns the resulting liked
+        state.
+      parameters:
+      - description: Post short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: liked
+          schema:
+            additionalProperties:
+              type: boolean
+            type: object
+        "403":
+          description: Not a member of this community
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Post not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Like/unlike a community post
+      tags:
+      - community-posts
+  /posts/{short_id}/pin:
+    patch:
+      consumes:
+      - application/json
+      description: Pins/unpins a post as an announcement — staff only.
+      parameters:
+      - description: Post short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: '{\'
+        in: body
+        name: body
+        required: true
+        schema:
+          additionalProperties:
+            type: boolean
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: pinned updated
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Pin or unpin a community post
+      tags:
+      - community-posts
   /projects:
     get:
       description: Returns projects scoped to the caller's role — students see published
@@ -9208,6 +12239,44 @@ paths:
       security:
       - BearerAuth: []
       summary: Update milestone
+      tags:
+      - projects
+  /projects/{short_id}/milestones/{milestone_short_id}/publish-results:
+    post:
+      description: Makes every graded submission for this milestone visible to students
+        at once. Grading itself never publishes — this is a deliberate, separate action.
+        Restricted to super_admin / team_lead / mentor (of a batch they manage).
+      parameters:
+      - description: Project short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Milestone short ID
+        in: path
+        name: milestone_short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Project not found, or nothing to publish
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Publish a milestone's results
       tags:
       - projects
   /projects/{short_id}/milestones/{milestone_short_id}/submissions:
@@ -9553,6 +12622,58 @@ paths:
       summary: Remove team member
       tags:
       - projects
+  /question-bank/stats:
+    get:
+      description: Returns aggregate counts (total, by question_type, by difficulty,
+        by topic) for the given subject.
+      parameters:
+      - description: Subject name, e.g. Python
+        in: query
+        name: subject
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.QuestionBankStats'
+        "400":
+          description: Missing subject param
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get question bank stats for a subject
+      tags:
+      - questions
+  /question-bank/taxonomy:
+    get:
+      description: Returns the fixed Subject -> Topic -> Subtopic reference tree used
+        to drive the browse UI and cascading selects.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.QuestionBankTaxonomy'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: Get question bank taxonomy
+      tags:
+      - questions
   /questions:
     get:
       description: Returns questions visible to the caller — their own private questions
@@ -10298,6 +13419,31 @@ paths:
       summary: Resolve a session share link
       tags:
       - sessions
+  /students/statuses:
+    get:
+      description: Returns a map of user_id -> status (registered/enrolled/completed/on_leave/archived)
+        for every student — backs the Learners list's status column/filters without
+        one round-trip per row. Restricted to super_admin/team_lead/mentor.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Bulk-fetch every student's lifecycle status
+      tags:
+      - students
   /submissions:
     post:
       consumes:
@@ -10519,6 +13665,118 @@ paths:
       summary: List submissions for a specific user (admin/mentor)
       tags:
       - submissions
+  /targets/employee/{user_id}:
+    patch:
+      consumes:
+      - application/json
+      description: Sets (or updates) an employee's conversion target for a given year/month.
+        Restricted to super_admin/team_lead.
+      parameters:
+      - description: Employee user ID
+        in: path
+        name: user_id
+        required: true
+        type: string
+      - description: Target details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.SetMonthlyTargetInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.MonthlyTarget'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Set an employee's monthly target
+      tags:
+      - targets
+  /targets/employee/me:
+    get:
+      description: Returns the calling employee/team_lead's target + achieved conversions
+        for a year/month (?year=&month=, defaults to current month).
+      parameters:
+      - description: Year, defaults to current
+        in: query
+        name: year
+        type: integer
+      - description: Month (1-12), defaults to current
+        in: query
+        name: month
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.MonthlyTarget'
+        "404":
+          description: No target set for this month
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: My monthly target
+      tags:
+      - targets
+  /targets/employee/team:
+    get:
+      description: Returns every employee's target + achieved conversions for a year/month
+        (?year=&month=, defaults to current month). Restricted to super_admin/team_lead.
+      parameters:
+      - description: Year, defaults to current
+        in: query
+        name: year
+        type: integer
+      - description: Month (1-12), defaults to current
+        in: query
+        name: month
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.MonthlyTarget'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Team monthly targets
+      tags:
+      - targets
   /upload/assessment-file:
     post:
       consumes:
@@ -11092,6 +14350,104 @@ paths:
       summary: List a student's certificates
       tags:
       - certificates
+  /users/{id}/college:
+    patch:
+      consumes:
+      - application/json
+      description: Moves a user (typically a student) to another college. Super_admin
+        only. Rejects the transfer if the user has any active batch enrollment unless
+        force=true is passed. Always writes a user_college_history audit row.
+      parameters:
+      - description: User ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Target college
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/controller.TransferCollegeRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.User'
+        "400":
+          description: Validation error, or active enrollments block the transfer
+            without force
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: User or college not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Transfer a user to a different college
+      tags:
+      - users
+  /users/{id}/email:
+    patch:
+      consumes:
+      - application/json
+      description: Changes a user's email — a sensitive change, restricted to super_admin/team_lead.
+        Rejects the change if the new address is already in use.
+      parameters:
+      - description: User ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: New email
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/controller.ChangeEmailRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.User'
+        "400":
+          description: Invalid email / already in use
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: User not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Change a user's login email
+      tags:
+      - users
   /users/{id}/enrollments:
     get:
       description: Returns every enrollment a student has ever had — one per (course,
@@ -11124,6 +14480,134 @@ paths:
       summary: List a student's enrollments
       tags:
       - batches
+  /users/{id}/login-activity:
+    get:
+      description: Returns total logins, registered/removed device counts, and the
+        device list. Restricted to super_admin/team_lead/mentor.
+      parameters:
+      - description: User ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.LoginActivitySummary'
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a user's login/device activity
+      tags:
+      - users
+  /users/{id}/login-activity/{deviceId}:
+    delete:
+      description: Soft-removes a device — it stops counting as a registered device,
+        but its history is retained. Restricted to super_admin/team_lead.
+      parameters:
+      - description: User ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Device ID
+        in: path
+        name: deviceId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Remove a device from a user's login activity
+      tags:
+      - users
+  /users/{id}/notes:
+    get:
+      description: Returns every note for a student, newest first. Restricted to super_admin/team_lead/mentor.
+      parameters:
+      - description: Student user ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.StudentNote'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List learner notes
+      tags:
+      - students
+    post:
+      consumes:
+      - application/json
+      description: Adds a freeform staff note about a student. Restricted to super_admin/team_lead/mentor.
+      parameters:
+      - description: Student user ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Note text
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateStudentNoteInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.StudentNote'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Add a learner note
+      tags:
+      - students
   /users/{id}/profile-details:
     get:
       description: Returns the bio/location/education/skills/social-link fields for
@@ -11199,6 +14683,116 @@ paths:
       summary: Update profile details
       tags:
       - profile
+  /users/{id}/registration-details:
+    get:
+      description: Returns the extended demographic/registration fields (parent info,
+        addresses, etc.) for a student. Self, or super_admin/team_lead.
+      parameters:
+      - description: Student user ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.StudentRegistrationDetails'
+        "404":
+          description: User not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get student registration details
+      tags:
+      - students
+    patch:
+      consumes:
+      - application/json
+      description: Partially update a student's demographic/registration fields. Self,
+        or super_admin/team_lead.
+      parameters:
+      - description: Student user ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Fields to update (all optional)
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateStudentRegistrationInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.StudentRegistrationDetails'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update student registration details
+      tags:
+      - students
+  /users/{id}/reset-password:
+    post:
+      description: Generates a new temporary password for a user and emails it to
+        them — unlike /auth/forgot-password, this is triggered by staff, not the user
+        themselves. Restricted to super_admin/team_lead.
+      parameters:
+      - description: User ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/controller.AdminResetPasswordResponse'
+        "404":
+          description: User not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Admin-triggered password reset
+      tags:
+      - users
   /users/{id}/role:
     patch:
       consumes:
@@ -11277,6 +14871,86 @@ paths:
       summary: Get a student's score breakdown
       tags:
       - scores
+  /users/{id}/status:
+    post:
+      consumes:
+      - application/json
+      description: Changes a student's lifecycle status and records it in their history.
+        Restricted to super_admin/team_lead.
+      parameters:
+      - description: Student user ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: New status + optional notes
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateStudentStatusInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: status updated
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Student not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update a student's status
+      tags:
+      - students
+  /users/{id}/status-history:
+    get:
+      description: Returns every status-change event for a student, newest first.
+        Restricted to super_admin/team_lead.
+      parameters:
+      - description: Student user ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.StudentStatusHistoryEntry'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a student's status history
+      tags:
+      - students
   /users/{id}/streak:
     get:
       description: '"Active" means the student submitted an assignment/project, attempted
@@ -11364,6 +15038,133 @@ paths:
       summary: Search users
       tags:
       - users
+  /users/staff:
+    post:
+      consumes:
+      - application/json
+      description: Admin-provisioned account creation for mentor/employee/team_lead
+        roles. Generates a temporary password, emails it to the new user, and returns
+        it once in the response.
+      parameters:
+      - description: New staff account details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/controller.CreateStaffUserRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/controller.CreateStaffUserResponse'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Email already in use
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create a staff account
+      tags:
+      - users
+  /users/student:
+    post:
+      consumes:
+      - application/json
+      description: Admin/staff-provisioned student account creation. Generates a temporary
+        password, emails it to the new student, and returns it once in the response.
+      parameters:
+      - description: New student account details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/controller.CreateStudentRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/controller.CreateStaffUserResponse'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Email already in use
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create a student account
+      tags:
+      - users
+  /users/students/import:
+    post:
+      consumes:
+      - multipart/form-data
+      description: 'Uploads a .xlsx/.xls/.csv file of students (columns: first name/last
+        name/email/phone/roll number, header names flexible) and bulk-creates accounts.
+        The sheet never carries a college — every imported student lands under the
+        authenticated caller''s own college (or, for super_admin, an optional college_short_id
+        form field). Duplicate emails and duplicate roll numbers within the same college
+        are skipped with a reason, not aborted.'
+      parameters:
+      - description: Students spreadsheet
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.StudentImportResult'
+        "400":
+          description: Missing/unreadable file
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Import students from Excel/CSV
+      tags:
+      - students
   /zoom/webhook:
     post:
       consumes:

@@ -18,6 +18,98 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/analytics/batches": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns one row per batch — student count, average completion %, average attendance rate, an attendance-based at-risk count, and certificates issued. Mentors/employees see only batches they manage.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "analytics"
+                ],
+                "summary": "Batch \u0026 Progress analytics",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.BatchAnalyticsRow"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/analytics/batches/{short_id}/attendance-trend": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns average attendance % per week for one batch, oldest first.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "analytics"
+                ],
+                "summary": "Batch attendance trend",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Batch short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.BatchAttendanceTrendPoint"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Batch not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/announcements": {
             "get": {
                 "security": [
@@ -538,6 +630,58 @@ const docTemplate = `{
                 }
             }
         },
+        "/assessments/{short_id}/access-status": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "The single source of truth the student frontend must render Start/Resume/Closed/Missed/Submitted state from — do not recompute this client-side. Returns can_start, can_resume, display_status, reason, attempt_status, starts_at, ends_at.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "exam-attempts"
+                ],
+                "summary": "Resolve exam access/display status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Assessment short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.ExamAccessStatus"
+                        }
+                    },
+                    "404": {
+                        "description": "Assessment not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/assessments/{short_id}/attempts": {
             "get": {
                 "security": [
@@ -950,6 +1094,86 @@ const docTemplate = `{
                 }
             }
         },
+        "/assessments/{short_id}/attempts/{attempt_short_id}/violations": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Records a proctoring-integrity event (tab switch, fullscreen exit, etc.) for an in-progress attempt. Applies the assessment's configured thresholds — allowed_warning_count and auto_submit_on_violation — and auto-submits the attempt once the threshold is reached. A normal browser cannot fully prevent a student from leaving the exam; this only detects and responds to what the browser can observe.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "exam-attempts"
+                ],
+                "summary": "Report an exam-integrity violation",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Assessment short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Attempt short ID",
+                        "name": "attempt_short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Violation details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.RecordViolationInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.RecordViolationResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error, or attempt is no longer in progress",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Attempt not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/assessments/{short_id}/cancel": {
             "post": {
                 "security": [
@@ -965,6 +1189,55 @@ const docTemplate = `{
                     "assessments"
                 ],
                 "summary": "Cancel an assessment",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Assessment short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Assessment not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/assessments/{short_id}/publish-results": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Makes every graded attempt's marks/grade/pass-fail visible to students at once. Grading itself never publishes — this is a deliberate, separate action so a mentor can grade over time and reveal to the whole class together. Restricted to super_admin / team_lead / mentor (of a batch they manage).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "assessments"
+                ],
+                "summary": "Publish this assessment's results",
                 "parameters": [
                     {
                         "type": "string",
@@ -1584,6 +1857,55 @@ const docTemplate = `{
                 }
             }
         },
+        "/assignments/{short_id}/publish-results": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Makes every graded submission's marks/feedback visible to students at once. Grading itself never publishes — this is a deliberate, separate action. Restricted to super_admin / team_lead / mentor (of a batch they manage).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "assignments"
+                ],
+                "summary": "Publish this assignment's results",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Assignment short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Assignment not found, or nothing to publish",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/assignments/{short_id}/submissions": {
             "get": {
                 "security": [
@@ -1806,6 +2128,165 @@ const docTemplate = `{
                             "type": "object",
                             "additionalProperties": {
                                 "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/attendance/employee/check-in": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Self-service check-in for the calling employee/team_lead — creates today's attendance row if it doesn't exist yet.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "attendance"
+                ],
+                "summary": "Check in for today",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.EmployeeAttendance"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/attendance/employee/check-out": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Self-service check-out for the calling employee/team_lead — requires a check-in already recorded today.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "attendance"
+                ],
+                "summary": "Check out for today",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.EmployeeAttendance"
+                        }
+                    },
+                    "400": {
+                        "description": "No check-in found for today",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/attendance/employee/me": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the calling employee/team_lead's own attendance history (last 90 rows) plus today's status.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "attendance"
+                ],
+                "summary": "My attendance history",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.EmployeeAttendance"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/attendance/employee/team": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns every employee/team_lead's attendance row for a given date (?date=YYYY-MM-DD, defaults to today). Restricted to super_admin/team_lead.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "attendance"
+                ],
+                "summary": "Team attendance for a date",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Date (YYYY-MM-DD), defaults to today",
+                        "name": "date",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.EmployeeAttendance"
                             }
                         }
                     },
@@ -4700,6 +5181,503 @@ const docTemplate = `{
                 }
             }
         },
+        "/colleges": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns every non-deleted college, newest first. Super_admin only.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "colleges"
+                ],
+                "summary": "List colleges",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.College"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Creates a college with an optional starting feature-toggle set. Super_admin only.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "colleges"
+                ],
+                "summary": "Create a college",
+                "parameters": [
+                    {
+                        "description": "College details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateCollegeInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.College"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error / code already in use",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/colleges/me/features": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the calling user's own college's enabled features — used to drive sidebar/nav visibility on every frontend. super_admin and users with no college_id get unscoped=true (full access, since they either manage every college or predate multi-tenancy).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "colleges"
+                ],
+                "summary": "Get my resolved feature access",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/controller.MyFeaturesResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/colleges/{short_id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns a single non-deleted college by its short_id. Super_admin only.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "colleges"
+                ],
+                "summary": "Get college",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "College short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.College"
+                        }
+                    },
+                    "404": {
+                        "description": "College not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Soft-delete a college by its short_id. Super_admin only.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "colleges"
+                ],
+                "summary": "Delete college",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "College short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "College not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Partially update a college's profile fields. Super_admin only. Use PATCH /colleges/{short_id}/features to change feature toggles.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "colleges"
+                ],
+                "summary": "Update college",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "College short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to update (all optional)",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateCollegeInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.College"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "College not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/colleges/{short_id}/features": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Merges the given feature-key/enabled pairs into the college's configuration — send only the keys you're changing. Super_admin only. Disabled features are hidden from that college's sidebar and blocked server-side via RequireFeature.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "colleges"
+                ],
+                "summary": "Update a college's feature toggles",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "College short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Feature toggles to change",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateFeaturesInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.College"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "College not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/colleges/{short_id}/subscriptions": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Creates a new subscription period for a college (a renewal creates a new row rather than editing the old one, preserving history). Super_admin only.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "colleges"
+                ],
+                "summary": "Record a college subscription period",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "College short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Subscription period",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/controller.CreateSubscriptionInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "College not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/comments/{short_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Deletes a comment — the comment's author, or staff (moderation).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "community-posts"
+                ],
+                "summary": "Delete a comment",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Comment short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "403": {
+                        "description": "Not your comment",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Comment not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/communities": {
             "get": {
                 "security": [
@@ -4786,6 +5764,43 @@ const docTemplate = `{
                             "type": "object",
                             "additionalProperties": {
                                 "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/communities/me": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the active communities the calling user is a member of — used by the student Community page, scoped to their own batch(es) instead of every community on the platform.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "communities"
+                ],
+                "summary": "List my communities",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.Community"
                             }
                         }
                     },
@@ -5136,6 +6151,123 @@ const docTemplate = `{
                 }
             }
         },
+        "/communities/{short_id}/posts": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns a community's feed, pinned posts first, then newest first.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "community-posts"
+                ],
+                "summary": "List a community's posts",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Community short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.CommunityPost"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Creates a post in a community. The caller must be a member (staff bypass this check).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "community-posts"
+                ],
+                "summary": "Create a community post",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Community short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Post content",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateCommunityPostInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.CommunityPost"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not a member of this community",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/courses": {
             "get": {
                 "security": [
@@ -5293,6 +6425,56 @@ const docTemplate = `{
             }
         },
         "/courses/{short_id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns a single non-deleted course by its short_id.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "courses"
+                ],
+                "summary": "Get course",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Course short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Course"
+                        }
+                    },
+                    "404": {
+                        "description": "Course not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
             "delete": {
                 "security": [
                     {
@@ -5393,6 +6575,76 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Course not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/courses/{short_id}/assign": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Grants a college access to a course marked course_scope=global, with an optional access window. Super_admin only. Has no effect on organization-scoped courses (those are only ever usable by the one college that owns them).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "courses"
+                ],
+                "summary": "Assign a global course to a college",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Course short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Target college",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/controller.AssignCollegeInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Course or college not found",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -6283,6 +7535,1097 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/controller.HealthResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/leads": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns leads scoped to the caller — employees see only leads assigned to them; team_lead/super_admin see (and can filter by employee_id) all leads. Supports status/priority/course/city/employee_id/today/follow_up_due/overdue/date_from/date_to filters.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "leads"
+                ],
+                "summary": "List leads",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.Lead"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Manually create a single sales lead. Restricted to super_admin/team_lead.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "leads"
+                ],
+                "summary": "Create lead",
+                "parameters": [
+                    {
+                        "description": "Lead details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateLeadInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.Lead"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/leads/assign": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Assigns one or many leads to an employee with an optional priority + first follow-up date. Restricted to super_admin/team_lead.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "leads"
+                ],
+                "summary": "Assign leads to an employee",
+                "parameters": [
+                    {
+                        "description": "Assignment details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.AssignLeadsInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "assigned count",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "integer"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/leads/auto-assign": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Assigns each given lead to whichever eligible employee (role employee/team_lead) currently has the fewest active leads, rebalancing after each assignment. Restricted to super_admin/team_lead.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "leads"
+                ],
+                "summary": "Auto-assign leads (least-loaded round robin)",
+                "parameters": [
+                    {
+                        "description": "Lead short IDs to auto-assign",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.AutoAssignInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "assigned count",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "integer"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/leads/dashboard/me": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the calling employee's (or team_lead's personal-quota) daily lead-work summary cards.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "leads"
+                ],
+                "summary": "My lead dashboard",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.LeadDashboard"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/leads/dashboard/team": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns one row per employee/team_lead — active leads, calls made today, conversions. Restricted to super_admin/team_lead.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "leads"
+                ],
+                "summary": "Team lead-monitoring dashboard",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.EmployeeLeadSummary"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/leads/import": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Uploads a .xlsx/.xls/.csv file of leads (columns: name/phone/email/city/course, header names flexible) and bulk-inserts them as source=excel_import. Restricted to super_admin/team_lead.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "leads"
+                ],
+                "summary": "Import leads from Excel/CSV",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "Leads spreadsheet",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.LeadImportResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Missing/unreadable file",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/leads/reassign": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Moves already-assigned leads to a different employee. Restricted to super_admin/team_lead.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "leads"
+                ],
+                "summary": "Reassign leads to a different employee",
+                "parameters": [
+                    {
+                        "description": "Reassignment details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.ReassignLeadsInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "assigned count",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "integer"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/leads/unassign": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Clears assignment on the given leads. Restricted to super_admin/team_lead.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "leads"
+                ],
+                "summary": "Unassign leads",
+                "parameters": [
+                    {
+                        "description": "Lead short IDs to unassign",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UnassignLeadsInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "unassigned count",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "integer"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/leads/{short_id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns a single lead by its short_id. Employees may only fetch their own assigned lead.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "leads"
+                ],
+                "summary": "Get lead",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Lead short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Lead"
+                        }
+                    },
+                    "403": {
+                        "description": "Not your lead",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Lead not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Soft-deletes a lead. Restricted to super_admin/team_lead.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "leads"
+                ],
+                "summary": "Delete lead",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Lead short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Lead not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Partially update a lead. Employees may only change status/priority/next_follow_up_at/notes on their own assigned lead; team_lead/super_admin can change everything.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "leads"
+                ],
+                "summary": "Update lead",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Lead short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to update",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateLeadInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Lead"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error or no fields provided",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not your lead",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Lead not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/leads/{short_id}/calls": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns every call log for one lead, newest first. Employees may only view their own assigned lead's logs.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "leads"
+                ],
+                "summary": "List call logs for a lead",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Lead short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.LeadCallLog"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not your lead",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Records a call outcome + status + notes (and optionally a new next-follow-up date) against a lead, updating the lead's own status/last_contacted_at/next_follow_up_at. Employees may only log calls on their own assigned lead.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "leads"
+                ],
+                "summary": "Log a call against a lead",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Lead short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Call details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateCallLogInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.LeadCallLog"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not your lead",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/leads/{short_id}/history": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns every assign/reassign/unassign event for one lead, newest first. Restricted to super_admin/team_lead.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "leads"
+                ],
+                "summary": "Lead assignment history",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Lead short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.LeadAssignmentHistoryEntry"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/leaves": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns every leave request across all employees regardless of status, newest first. Restricted to super_admin/team_lead.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "leaves"
+                ],
+                "summary": "All leave requests",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.LeaveRequest"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Submits a leave request in 'pending' status for the calling employee/team_lead.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "leaves"
+                ],
+                "summary": "Apply for leave",
+                "parameters": [
+                    {
+                        "description": "Leave request details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateLeaveRequestInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.LeaveRequest"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/leaves/me": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the calling employee/team_lead's own leave requests, newest first.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "leaves"
+                ],
+                "summary": "My leave requests",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.LeaveRequest"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/leaves/me/balance": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the calling employee/team_lead's leave balance for the current year.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "leaves"
+                ],
+                "summary": "My leave balance",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.LeaveBalance"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/leaves/pending": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns every pending leave request across all employees, oldest first. Restricted to super_admin/team_lead.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "leaves"
+                ],
+                "summary": "Pending leave requests",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.LeaveRequest"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/leaves/{short_id}/review": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Records the admin's decision. On approval, increments the employee's used-days balance and emails them the decision. Restricted to super_admin/team_lead.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "leaves"
+                ],
+                "summary": "Approve or reject a leave request",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Leave request short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Decision",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.ReviewLeaveRequestInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.LeaveRequest"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Leave request not found or already reviewed",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
@@ -7500,6 +9843,315 @@ const docTemplate = `{
                 }
             }
         },
+        "/posts/{short_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Deletes a post — the post's author, or staff (moderation).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "community-posts"
+                ],
+                "summary": "Delete a community post",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Post short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "403": {
+                        "description": "Not your post",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Post not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/posts/{short_id}/comments": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns every comment on a post, oldest first.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "community-posts"
+                ],
+                "summary": "List a post's comments",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Post short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.CommunityComment"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Adds a comment to a post. The caller must be a member of the post's community (staff bypass this check).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "community-posts"
+                ],
+                "summary": "Comment on a community post",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Post short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Comment content",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateCommunityCommentInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.CommunityComment"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not a member of this community",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Post not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/posts/{short_id}/like": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Toggles the caller's like on a post. Returns the resulting liked state.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "community-posts"
+                ],
+                "summary": "Like/unlike a community post",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Post short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "liked",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "boolean"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not a member of this community",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Post not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/posts/{short_id}/pin": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Pins/unpins a post as an announcement — staff only.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "community-posts"
+                ],
+                "summary": "Pin or unpin a community post",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Post short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "{\\",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "boolean"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "pinned updated",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/projects": {
             "get": {
                 "security": [
@@ -7952,6 +10604,62 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Milestone not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/projects/{short_id}/milestones/{milestone_short_id}/publish-results": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Makes every graded submission for this milestone visible to students at once. Grading itself never publishes — this is a deliberate, separate action. Restricted to super_admin / team_lead / mentor (of a batch they manage).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "projects"
+                ],
+                "summary": "Publish a milestone's results",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Milestone short ID",
+                        "name": "milestone_short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Project not found, or nothing to publish",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -8481,6 +11189,86 @@ const docTemplate = `{
                             "type": "object",
                             "additionalProperties": {
                                 "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/question-bank/stats": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns aggregate counts (total, by question_type, by difficulty, by topic) for the given subject.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "questions"
+                ],
+                "summary": "Get question bank stats for a subject",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Subject name, e.g. Python",
+                        "name": "subject",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.QuestionBankStats"
+                        }
+                    },
+                    "400": {
+                        "description": "Missing subject param",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/question-bank/taxonomy": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the fixed Subject -\u003e Topic -\u003e Subtopic reference tree used to drive the browse UI and cascading selects.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "questions"
+                ],
+                "summary": "Get question bank taxonomy",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.QuestionBankTaxonomy"
                             }
                         }
                     }
@@ -9583,6 +12371,43 @@ const docTemplate = `{
                 }
             }
         },
+        "/students/statuses": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns a map of user_id -\u003e status (registered/enrolled/completed/on_leave/archived) for every student — backs the Learners list's status column/filters without one round-trip per row. Restricted to super_admin/team_lead/mentor.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "students"
+                ],
+                "summary": "Bulk-fetch every student's lifecycle status",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/submissions": {
             "post": {
                 "security": [
@@ -9902,6 +12727,178 @@ const docTemplate = `{
                             "type": "array",
                             "items": {
                                 "$ref": "#/definitions/models.SubmissionView"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/targets/employee/me": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the calling employee/team_lead's target + achieved conversions for a year/month (?year=\u0026month=, defaults to current month).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "targets"
+                ],
+                "summary": "My monthly target",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Year, defaults to current",
+                        "name": "year",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Month (1-12), defaults to current",
+                        "name": "month",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.MonthlyTarget"
+                        }
+                    },
+                    "404": {
+                        "description": "No target set for this month",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/targets/employee/team": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns every employee's target + achieved conversions for a year/month (?year=\u0026month=, defaults to current month). Restricted to super_admin/team_lead.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "targets"
+                ],
+                "summary": "Team monthly targets",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Year, defaults to current",
+                        "name": "year",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Month (1-12), defaults to current",
+                        "name": "month",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.MonthlyTarget"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/targets/employee/{user_id}": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Sets (or updates) an employee's conversion target for a given year/month. Restricted to super_admin/team_lead.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "targets"
+                ],
+                "summary": "Set an employee's monthly target",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Employee user ID",
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Target details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.SetMonthlyTargetInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.MonthlyTarget"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
                             }
                         }
                     },
@@ -10568,6 +13565,193 @@ const docTemplate = `{
                 }
             }
         },
+        "/users/staff": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Admin-provisioned account creation for mentor/employee/team_lead roles. Generates a temporary password, emails it to the new user, and returns it once in the response.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Create a staff account",
+                "parameters": [
+                    {
+                        "description": "New staff account details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/controller.CreateStaffUserRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/controller.CreateStaffUserResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Email already in use",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/student": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Admin/staff-provisioned student account creation. Generates a temporary password, emails it to the new student, and returns it once in the response.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Create a student account",
+                "parameters": [
+                    {
+                        "description": "New student account details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/controller.CreateStudentRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/controller.CreateStaffUserResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Email already in use",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/students/import": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Uploads a .xlsx/.xls/.csv file of students (columns: first name/last name/email/phone/roll number, header names flexible) and bulk-creates accounts. The sheet never carries a college — every imported student lands under the authenticated caller's own college (or, for super_admin, an optional college_short_id form field). Duplicate emails and duplicate roll numbers within the same college are skipped with a reason, not aborted.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "students"
+                ],
+                "summary": "Import students from Excel/CSV",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "Students spreadsheet",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.StudentImportResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Missing/unreadable file",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/users/{id}": {
             "delete": {
                 "security": [
@@ -10871,6 +14055,152 @@ const docTemplate = `{
                 }
             }
         },
+        "/users/{id}/college": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Moves a user (typically a student) to another college. Super_admin only. Rejects the transfer if the user has any active batch enrollment unless force=true is passed. Always writes a user_college_history audit row.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Transfer a user to a different college",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Target college",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/controller.TransferCollegeRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.User"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error, or active enrollments block the transfer without force",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "User or college not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{id}/email": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Changes a user's email — a sensitive change, restricted to super_admin/team_lead. Rejects the change if the new address is already in use.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Change a user's login email",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "New email",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/controller.ChangeEmailRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.User"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid email / already in use",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "User not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/users/{id}/enrollments": {
             "get": {
                 "security": [
@@ -10902,6 +14232,204 @@ const docTemplate = `{
                             "type": "array",
                             "items": {
                                 "$ref": "#/definitions/models.StudentEnrollment"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{id}/login-activity": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns total logins, registered/removed device counts, and the device list. Restricted to super_admin/team_lead/mentor.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Get a user's login/device activity",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.LoginActivitySummary"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{id}/login-activity/{deviceId}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Soft-removes a device — it stops counting as a registered device, but its history is retained. Restricted to super_admin/team_lead.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Remove a device from a user's login activity",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Device ID",
+                        "name": "deviceId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{id}/notes": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns every note for a student, newest first. Restricted to super_admin/team_lead/mentor.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "students"
+                ],
+                "summary": "List learner notes",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Student user ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.StudentNote"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Adds a freeform staff note about a student. Restricted to super_admin/team_lead/mentor.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "students"
+                ],
+                "summary": "Add a learner note",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Student user ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Note text",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateStudentNoteInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.StudentNote"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
                             }
                         }
                     },
@@ -11012,6 +14540,172 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{id}/registration-details": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the extended demographic/registration fields (parent info, addresses, etc.) for a student. Self, or super_admin/team_lead.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "students"
+                ],
+                "summary": "Get student registration details",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Student user ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.StudentRegistrationDetails"
+                        }
+                    },
+                    "404": {
+                        "description": "User not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Partially update a student's demographic/registration fields. Self, or super_admin/team_lead.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "students"
+                ],
+                "summary": "Update student registration details",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Student user ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to update (all optional)",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateStudentRegistrationInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.StudentRegistrationDetails"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{id}/reset-password": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Generates a new temporary password for a user and emails it to them — unlike /auth/forgot-password, this is triggered by staff, not the user themselves. Restricted to super_admin/team_lead.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Admin-triggered password reset",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/controller.AdminResetPasswordResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "User not found",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -11150,6 +14844,128 @@ const docTemplate = `{
                 }
             }
         },
+        "/users/{id}/status": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Changes a student's lifecycle status and records it in their history. Restricted to super_admin/team_lead.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "students"
+                ],
+                "summary": "Update a student's status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Student user ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "New status + optional notes",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateStudentStatusInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "status updated",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Student not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{id}/status-history": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns every status-change event for a student, newest first. Restricted to super_admin/team_lead.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "students"
+                ],
+                "summary": "Get a student's status history",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Student user ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.StudentStatusHistoryEntry"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/users/{id}/streak": {
             "get": {
                 "security": [
@@ -11230,6 +15046,49 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "controller.AdminResetPasswordResponse": {
+            "type": "object",
+            "properties": {
+                "email_sent": {
+                    "type": "boolean"
+                },
+                "temporary_password": {
+                    "type": "string"
+                }
+            }
+        },
+        "controller.AssignCollegeInput": {
+            "type": "object",
+            "required": [
+                "college_short_id"
+            ],
+            "properties": {
+                "access_end_date": {
+                    "type": "string",
+                    "example": "2027-07-31"
+                },
+                "access_start_date": {
+                    "type": "string",
+                    "example": "2026-08-01"
+                },
+                "college_short_id": {
+                    "type": "string",
+                    "example": "ABCENG"
+                }
+            }
+        },
+        "controller.ChangeEmailRequest": {
+            "type": "object",
+            "required": [
+                "email"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "example": "new.address@example.com"
+                }
+            }
+        },
         "controller.ChangePasswordRequest": {
             "type": "object",
             "required": [
@@ -11263,6 +15122,119 @@ const docTemplate = `{
                         "team_lead"
                     ],
                     "example": "mentor"
+                }
+            }
+        },
+        "controller.CreateStaffUserRequest": {
+            "type": "object",
+            "required": [
+                "email",
+                "first_name",
+                "last_name",
+                "role"
+            ],
+            "properties": {
+                "college_short_id": {
+                    "description": "CollegeShortID is REQUIRED when role is college_admin/college_staff\n(only super_admin may create those roles, and every College Admin must\nbe permanently linked to one specific college — there is no sensible\ndefault). Ignored for mentor/employee/team_lead, which always land on\nthe Internal EdTech Platform.",
+                    "type": "string",
+                    "example": "use GET /colleges to pick a real short_id — required for college_admin/college_staff"
+                },
+                "email": {
+                    "type": "string",
+                    "example": "jane@example.com"
+                },
+                "first_name": {
+                    "type": "string",
+                    "example": "Jane"
+                },
+                "last_name": {
+                    "type": "string",
+                    "example": "Doe"
+                },
+                "phone": {
+                    "type": "string",
+                    "example": "+919876543210"
+                },
+                "role": {
+                    "type": "string",
+                    "enum": [
+                        "mentor",
+                        "employee",
+                        "team_lead",
+                        "college_admin",
+                        "college_staff"
+                    ],
+                    "example": "employee"
+                }
+            }
+        },
+        "controller.CreateStaffUserResponse": {
+            "type": "object",
+            "properties": {
+                "email_sent": {
+                    "type": "boolean"
+                },
+                "temporary_password": {
+                    "type": "string"
+                },
+                "user": {
+                    "$ref": "#/definitions/models.User"
+                }
+            }
+        },
+        "controller.CreateStudentRequest": {
+            "type": "object",
+            "required": [
+                "email",
+                "first_name",
+                "last_name"
+            ],
+            "properties": {
+                "college_short_id": {
+                    "description": "CollegeShortID is only honored for super_admin callers (picks which\ncollege this student belongs to; omit for the Internal EdTech\nPlatform). A College Admin/College Staff caller is always forced onto\ntheir own college_id server-side, regardless of what's sent here — the\nfrontend must never show them a college picker.",
+                    "type": "string",
+                    "example": "use GET /colleges to pick a real short_id, or omit for the Internal EdTech Platform"
+                },
+                "date_of_birth": {
+                    "type": "string",
+                    "example": "1998-05-20"
+                },
+                "email": {
+                    "type": "string",
+                    "example": "jane@example.com"
+                },
+                "first_name": {
+                    "type": "string",
+                    "example": "Jane"
+                },
+                "last_name": {
+                    "type": "string",
+                    "example": "Doe"
+                },
+                "phone": {
+                    "type": "string",
+                    "example": "+919876543210"
+                }
+            }
+        },
+        "controller.CreateSubscriptionInput": {
+            "type": "object",
+            "required": [
+                "end_date",
+                "start_date"
+            ],
+            "properties": {
+                "end_date": {
+                    "type": "string",
+                    "example": "2027-07-31"
+                },
+                "plan_id": {
+                    "type": "string",
+                    "example": "standard-annual"
+                },
+                "start_date": {
+                    "type": "string",
+                    "example": "2026-08-01"
                 }
             }
         },
@@ -11330,13 +15302,35 @@ const docTemplate = `{
                 }
             }
         },
+        "controller.MyFeaturesResponse": {
+            "type": "object",
+            "properties": {
+                "college_id": {
+                    "type": "string"
+                },
+                "college_name": {
+                    "type": "string"
+                },
+                "features": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "boolean"
+                    }
+                },
+                "unscoped": {
+                    "description": "true for super_admin / legacy users with no college_id — treated as full access",
+                    "type": "boolean"
+                }
+            }
+        },
         "controller.RegisterRequest": {
             "type": "object",
             "required": [
                 "email",
                 "first_name",
                 "last_name",
-                "password"
+                "password",
+                "phone"
             ],
             "properties": {
                 "date_of_birth": {
@@ -11399,6 +15393,26 @@ const docTemplate = `{
                 "otp": {
                     "type": "string",
                     "example": "042913"
+                }
+            }
+        },
+        "controller.TransferCollegeRequest": {
+            "type": "object",
+            "required": [
+                "college_short_id"
+            ],
+            "properties": {
+                "college_short_id": {
+                    "type": "string",
+                    "example": "ABCENG"
+                },
+                "force": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "reason": {
+                    "type": "string",
+                    "example": "Student transferred to partner college"
                 }
             }
         },
@@ -11526,7 +15540,13 @@ const docTemplate = `{
                 "allow_attempts_after_passing": {
                     "type": "boolean"
                 },
+                "allowed_warning_count": {
+                    "type": "integer"
+                },
                 "auto_submit": {
+                    "type": "boolean"
+                },
+                "auto_submit_on_violation": {
                     "type": "boolean"
                 },
                 "batch_number": {
@@ -11540,6 +15560,15 @@ const docTemplate = `{
                 },
                 "cancelled_by": {
                     "type": "string"
+                },
+                "close_on_fullscreen_exit": {
+                    "type": "boolean"
+                },
+                "close_on_tab_switch": {
+                    "type": "boolean"
+                },
+                "close_on_window_blur": {
+                    "type": "boolean"
                 },
                 "created_at": {
                     "type": "string"
@@ -11599,6 +15628,10 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "result_display": {
+                    "type": "string"
+                },
+                "result_published_at": {
+                    "description": "ResultPublishedAt gates student-visible marks/grade/feedback — set only\nby the explicit \"publish results\" action, never by grading itself.",
                     "type": "string"
                 },
                 "short_id": {
@@ -11689,6 +15722,12 @@ const docTemplate = `{
                 "short_id": {
                     "type": "string"
                 },
+                "subject": {
+                    "type": "string"
+                },
+                "subtopic": {
+                    "type": "string"
+                },
                 "topic": {
                     "type": "string"
                 },
@@ -11698,6 +15737,37 @@ const docTemplate = `{
                 "visibility": {
                     "description": "private | course | global",
                     "type": "string"
+                }
+            }
+        },
+        "models.AssignLeadsInput": {
+            "type": "object",
+            "required": [
+                "employee_id",
+                "lead_short_ids"
+            ],
+            "properties": {
+                "employee_id": {
+                    "type": "string"
+                },
+                "lead_short_ids": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "next_follow_up_at": {
+                    "type": "string"
+                },
+                "priority": {
+                    "type": "string",
+                    "enum": [
+                        "low",
+                        "medium",
+                        "high",
+                        "urgent"
+                    ]
                 }
             }
         },
@@ -11830,6 +15900,10 @@ const docTemplate = `{
                 },
                 "marks": {
                     "type": "integer"
+                },
+                "result_published_at": {
+                    "description": "ResultPublishedAt gates student-visible marks/grade/feedback — set only\nby the explicit bulk \"publish results\" action, never by grading itself.",
+                    "type": "string"
                 },
                 "short_id": {
                     "type": "string"
@@ -11964,10 +16038,18 @@ const docTemplate = `{
                 "student_name": {
                     "type": "string"
                 },
+                "submission_type": {
+                    "description": "SubmissionType records how the attempt ended: manual | timer_expired |\nviolation | admin_closed | exam_window_closed. Empty while in_progress.",
+                    "type": "string"
+                },
                 "submitted_at": {
                     "type": "string"
                 },
                 "total_score": {
+                    "type": "integer"
+                },
+                "violation_count": {
+                    "description": "ViolationCount is computed at read time from exam_attempt_violations —\nnot stored redundantly on the attempt row.",
                     "type": "integer"
                 }
             }
@@ -12088,6 +16170,21 @@ const docTemplate = `{
                 }
             }
         },
+        "models.AutoAssignInput": {
+            "type": "object",
+            "required": [
+                "lead_short_ids"
+            ],
+            "properties": {
+                "lead_short_ids": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
         "models.Banner": {
             "type": "object",
             "properties": {
@@ -12150,6 +16247,12 @@ const docTemplate = `{
                 "batch_number": {
                     "type": "string"
                 },
+                "college_id": {
+                    "type": "string"
+                },
+                "college_short_id": {
+                    "type": "string"
+                },
                 "course_id": {
                     "type": "string"
                 },
@@ -12206,6 +16309,47 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.BatchAnalyticsRow": {
+            "type": "object",
+            "properties": {
+                "at_risk_count": {
+                    "description": "AtRiskCount is a lightweight proxy (students under 60% attendance) —\nnot the full 3-factor at-risk algorithm behind GET /batches/:id/at-risk,\nwhich is per-batch only. Good enough for a summary card across batches.",
+                    "type": "integer"
+                },
+                "avg_attendance_rate": {
+                    "type": "number"
+                },
+                "avg_completion_percentage": {
+                    "type": "number"
+                },
+                "batch_number": {
+                    "type": "string"
+                },
+                "batch_short_id": {
+                    "type": "string"
+                },
+                "certificates_issued": {
+                    "type": "integer"
+                },
+                "course_name": {
+                    "type": "string"
+                },
+                "student_count": {
+                    "type": "integer"
+                }
+            }
+        },
+        "models.BatchAttendanceTrendPoint": {
+            "type": "object",
+            "properties": {
+                "attendance_rate": {
+                    "type": "number"
+                },
+                "week_start": {
                     "type": "string"
                 }
             }
@@ -12455,6 +16599,12 @@ const docTemplate = `{
                 "starter_code": {
                     "$ref": "#/definitions/models.StarterCode"
                 },
+                "subject": {
+                    "type": "string"
+                },
+                "subtopic": {
+                    "type": "string"
+                },
                 "test_cases": {
                     "type": "array",
                     "items": {
@@ -12486,6 +16636,71 @@ const docTemplate = `{
                 },
                 "is_hidden": {
                     "type": "boolean"
+                }
+            }
+        },
+        "models.College": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "code": {
+                    "type": "string"
+                },
+                "contact_email": {
+                    "type": "string"
+                },
+                "contact_person": {
+                    "type": "string"
+                },
+                "contact_phone": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "employee_count": {
+                    "type": "integer"
+                },
+                "enabled_features": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "boolean"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "logo_url": {
+                    "type": "string"
+                },
+                "max_employees": {
+                    "type": "integer"
+                },
+                "max_students": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "student_count": {
+                    "type": "integer"
+                },
+                "subscription_end_date": {
+                    "type": "string"
+                },
+                "subscription_start_date": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
                 }
             }
         },
@@ -12536,10 +16751,92 @@ const docTemplate = `{
                 }
             }
         },
+        "models.CommunityComment": {
+            "type": "object",
+            "properties": {
+                "author_id": {
+                    "type": "string"
+                },
+                "author_name": {
+                    "type": "string"
+                },
+                "author_role": {
+                    "type": "string"
+                },
+                "content": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "post_id": {
+                    "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.CommunityPost": {
+            "type": "object",
+            "properties": {
+                "author_id": {
+                    "type": "string"
+                },
+                "author_name": {
+                    "type": "string"
+                },
+                "author_role": {
+                    "type": "string"
+                },
+                "comment_count": {
+                    "type": "integer"
+                },
+                "community_id": {
+                    "type": "string"
+                },
+                "community_short_id": {
+                    "type": "string"
+                },
+                "content": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_pinned": {
+                    "type": "boolean"
+                },
+                "like_count": {
+                    "type": "integer"
+                },
+                "liked_by_me": {
+                    "type": "boolean"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
         "models.Course": {
             "type": "object",
             "properties": {
                 "category": {
+                    "type": "string"
+                },
+                "college_id": {
                     "type": "string"
                 },
                 "created_at": {
@@ -12651,13 +16948,33 @@ const docTemplate = `{
                     "type": "boolean",
                     "example": false
                 },
+                "allowed_warning_count": {
+                    "type": "integer",
+                    "example": 1
+                },
                 "auto_submit": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "auto_submit_on_violation": {
                     "type": "boolean",
                     "example": true
                 },
                 "batch_short_id": {
                     "type": "string",
                     "example": "use GET /batches to pick a real short_id, or omit for global visibility"
+                },
+                "close_on_fullscreen_exit": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "close_on_tab_switch": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "close_on_window_blur": {
+                    "type": "boolean",
+                    "example": false
                 },
                 "description": {
                     "type": "string",
@@ -12912,6 +17229,11 @@ const docTemplate = `{
                     "type": "string",
                     "example": "BATCH-2024-001"
                 },
+                "college_short_id": {
+                    "description": "CollegeShortID is only honored for super_admin callers (picks which\ncollege owns this batch; omit for the Internal EdTech Platform).\nEvery other caller is always forced onto their own college_id\nserver-side, regardless of what's sent here.",
+                    "type": "string",
+                    "example": "use GET /colleges to pick a real short_id, or omit for the Internal EdTech Platform"
+                },
                 "course_short_id": {
                     "type": "string",
                     "example": "A3F72C1D"
@@ -13007,6 +17329,48 @@ const docTemplate = `{
                 }
             }
         },
+        "models.CreateCallLogInput": {
+            "type": "object",
+            "required": [
+                "outcome",
+                "status"
+            ],
+            "properties": {
+                "next_follow_up_at": {
+                    "type": "string"
+                },
+                "notes": {
+                    "type": "string",
+                    "example": "Asked for a callback next week"
+                },
+                "outcome": {
+                    "type": "string",
+                    "enum": [
+                        "connected",
+                        "no_answer",
+                        "busy",
+                        "switched_off",
+                        "invalid_number",
+                        "callback_requested"
+                    ],
+                    "example": "connected"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "new",
+                        "contacted",
+                        "interested",
+                        "follow_up",
+                        "not_reachable",
+                        "converted",
+                        "not_interested",
+                        "lost"
+                    ],
+                    "example": "interested"
+                }
+            }
+        },
         "models.CreateCodingQuestionInput": {
             "type": "object",
             "required": [
@@ -13045,6 +17409,12 @@ const docTemplate = `{
                 "starter_code": {
                     "$ref": "#/definitions/models.StarterCode"
                 },
+                "subject": {
+                    "type": "string"
+                },
+                "subtopic": {
+                    "type": "string"
+                },
                 "test_cases": {
                     "type": "array",
                     "items": {
@@ -13059,6 +17429,21 @@ const docTemplate = `{
                     "items": {
                         "type": "string"
                     }
+                }
+            }
+        },
+        "models.CreateCollegeInput": {
+            "type": "object"
+        },
+        "models.CreateCommunityCommentInput": {
+            "type": "object",
+            "required": [
+                "content"
+            ],
+            "properties": {
+                "content": {
+                    "type": "string",
+                    "example": "Same here!"
                 }
             }
         },
@@ -13083,6 +17468,18 @@ const docTemplate = `{
                 }
             }
         },
+        "models.CreateCommunityPostInput": {
+            "type": "object",
+            "required": [
+                "content"
+            ],
+            "properties": {
+                "content": {
+                    "type": "string",
+                    "example": "Excited for tomorrow's session!"
+                }
+            }
+        },
         "models.CreateCourseInput": {
             "type": "object",
             "required": [
@@ -13091,6 +17488,19 @@ const docTemplate = `{
             "properties": {
                 "category": {
                     "type": "string"
+                },
+                "college_short_id": {
+                    "description": "CollegeShortID is only honored for super_admin callers; every other\ncaller is forced onto their own college_id server-side. Omit for the\nInternal EdTech Platform.",
+                    "type": "string"
+                },
+                "course_scope": {
+                    "description": "CourseScope: \"organization\" (default, owned by exactly the one college\nabove) or \"global\" (a reusable master course assignable to many\ncolleges via POST /courses/{short_id}/assign).",
+                    "type": "string",
+                    "enum": [
+                        "global",
+                        "organization"
+                    ],
+                    "example": "organization"
                 },
                 "description": {
                     "type": "string"
@@ -13291,6 +17701,95 @@ const docTemplate = `{
                 "start_label": {
                     "type": "string",
                     "example": "Poor"
+                }
+            }
+        },
+        "models.CreateLeadInput": {
+            "type": "object",
+            "required": [
+                "course_interest",
+                "name",
+                "phone"
+            ],
+            "properties": {
+                "city": {
+                    "type": "string",
+                    "example": "Bengaluru"
+                },
+                "college_short_id": {
+                    "description": "CollegeShortID is only honored for super_admin callers; every other\ncaller is forced onto their own college_id server-side. Omit for the\nInternal EdTech Platform's own direct-website leads.",
+                    "type": "string",
+                    "example": "use GET /colleges to pick a real short_id, or omit for the Internal EdTech Platform"
+                },
+                "course_interest": {
+                    "type": "string",
+                    "example": "Full Stack Development"
+                },
+                "email": {
+                    "type": "string",
+                    "example": "priya@example.com"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "Priya Sharma"
+                },
+                "notes": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string",
+                    "example": "+919876543210"
+                },
+                "priority": {
+                    "type": "string",
+                    "enum": [
+                        "low",
+                        "medium",
+                        "high",
+                        "urgent"
+                    ],
+                    "example": "medium"
+                },
+                "source": {
+                    "type": "string",
+                    "enum": [
+                        "excel_import",
+                        "manual",
+                        "website",
+                        "referral",
+                        "other"
+                    ],
+                    "example": "manual"
+                }
+            }
+        },
+        "models.CreateLeaveRequestInput": {
+            "type": "object",
+            "required": [
+                "from_date",
+                "reason",
+                "to_date"
+            ],
+            "properties": {
+                "from_date": {
+                    "type": "string",
+                    "example": "2026-08-01"
+                },
+                "leave_type": {
+                    "type": "string",
+                    "enum": [
+                        "full_day",
+                        "half_day"
+                    ],
+                    "example": "full_day"
+                },
+                "reason": {
+                    "type": "string",
+                    "example": "Family function"
+                },
+                "to_date": {
+                    "type": "string",
+                    "example": "2026-08-02"
                 }
             }
         },
@@ -13745,6 +18244,18 @@ const docTemplate = `{
                 }
             }
         },
+        "models.CreateStudentNoteInput": {
+            "type": "object",
+            "required": [
+                "note"
+            ],
+            "properties": {
+                "note": {
+                    "type": "string",
+                    "example": "Called about pending assignment, will submit by Friday."
+                }
+            }
+        },
         "models.CreateSubmissionInput": {
             "type": "object",
             "required": [
@@ -13863,6 +18374,64 @@ const docTemplate = `{
                 }
             }
         },
+        "models.EmployeeAttendance": {
+            "type": "object",
+            "properties": {
+                "check_in_at": {
+                    "type": "string"
+                },
+                "check_out_at": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "date": {
+                    "type": "string"
+                },
+                "employee_id": {
+                    "type": "string"
+                },
+                "employee_name": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "notes": {
+                    "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.EmployeeLeadSummary": {
+            "type": "object",
+            "properties": {
+                "active_leads": {
+                    "type": "integer"
+                },
+                "calls_today": {
+                    "type": "integer"
+                },
+                "conversions": {
+                    "type": "integer"
+                },
+                "employee_id": {
+                    "type": "string"
+                },
+                "employee_name": {
+                    "type": "string"
+                }
+            }
+        },
         "models.EnrollmentTrendPoint": {
             "type": "object",
             "properties": {
@@ -13939,6 +18508,44 @@ const docTemplate = `{
                 }
             }
         },
+        "models.ExamAccessStatus": {
+            "type": "object",
+            "properties": {
+                "attempt_number": {
+                    "type": "integer"
+                },
+                "attempt_short_id": {
+                    "type": "string"
+                },
+                "attempt_status": {
+                    "type": "string"
+                },
+                "can_resume": {
+                    "type": "boolean"
+                },
+                "can_start": {
+                    "type": "boolean"
+                },
+                "display_status": {
+                    "type": "string"
+                },
+                "ends_at": {
+                    "type": "string"
+                },
+                "max_attempts": {
+                    "type": "integer"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "results_visible": {
+                    "type": "boolean"
+                },
+                "starts_at": {
+                    "type": "string"
+                }
+            }
+        },
         "models.ExamAttempt": {
             "type": "object",
             "properties": {
@@ -13989,10 +18596,18 @@ const docTemplate = `{
                 "student_name": {
                     "type": "string"
                 },
+                "submission_type": {
+                    "description": "SubmissionType records how the attempt ended: manual | timer_expired |\nviolation | admin_closed | exam_window_closed. Empty while in_progress.",
+                    "type": "string"
+                },
                 "submitted_at": {
                     "type": "string"
                 },
                 "total_score": {
+                    "type": "integer"
+                },
+                "violation_count": {
+                    "description": "ViolationCount is computed at read time from exam_attempt_violations —\nnot stored redundantly on the attempt row.",
                     "type": "integer"
                 }
             }
@@ -14229,6 +18844,347 @@ const docTemplate = `{
                 }
             }
         },
+        "models.Lead": {
+            "type": "object",
+            "properties": {
+                "assigned_at": {
+                    "type": "string"
+                },
+                "assigned_by": {
+                    "type": "string"
+                },
+                "assigned_to": {
+                    "type": "string"
+                },
+                "assigned_to_name": {
+                    "type": "string"
+                },
+                "city": {
+                    "type": "string"
+                },
+                "college_id": {
+                    "type": "string"
+                },
+                "converted_at": {
+                    "type": "string"
+                },
+                "course_interest": {
+                    "type": "string"
+                },
+                "course_short_id": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "created_by_name": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "last_contacted_at": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "next_follow_up_at": {
+                    "type": "string"
+                },
+                "notes": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                },
+                "priority": {
+                    "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.LeadAssignmentHistoryEntry": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "follow_up_set_at": {
+                    "type": "string"
+                },
+                "from_employee_id": {
+                    "type": "string"
+                },
+                "from_employee_name": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "lead_short_id": {
+                    "type": "string"
+                },
+                "performed_by": {
+                    "type": "string"
+                },
+                "priority_set": {
+                    "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "to_employee_id": {
+                    "type": "string"
+                },
+                "to_employee_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.LeadCallLog": {
+            "type": "object",
+            "properties": {
+                "called_at": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "employee_id": {
+                    "type": "string"
+                },
+                "employee_name": {
+                    "type": "string"
+                },
+                "follow_up_set_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "lead_short_id": {
+                    "type": "string"
+                },
+                "notes": {
+                    "type": "string"
+                },
+                "outcome": {
+                    "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "status_after": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.LeadDashboard": {
+            "type": "object",
+            "properties": {
+                "calls_completed_today": {
+                    "type": "integer"
+                },
+                "calls_to_make_today": {
+                    "type": "integer"
+                },
+                "converted_leads": {
+                    "type": "integer"
+                },
+                "follow_ups_due_today": {
+                    "type": "integer"
+                },
+                "interested_leads": {
+                    "type": "integer"
+                },
+                "leads_assigned_today": {
+                    "type": "integer"
+                },
+                "new_leads": {
+                    "type": "integer"
+                },
+                "not_reachable_leads": {
+                    "type": "integer"
+                },
+                "overdue_follow_ups": {
+                    "type": "integer"
+                },
+                "pending_calls": {
+                    "type": "integer"
+                },
+                "total_active_leads": {
+                    "type": "integer"
+                }
+            }
+        },
+        "models.LeadImportResult": {
+            "type": "object",
+            "properties": {
+                "imported": {
+                    "type": "integer"
+                },
+                "skipped": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.LeadImportRowError"
+                    }
+                }
+            }
+        },
+        "models.LeadImportRowError": {
+            "type": "object",
+            "properties": {
+                "reason": {
+                    "type": "string"
+                },
+                "row_number": {
+                    "type": "integer"
+                }
+            }
+        },
+        "models.LeaveBalance": {
+            "type": "object",
+            "properties": {
+                "employee_id": {
+                    "type": "string"
+                },
+                "remaining_days": {
+                    "type": "number"
+                },
+                "total_days": {
+                    "type": "number"
+                },
+                "used_days": {
+                    "type": "number"
+                },
+                "year": {
+                    "type": "integer"
+                }
+            }
+        },
+        "models.LeaveRequest": {
+            "type": "object",
+            "properties": {
+                "admin_note": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "employee_id": {
+                    "type": "string"
+                },
+                "employee_name": {
+                    "type": "string"
+                },
+                "from_date": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "leave_type": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "reviewed_at": {
+                    "type": "string"
+                },
+                "reviewed_by": {
+                    "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "to_date": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.LoginActivityDevice": {
+            "type": "object",
+            "properties": {
+                "browser_name": {
+                    "type": "string"
+                },
+                "browser_version": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "device_id": {
+                    "type": "string"
+                },
+                "device_type": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "last_login_at": {
+                    "type": "string"
+                },
+                "login_count": {
+                    "type": "integer"
+                },
+                "os_name": {
+                    "type": "string"
+                },
+                "removed_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.LoginActivitySummary": {
+            "type": "object",
+            "properties": {
+                "devices": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.LoginActivityDevice"
+                    }
+                },
+                "registered_device_count": {
+                    "type": "integer"
+                },
+                "removed_device_count": {
+                    "type": "integer"
+                },
+                "total_logins": {
+                    "type": "integer"
+                }
+            }
+        },
         "models.MarkAttendanceInput": {
             "type": "object",
             "required": [
@@ -14443,6 +19399,41 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "watch_time_minutes": {
+                    "type": "integer"
+                }
+            }
+        },
+        "models.MonthlyTarget": {
+            "type": "object",
+            "properties": {
+                "achieved": {
+                    "type": "integer"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "employee_id": {
+                    "type": "string"
+                },
+                "employee_name": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "month": {
+                    "type": "integer"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "target_conversions": {
+                    "type": "integer"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "year": {
                     "type": "integer"
                 }
             }
@@ -14809,6 +19800,10 @@ const docTemplate = `{
                     "description": "ProjectTitle/MilestoneTitle/BatchShortID/BatchNumber are only populated\nby the cross-project workspace listing (FindAllSubmissionsForMentor).",
                     "type": "string"
                 },
+                "result_published_at": {
+                    "description": "ResultPublishedAt gates student-visible marks/feedback — set only by\nthe explicit bulk \"publish results\" action, never by grading itself.",
+                    "type": "string"
+                },
                 "short_id": {
                     "type": "string"
                 },
@@ -14948,6 +19943,12 @@ const docTemplate = `{
                 "short_id": {
                     "type": "string"
                 },
+                "subject": {
+                    "type": "string"
+                },
+                "subtopic": {
+                    "type": "string"
+                },
                 "topic": {
                     "type": "string"
                 },
@@ -14960,6 +19961,63 @@ const docTemplate = `{
                 }
             }
         },
+        "models.QuestionBankStats": {
+            "type": "object",
+            "properties": {
+                "by_difficulty": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer"
+                    }
+                },
+                "by_question_type": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer"
+                    }
+                },
+                "subject": {
+                    "type": "string"
+                },
+                "topics": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.TopicCount"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "models.QuestionBankTaxonomy": {
+            "type": "object",
+            "properties": {
+                "subject": {
+                    "type": "string"
+                },
+                "topics": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.QuestionBankTopic"
+                    }
+                }
+            }
+        },
+        "models.QuestionBankTopic": {
+            "type": "object",
+            "properties": {
+                "subtopics": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "topic": {
+                    "type": "string"
+                }
+            }
+        },
         "models.QuestionOption": {
             "type": "object",
             "properties": {
@@ -14968,6 +20026,37 @@ const docTemplate = `{
                 },
                 "text": {
                     "type": "string"
+                }
+            }
+        },
+        "models.ReassignLeadsInput": {
+            "type": "object",
+            "required": [
+                "employee_id",
+                "lead_short_ids"
+            ],
+            "properties": {
+                "employee_id": {
+                    "type": "string"
+                },
+                "lead_short_ids": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "next_follow_up_at": {
+                    "type": "string"
+                },
+                "priority": {
+                    "type": "string",
+                    "enum": [
+                        "low",
+                        "medium",
+                        "high",
+                        "urgent"
+                    ]
                 }
             }
         },
@@ -14994,6 +20083,48 @@ const docTemplate = `{
                 },
                 "student_id": {
                     "type": "string"
+                }
+            }
+        },
+        "models.RecordViolationInput": {
+            "type": "object",
+            "required": [
+                "violation_type"
+            ],
+            "properties": {
+                "browser_info": {
+                    "type": "string",
+                    "example": "Mozilla/5.0 ..."
+                },
+                "violation_type": {
+                    "type": "string",
+                    "enum": [
+                        "tab_switched",
+                        "window_blurred",
+                        "fullscreen_exited",
+                        "page_refreshed",
+                        "browser_back_attempt",
+                        "multiple_tab_attempt",
+                        "multiple_device_attempt",
+                        "network_disconnected",
+                        "exam_window_closed"
+                    ],
+                    "example": "tab_switched"
+                }
+            }
+        },
+        "models.RecordViolationResponse": {
+            "type": "object",
+            "properties": {
+                "action_taken": {
+                    "description": "warned | auto_submitted",
+                    "type": "string"
+                },
+                "attempt_status": {
+                    "type": "string"
+                },
+                "warning_number": {
+                    "type": "integer"
                 }
             }
         },
@@ -15077,6 +20208,26 @@ const docTemplate = `{
                 }
             }
         },
+        "models.ReviewLeaveRequestInput": {
+            "type": "object",
+            "required": [
+                "status"
+            ],
+            "properties": {
+                "admin_note": {
+                    "type": "string",
+                    "example": "Approved, enjoy!"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "approved",
+                        "rejected"
+                    ],
+                    "example": "approved"
+                }
+            }
+        },
         "models.Role": {
             "type": "string",
             "enum": [
@@ -15084,14 +20235,20 @@ const docTemplate = `{
                 "mentor",
                 "employee",
                 "team_lead",
-                "super_admin"
+                "super_admin",
+                "platform_admin",
+                "college_admin",
+                "college_staff"
             ],
             "x-enum-varnames": [
                 "RoleStudent",
                 "RoleMentor",
                 "RoleEmployee",
                 "RoleTeamLead",
-                "RoleSuperAdmin"
+                "RoleSuperAdmin",
+                "RolePlatformAdmin",
+                "RoleCollegeAdmin",
+                "RoleCollegeStaff"
             ]
         },
         "models.SectionMaterial": {
@@ -15260,6 +20417,10 @@ const docTemplate = `{
                 "start_time": {
                     "type": "string"
                 },
+                "status": {
+                    "description": "Status is computed server-side (not stored) from is_active plus\nsession_date/start_time/end_time against the current time, in the\napp's configured timezone — one of upcoming | live | completed |\ncancelled. The frontend should render its Join/Watch Recording button\noff this field instead of recomputing it from local wall-clock time,\nso all clients agree regardless of the viewer's own timezone.",
+                    "type": "string"
+                },
                 "topics": {
                     "type": "array",
                     "items": {
@@ -15416,6 +20577,31 @@ const docTemplate = `{
                 }
             }
         },
+        "models.SetMonthlyTargetInput": {
+            "type": "object",
+            "required": [
+                "month",
+                "target_conversions",
+                "year"
+            ],
+            "properties": {
+                "month": {
+                    "type": "integer",
+                    "maximum": 12,
+                    "minimum": 1,
+                    "example": 7
+                },
+                "target_conversions": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "example": 10
+                },
+                "year": {
+                    "type": "integer",
+                    "example": 2026
+                }
+            }
+        },
         "models.StarterCode": {
             "type": "object",
             "additionalProperties": {
@@ -15529,6 +20715,10 @@ const docTemplate = `{
                     "description": "direct | invited | transferred",
                     "type": "string"
                 },
+                "fees_paid": {
+                    "description": "FeesPaid mirrors batch_students.fees_paid for this student/batch pair —\ngates access to session recordings, surfaced here so the admin can see\npayment status directly from the student's own enrollment history.",
+                    "type": "boolean"
+                },
                 "final_rank": {
                     "type": "integer"
                 },
@@ -15554,6 +20744,139 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.StudentImportResult": {
+            "type": "object",
+            "properties": {
+                "imported": {
+                    "type": "integer"
+                },
+                "skipped": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.StudentImportRowError"
+                    }
+                }
+            }
+        },
+        "models.StudentImportRowError": {
+            "type": "object",
+            "properties": {
+                "reason": {
+                    "type": "string"
+                },
+                "row_number": {
+                    "type": "integer"
+                }
+            }
+        },
+        "models.StudentNote": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "created_by_name": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "note": {
+                    "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "student_user_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.StudentRegistrationDetails": {
+            "type": "object",
+            "properties": {
+                "alternate_contact": {
+                    "type": "string"
+                },
+                "area": {
+                    "type": "string"
+                },
+                "city": {
+                    "type": "string"
+                },
+                "enrollment_no": {
+                    "description": "the student's admission/roll number, from students.enrollment_no",
+                    "type": "string"
+                },
+                "gender": {
+                    "type": "string"
+                },
+                "occupation": {
+                    "type": "string"
+                },
+                "opt_email": {
+                    "type": "boolean"
+                },
+                "opt_push": {
+                    "type": "boolean"
+                },
+                "opt_sms": {
+                    "type": "boolean"
+                },
+                "opt_whatsapp": {
+                    "type": "boolean"
+                },
+                "parent_contact": {
+                    "type": "string"
+                },
+                "parent_email": {
+                    "type": "string"
+                },
+                "parent_name": {
+                    "type": "string"
+                },
+                "permanent_address": {
+                    "type": "string"
+                },
+                "pincode": {
+                    "type": "string"
+                },
+                "religion": {
+                    "type": "string"
+                },
+                "residential_address": {
+                    "type": "string"
+                },
+                "school_college_name": {
+                    "type": "string"
+                },
+                "standard": {
+                    "type": "string"
+                },
+                "state": {
+                    "type": "string"
+                },
+                "status": {
+                    "description": "empty for non-student roles",
+                    "type": "string"
+                },
+                "student_source": {
+                    "type": "string"
+                },
+                "timezone": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "user_id": {
                     "type": "string"
                 }
             }
@@ -15589,6 +20912,35 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "student_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.StudentStatusHistoryEntry": {
+            "type": "object",
+            "properties": {
+                "changed_by": {
+                    "type": "string"
+                },
+                "changed_by_name": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "notes": {
+                    "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "student_user_id": {
                     "type": "string"
                 }
             }
@@ -15744,6 +21096,17 @@ const docTemplate = `{
                 }
             }
         },
+        "models.TopicCount": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "topic": {
+                    "type": "string"
+                }
+            }
+        },
         "models.TransferStudentInput": {
             "type": "object",
             "required": [
@@ -15753,6 +21116,21 @@ const docTemplate = `{
                 "to_batch_short_id": {
                     "type": "string",
                     "example": "use GET /batches to pick a real short_id"
+                }
+            }
+        },
+        "models.UnassignLeadsInput": {
+            "type": "object",
+            "required": [
+                "lead_short_ids"
+            ],
+            "properties": {
+                "lead_short_ids": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },
@@ -15792,13 +21170,33 @@ const docTemplate = `{
                     "type": "boolean",
                     "example": true
                 },
+                "allowed_warning_count": {
+                    "type": "integer",
+                    "example": 1
+                },
                 "auto_submit": {
                     "type": "boolean",
                     "example": false
                 },
+                "auto_submit_on_violation": {
+                    "type": "boolean",
+                    "example": true
+                },
                 "batch_short_id": {
                     "type": "string",
                     "example": ""
+                },
+                "close_on_fullscreen_exit": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "close_on_tab_switch": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "close_on_window_blur": {
+                    "type": "boolean",
+                    "example": true
                 },
                 "description": {
                     "type": "string",
@@ -16129,6 +21527,12 @@ const docTemplate = `{
                 "starter_code": {
                     "$ref": "#/definitions/models.StarterCode"
                 },
+                "subject": {
+                    "type": "string"
+                },
+                "subtopic": {
+                    "type": "string"
+                },
                 "test_cases": {
                     "type": "array",
                     "items": {
@@ -16143,6 +21547,60 @@ const docTemplate = `{
                     "items": {
                         "type": "string"
                     }
+                }
+            }
+        },
+        "models.UpdateCollegeInput": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string",
+                    "example": "123 Main St, Springfield"
+                },
+                "contact_email": {
+                    "type": "string",
+                    "example": "admin@sit.edu"
+                },
+                "contact_person": {
+                    "type": "string",
+                    "example": "Jane Doe"
+                },
+                "contact_phone": {
+                    "type": "string",
+                    "example": "+919876543210"
+                },
+                "logo_url": {
+                    "type": "string",
+                    "example": "https://cdn.example.com/sit-logo.png"
+                },
+                "max_employees": {
+                    "type": "integer",
+                    "example": 20
+                },
+                "max_students": {
+                    "type": "integer",
+                    "example": 500
+                },
+                "name": {
+                    "type": "string",
+                    "example": "Springfield Institute of Technology"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "active",
+                        "suspended",
+                        "expired"
+                    ],
+                    "example": "active"
+                },
+                "subscription_end_date": {
+                    "type": "string",
+                    "example": "2026-12-31"
+                },
+                "subscription_start_date": {
+                    "type": "string",
+                    "example": "2026-01-01"
                 }
             }
         },
@@ -16292,6 +21750,9 @@ const docTemplate = `{
                 }
             }
         },
+        "models.UpdateFeaturesInput": {
+            "type": "object"
+        },
         "models.UpdateFeedbackFormInput": {
             "type": "object",
             "properties": {
@@ -16362,6 +21823,54 @@ const docTemplate = `{
                 "fees_paid": {
                     "type": "boolean",
                     "example": true
+                }
+            }
+        },
+        "models.UpdateLeadInput": {
+            "type": "object",
+            "properties": {
+                "city": {
+                    "type": "string"
+                },
+                "course_interest": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "next_follow_up_at": {
+                    "type": "string"
+                },
+                "notes": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                },
+                "priority": {
+                    "type": "string",
+                    "enum": [
+                        "low",
+                        "medium",
+                        "high",
+                        "urgent"
+                    ]
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "new",
+                        "contacted",
+                        "interested",
+                        "follow_up",
+                        "not_reachable",
+                        "converted",
+                        "not_interested",
+                        "lost"
+                    ]
                 }
             }
         },
@@ -16761,6 +22270,100 @@ const docTemplate = `{
                 }
             }
         },
+        "models.UpdateStudentRegistrationInput": {
+            "type": "object",
+            "properties": {
+                "alternate_contact": {
+                    "type": "string"
+                },
+                "area": {
+                    "type": "string"
+                },
+                "city": {
+                    "type": "string"
+                },
+                "enrollment_no": {
+                    "type": "string"
+                },
+                "gender": {
+                    "type": "string"
+                },
+                "occupation": {
+                    "type": "string"
+                },
+                "opt_email": {
+                    "type": "boolean"
+                },
+                "opt_push": {
+                    "type": "boolean"
+                },
+                "opt_sms": {
+                    "type": "boolean"
+                },
+                "opt_whatsapp": {
+                    "type": "boolean"
+                },
+                "parent_contact": {
+                    "type": "string"
+                },
+                "parent_email": {
+                    "type": "string"
+                },
+                "parent_name": {
+                    "type": "string"
+                },
+                "permanent_address": {
+                    "type": "string"
+                },
+                "pincode": {
+                    "type": "string"
+                },
+                "religion": {
+                    "type": "string"
+                },
+                "residential_address": {
+                    "type": "string"
+                },
+                "school_college_name": {
+                    "type": "string"
+                },
+                "standard": {
+                    "type": "string"
+                },
+                "state": {
+                    "type": "string"
+                },
+                "student_source": {
+                    "type": "string"
+                },
+                "timezone": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.UpdateStudentStatusInput": {
+            "type": "object",
+            "required": [
+                "status"
+            ],
+            "properties": {
+                "notes": {
+                    "type": "string",
+                    "example": "Fees cleared, moved to active batch"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "registered",
+                        "enrolled",
+                        "completed",
+                        "on_leave",
+                        "archived"
+                    ],
+                    "example": "enrolled"
+                }
+            }
+        },
         "models.UpdateUserInput": {
             "type": "object",
             "properties": {
@@ -16789,6 +22392,10 @@ const docTemplate = `{
         "models.User": {
             "type": "object",
             "properties": {
+                "college_id": {
+                    "description": "empty for super_admin / legacy users predating multi-tenancy",
+                    "type": "string"
+                },
                 "created_at": {
                     "type": "string"
                 },
