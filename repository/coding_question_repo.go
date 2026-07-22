@@ -180,6 +180,42 @@ func (r *CodingQuestionRepository) FindAll(ctx context.Context) ([]models.Coding
 	return r.scanMany(ctx, q)
 }
 
+// FindAllForCollege is FindAll further restricted to the languages/topics/
+// question-sets explicitly configured for collegeID (spec section 21) — a
+// college with ZERO rows in college_languages/college_topics/
+// college_question_sets has no restriction configured yet, so every axis
+// with no rows imposes no filter (fail open to "show everything," never
+// "show nothing"). Falls back to the unrestricted FindAll entirely if
+// collegeID is empty (super_admin/unscoped) or if
+// schema_updates_college_multitenancy_v2.sql's Stage 5 tables haven't been
+// applied yet.
+func (r *CodingQuestionRepository) FindAllForCollege(ctx context.Context, collegeID string) ([]models.CodingQuestion, error) {
+	if collegeID == "" {
+		return r.FindAll(ctx)
+	}
+
+	q := selectCodingQuestion + `
+		WHERE deleted_at IS NULL AND is_active = TRUE
+		  AND (
+		        NOT EXISTS (SELECT 1 FROM college_question_sets WHERE college_id = $1::UUID)
+		     OR id IN (SELECT coding_question_id FROM college_question_sets WHERE college_id = $1::UUID)
+		  )
+		  AND (
+		        NOT EXISTS (SELECT 1 FROM college_languages WHERE college_id = $1::UUID)
+		     OR languages && ARRAY(SELECT language FROM college_languages WHERE college_id = $1::UUID)
+		  )
+		  AND (
+		        NOT EXISTS (SELECT 1 FROM college_topics WHERE college_id = $1::UUID)
+		     OR topics && ARRAY(SELECT topic FROM college_topics WHERE college_id = $1::UUID)
+		  )
+		ORDER BY created_at ASC`
+	out, err := r.scanMany(ctx, q, collegeID)
+	if err != nil {
+		return r.FindAll(ctx)
+	}
+	return out, nil
+}
+
 // FindAllAdmin returns all non-deleted questions (active + inactive) for admin.
 func (r *CodingQuestionRepository) FindAllAdmin(ctx context.Context) ([]models.CodingQuestion, error) {
 	q := selectCodingQuestion + `

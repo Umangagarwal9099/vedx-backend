@@ -23,12 +23,13 @@ type AuthController struct {
 	userRepo          *repository.UserRepository
 	otpRepo           *repository.PasswordResetRepository
 	loginActivityRepo *repository.LoginActivityRepository
+	collegeRepo       *repository.CollegeRepository
 	emailSvc          *service.EmailService
 	jwtSecret         string
 }
 
-func NewAuthController(userRepo *repository.UserRepository, otpRepo *repository.PasswordResetRepository, loginActivityRepo *repository.LoginActivityRepository, emailSvc *service.EmailService, jwtSecret string) *AuthController {
-	return &AuthController{userRepo: userRepo, otpRepo: otpRepo, loginActivityRepo: loginActivityRepo, emailSvc: emailSvc, jwtSecret: jwtSecret}
+func NewAuthController(userRepo *repository.UserRepository, otpRepo *repository.PasswordResetRepository, loginActivityRepo *repository.LoginActivityRepository, collegeRepo *repository.CollegeRepository, emailSvc *service.EmailService, jwtSecret string) *AuthController {
+	return &AuthController{userRepo: userRepo, otpRepo: otpRepo, loginActivityRepo: loginActivityRepo, collegeRepo: collegeRepo, emailSvc: emailSvc, jwtSecret: jwtSecret}
 }
 
 // ── Login ─────────────────────────────────────────────────────────────────────
@@ -182,7 +183,22 @@ func (ctrl *AuthController) Register(c *gin.Context) {
 		Role:         models.RoleStudent,
 	}
 
-	userID, err := ctrl.userRepo.Register(c.Request.Context(), user)
+	// Public self-registration is only ever for direct EdTech students — the
+	// form has no college picker, and every self-registered account lands on
+	// the Internal EdTech Platform. External college students are never
+	// created through this endpoint (see CollegeAdmin-provisioned creation).
+	collegeID, err := ctrl.collegeRepo.DefaultCollegeID(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not resolve default organization"})
+		return
+	}
+
+	var registrationNo *int
+	if n, ok := ctrl.collegeRepo.NextRegistrationNo(c.Request.Context(), collegeID); ok {
+		registrationNo = &n
+	}
+
+	userID, err := ctrl.userRepo.Register(c.Request.Context(), user, collegeID, registrationNo)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create account"})
 		return

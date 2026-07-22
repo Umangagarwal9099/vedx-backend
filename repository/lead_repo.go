@@ -23,7 +23,7 @@ func NewLeadRepository(pool *pgxpool.Pool) *LeadRepository {
 }
 
 const leadBaseSelect = `
-	SELECT l.id, l.short_id, l.name, l.phone, COALESCE(l.email, ''), COALESCE(l.city, ''),
+	SELECT l.id, l.short_id, COALESCE(l.college_id::TEXT, ''), l.name, l.phone, COALESCE(l.email, ''), COALESCE(l.city, ''),
 	       l.course_interest, COALESCE(c.short_id, ''),
 	       l.source::TEXT, l.status::TEXT, l.priority::TEXT,
 	       COALESCE(l.assigned_to::TEXT, ''), COALESCE(CONCAT(au.first_name, ' ', au.last_name), ''),
@@ -40,7 +40,7 @@ const leadBaseSelect = `
 func scanLead(row pgx.Row) (models.Lead, error) {
 	var l models.Lead
 	err := row.Scan(
-		&l.ID, &l.ShortID, &l.Name, &l.Phone, &l.Email, &l.City,
+		&l.ID, &l.ShortID, &l.CollegeID, &l.Name, &l.Phone, &l.Email, &l.City,
 		&l.CourseInterest, &l.CourseShortID,
 		&l.Source, &l.Status, &l.Priority,
 		&l.AssignedTo, &l.AssignedToName,
@@ -72,8 +72,11 @@ func (r *LeadRepository) scanAll(ctx context.Context, q string, args ...interfac
 }
 
 // Create inserts a lead, best-effort resolving course_id by exact name match
-// against the courses table (leaves it NULL if nothing matches).
-func (r *LeadRepository) Create(ctx context.Context, in models.CreateLeadInput, createdBy string) (*models.Lead, error) {
+// against the courses table (leaves it NULL if nothing matches). collegeID
+// must never be empty — resolved by the caller (see
+// controller.resolveTargetCollege) so no newly created lead is ever left
+// with a NULL college_id.
+func (r *LeadRepository) Create(ctx context.Context, in models.CreateLeadInput, createdBy, collegeID string) (*models.Lead, error) {
 	source := in.Source
 	if source == "" {
 		source = "manual"
@@ -93,17 +96,17 @@ func (r *LeadRepository) Create(ctx context.Context, in models.CreateLeadInput, 
 		l, err := scanLead(r.pool.QueryRow(ctx, fmt.Sprintf(`
 			WITH ins AS (
 				INSERT INTO leads (
-					short_id, name, phone, email, city, course_interest, course_id,
+					short_id, college_id, name, phone, email, city, course_interest, course_id,
 					source, status, priority, notes, created_by
 				) VALUES (
-					$1, $2, $3, NULLIF($4,''), NULLIF($5,''), $6,
-					(SELECT id FROM courses WHERE LOWER(name) = LOWER($6) AND deleted_at IS NULL LIMIT 1),
-					$7::lead_source, 'new'::lead_status, $8::lead_priority, NULLIF($9,''), $10
+					$1, $2::UUID, $3, $4, NULLIF($5,''), NULLIF($6,''), $7,
+					(SELECT id FROM courses WHERE LOWER(name) = LOWER($7) AND deleted_at IS NULL LIMIT 1),
+					$8::lead_source, 'new'::lead_status, $9::lead_priority, NULLIF($10,''), $11
 				)
 				RETURNING *
 			)
 			%s`, insSelect),
-			shortID, in.Name, in.Phone, in.Email, in.City, in.CourseInterest,
+			shortID, collegeID, in.Name, in.Phone, in.Email, in.City, in.CourseInterest,
 			source, priority, in.Notes, createdBy,
 		))
 		if err == nil {
@@ -121,12 +124,18 @@ func (r *LeadRepository) Create(ctx context.Context, in models.CreateLeadInput, 
 
 // buildLeadWhere returns the shared WHERE clauses + args for both the
 // unscoped (admin) and employee-scoped views, given the filter and an
-// optional employeeID (non-empty pins results to that employee's leads).
-func buildLeadWhere(f models.LeadFilter, employeeID string) ([]string, []interface{}) {
+// optional employeeID (non-empty pins results to that employee's leads) and
+// collegeID (non-empty scopes to that college for non-super-admin callers).
+func buildLeadWhere(f models.LeadFilter, employeeID, collegeID string) ([]string, []interface{}) {
 	where := []string{"l.deleted_at IS NULL"}
 	args := []interface{}{}
 	i := 1
 
+	if collegeID != "" {
+		where = append(where, fmt.Sprintf("l.college_id = $%d::UUID", i))
+		args = append(args, collegeID)
+		i++
+	}
 	if employeeID != "" {
 		where = append(where, fmt.Sprintf("l.assigned_to = $%d", i))
 		args = append(args, employeeID)
@@ -179,17 +188,19 @@ func buildLeadWhere(f models.LeadFilter, employeeID string) ([]string, []interfa
 	return where, args
 }
 
-// FindAll returns every non-deleted lead (staff view — unscoped), filtered.
-func (r *LeadRepository) FindAll(ctx context.Context, f models.LeadFilter) ([]models.Lead, error) {
-	where, args := buildLeadWhere(f, "")
+// FindAll returns every non-deleted lead (staff view), filtered. collegeID
+// scopes results for non-super-admin callers (empty = unscoped).
+func (r *LeadRepository) FindAll(ctx context.Context, f models.LeadFilter, collegeID string) ([]models.Lead, error) {
+	where, args := buildLeadWhere(f, "", collegeID)
 	q := fmt.Sprintf("%s WHERE %s ORDER BY l.created_at DESC", leadBaseSelect, strings.Join(where, " AND "))
 	return r.scanAll(ctx, q, args...)
 }
 
 // FindAllForEmployee returns only leads assigned to the given employee (or
-// team_lead carrying a personal quota), filtered.
-func (r *LeadRepository) FindAllForEmployee(ctx context.Context, employeeID string, f models.LeadFilter) ([]models.Lead, error) {
-	where, args := buildLeadWhere(f, employeeID)
+// team_lead carrying a personal quota), filtered. collegeID scopes further
+// for non-super-admin callers (empty = unscoped).
+func (r *LeadRepository) FindAllForEmployee(ctx context.Context, employeeID string, f models.LeadFilter, collegeID string) ([]models.Lead, error) {
+	where, args := buildLeadWhere(f, employeeID, collegeID)
 	q := fmt.Sprintf("%s WHERE %s ORDER BY l.next_follow_up_at ASC NULLS LAST, l.created_at DESC", leadBaseSelect, strings.Join(where, " AND "))
 	return r.scanAll(ctx, q, args...)
 }
@@ -307,8 +318,11 @@ func (r *LeadRepository) Delete(ctx context.Context, shortID string) error {
 
 // BulkImport inserts every valid parsed row, best-effort — a row that fails
 // (e.g. missing name/phone) is recorded in the result's Skipped list rather
-// than aborting the whole import.
-func (r *LeadRepository) BulkImport(ctx context.Context, rows []models.LeadImportRow, createdBy string) (*models.LeadImportResult, error) {
+// than aborting the whole import. Every imported row lands under collegeID —
+// for a College Admin caller that's always forced to their own college; for
+// super_admin the caller resolves it explicitly beforehand (or defaults it
+// to the Internal EdTech Platform), matching Create's contract.
+func (r *LeadRepository) BulkImport(ctx context.Context, rows []models.LeadImportRow, createdBy, collegeID string) (*models.LeadImportResult, error) {
 	result := &models.LeadImportResult{Skipped: []models.LeadImportRowError{}}
 
 	for _, row := range rows {
@@ -326,7 +340,7 @@ func (r *LeadRepository) BulkImport(ctx context.Context, rows []models.LeadImpor
 			City:           row.City,
 			CourseInterest: row.CourseInterest,
 			Source:         "excel_import",
-		}, createdBy)
+		}, createdBy, collegeID)
 		if err != nil {
 			result.Skipped = append(result.Skipped, models.LeadImportRowError{
 				RowNumber: row.RowNumber, Reason: err.Error(),

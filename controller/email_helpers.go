@@ -20,7 +20,9 @@ func emailUsersByRoles(ctx context.Context, userRepo *repository.UserRepository,
 	}
 	seen := make(map[string]bool)
 	for _, role := range roles {
-		users, err := userRepo.FindByRole(ctx, role)
+		// Unscoped — this is a platform-wide broadcast (e.g. "a new module
+		// was published"), not a college-scoped admin action.
+		users, err := userRepo.FindByRole(ctx, role, "")
 		if err != nil {
 			log.Printf("fetch users by role %s for email: %v", role, err)
 			continue

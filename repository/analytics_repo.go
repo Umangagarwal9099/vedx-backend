@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/umangagarwal/vedx-backend/models"
@@ -20,7 +21,9 @@ func NewAnalyticsRepository(pool *pgxpool.Pool) *AnalyticsRepository {
 // and certificates issued — built from the same real tables already used
 // per-batch elsewhere (student_enrollments, session_attendance, certificates).
 // mentorID scopes to batches that mentor manages (empty = every batch).
-func (r *AnalyticsRepository) GetBatchAnalytics(ctx context.Context, mentorID string) ([]models.BatchAnalyticsRow, error) {
+// collegeID additionally scopes to one college's batches (empty = unscoped,
+// per repository.CollegeFilter — never pass a caller-supplied value directly).
+func (r *AnalyticsRepository) GetBatchAnalytics(ctx context.Context, mentorID, collegeID string) ([]models.BatchAnalyticsRow, error) {
 	q := `
 		WITH student_attendance AS (
 			SELECT sa.batch_id, sa.student_id,
@@ -51,8 +54,12 @@ func (r *AnalyticsRepository) GetBatchAnalytics(ctx context.Context, mentorID st
 		WHERE b.deleted_at IS NULL`
 	args := []interface{}{}
 	if mentorID != "" {
-		q += ` AND (b.batch_manager_id = $1 OR b.additional_manager_id = $1)`
 		args = append(args, mentorID)
+		q += fmt.Sprintf(` AND (b.batch_manager_id = $%d OR b.additional_manager_id = $%d)`, len(args), len(args))
+	}
+	if collegeID != "" {
+		args = append(args, collegeID)
+		q += fmt.Sprintf(` AND b.college_id = $%d::UUID`, len(args))
 	}
 	q += ` ORDER BY b.created_at DESC`
 

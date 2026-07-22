@@ -78,3 +78,29 @@ type UpdateStudentStatusInput struct {
 	Status string `json:"status" binding:"required,oneof=registered enrolled completed on_leave archived" example:"enrolled"`
 	Notes  string `json:"notes" example:"Fees cleared, moved to active batch"`
 }
+
+// StudentImportRow is one parsed row from a College Admin's bulk-import
+// spreadsheet. RollNumber maps to students.enrollment_no. college_id is
+// deliberately never a column here — the import sheet never carries one;
+// every imported student lands under the authenticated caller's own college.
+type StudentImportRow struct {
+	RowNumber  int
+	FirstName  string
+	LastName   string
+	Email      string
+	Phone      string
+	RollNumber string
+}
+
+// StudentImportRowError explains why one row was skipped.
+type StudentImportRowError struct {
+	RowNumber int    `json:"row_number"`
+	Reason    string `json:"reason"`
+}
+
+// StudentImportResult is returned after a bulk import — mirrors
+// LeadImportResult's shape for frontend consistency.
+type StudentImportResult struct {
+	Imported int                     `json:"imported"`
+	Skipped  []StudentImportRowError `json:"skipped"`
+}

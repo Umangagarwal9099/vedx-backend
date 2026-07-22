@@ -5,6 +5,8 @@ import "time"
 type Batch struct {
 	ID                    string     `json:"id"`
 	ShortID               string     `json:"short_id"`
+	CollegeID             string     `json:"college_id,omitempty"`
+	CollegeShortID        string     `json:"college_short_id,omitempty"`
 	BatchNumber           string     `json:"batch_number"`
 	CourseID              string     `json:"course_id"`
 	CourseName            string     `json:"course_name"`
@@ -33,6 +35,11 @@ type Batch struct {
 // later via POST /batches/{short_id}/students.
 type CreateBatchInput struct {
 	BatchNumber         string   `json:"batch_number"          binding:"required" example:"BATCH-2024-001"`
+	// CollegeShortID is only honored for super_admin callers (picks which
+	// college owns this batch; omit for the Internal EdTech Platform).
+	// Every other caller is always forced onto their own college_id
+	// server-side, regardless of what's sent here.
+	CollegeShortID      string   `json:"college_short_id"                        example:"use GET /colleges to pick a real short_id, or omit for the Internal EdTech Platform"`
 	CourseShortID       string   `json:"course_short_id"       binding:"required" example:"A3F72C1D"`
 	BatchManagerID      string   `json:"batch_manager_id"      binding:"required" example:"use GET /mentors to pick a real ID"`
 	AdditionalManagerID string   `json:"additional_manager_id"                   example:"use GET /mentors to pick a real ID"`

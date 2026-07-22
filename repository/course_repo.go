@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -23,7 +24,7 @@ func NewCourseRepository(pool *pgxpool.Pool) *CourseRepository {
 
 // courseSelectCols is the canonical column list for all course SELECTs.
 const courseSelectCols = `
-	id, short_id, name,
+	id, short_id, COALESCE(college_id::TEXT, ''), name,
 	COALESCE(description,''), COALESCE(thumbnail,''),
 	COALESCE(overview,''), COALESCE(objectives,'{}'), COALESCE(requirements,'{}'),
 	COALESCE(instructor,''), COALESCE(duration,''), COALESCE(level,''), COALESCE(category,''),
@@ -32,7 +33,7 @@ const courseSelectCols = `
 func scanCourse(row pgx.Row) (models.Course, error) {
 	var c models.Course
 	err := row.Scan(
-		&c.ID, &c.ShortID, &c.Name, &c.Description, &c.Thumbnail,
+		&c.ID, &c.ShortID, &c.CollegeID, &c.Name, &c.Description, &c.Thumbnail,
 		&c.Overview, &c.Objectives, &c.Requirements,
 		&c.Instructor, &c.Duration, &c.Level, &c.Category,
 		&c.IsActive, &c.CreatedBy, &c.CreatedAt, &c.UpdatedAt,
@@ -41,14 +42,17 @@ func scanCourse(row pgx.Row) (models.Course, error) {
 }
 
 // Create inserts a new course, retrying up to 3 times on short_id collision.
-func (r *CourseRepository) Create(ctx context.Context, in models.CreateCourseInput, createdBy string) (*models.Course, error) {
+// collegeID must never be empty — resolved by the caller (see
+// controller.resolveTargetCollege) so no newly created course is ever left
+// with a NULL college_id.
+func (r *CourseRepository) Create(ctx context.Context, in models.CreateCourseInput, createdBy, collegeID string) (*models.Course, error) {
 	const q = `
 		INSERT INTO courses (
-			short_id, name, description, thumbnail,
+			short_id, college_id, name, description, thumbnail,
 			overview, objectives, requirements,
 			instructor, duration, level, category,
 			created_by
-		) VALUES ($1,$2,NULLIF($3,''),NULLIF($4,''),NULLIF($5,''),$6,$7,NULLIF($8,''),NULLIF($9,''),NULLIF($10,''),NULLIF($11,''),$12)
+		) VALUES ($1,$2::UUID,$3,NULLIF($4,''),NULLIF($5,''),NULLIF($6,''),$7,$8,NULLIF($9,''),NULLIF($10,''),NULLIF($11,''),NULLIF($12,''),$13)
 		RETURNING` + courseSelectCols
 
 	objs := in.Objectives
@@ -63,12 +67,20 @@ func (r *CourseRepository) Create(ctx context.Context, in models.CreateCourseInp
 	for attempt := 0; attempt < 3; attempt++ {
 		shortID := util.GenerateShortID()
 		c, err := scanCourse(r.pool.QueryRow(ctx, q,
-			shortID, in.Name, in.Description, in.Thumbnail,
+			shortID, collegeID, in.Name, in.Description, in.Thumbnail,
 			in.Overview, objs, reqs,
 			in.Instructor, in.Duration, in.Level, in.Category,
 			createdBy,
 		))
 		if err == nil {
+			// Best-effort — course_scope is new (Stage 5); if the migration
+			// isn't applied yet, silently skip rather than fail the whole
+			// course creation over an optional classification.
+			if in.CourseScope == "global" {
+				if _, secErr := r.pool.Exec(ctx, `UPDATE courses SET course_scope = 'global' WHERE id = $1`, c.ID); secErr != nil {
+					log.Printf("set course_scope for new course %s (migration pending?): %v", c.ShortID, secErr)
+				}
+			}
 			return &c, nil
 		}
 		var pgErr *pgconn.PgError
@@ -80,13 +92,66 @@ func (r *CourseRepository) Create(ctx context.Context, in models.CreateCourseInp
 	return nil, fmt.Errorf("could not generate a unique short ID after 3 attempts")
 }
 
-// FindAll returns all non-deleted courses ordered newest first.
-func (r *CourseRepository) FindAll(ctx context.Context) ([]models.Course, error) {
-	q := `SELECT` + courseSelectCols + ` FROM courses WHERE deleted_at IS NULL ORDER BY created_at DESC`
-	return r.scanCourses(ctx, q)
+// FindAll returns all non-deleted courses ordered newest first. collegeID
+// scopes the list for non-super-admin callers (empty = unscoped).
+func (r *CourseRepository) FindAll(ctx context.Context, collegeID string) ([]models.Course, error) {
+	q := `SELECT` + courseSelectCols + ` FROM courses WHERE deleted_at IS NULL`
+	args := []interface{}{}
+	if collegeID != "" {
+		q += ` AND college_id = $1::UUID`
+		args = append(args, collegeID)
+	}
+	q += ` ORDER BY created_at DESC`
+	return r.scanCourses(ctx, q, args...)
+}
+
+// IsAvailableToCollege reports whether courseID may be used by collegeID —
+// true when the course is directly owned by that college (course.college_id
+// matches), OR the course is course_scope='global' and has an enabled,
+// in-window college_courses assignment row for that college. ok=false means
+// schema_updates_college_multitenancy_v2.sql's Stage 5 additions
+// (course_scope/college_courses) haven't been applied yet (or any other
+// error) — callers must treat that as "unknown, don't block batch
+// creation," never as "not available," matching every other fail-open
+// pattern introduced this feature.
+func (r *CourseRepository) IsAvailableToCollege(ctx context.Context, courseID, collegeID string) (bool, bool) {
+	var available bool
+	err := r.pool.QueryRow(ctx, `
+		SELECT
+			c.college_id = $2::UUID
+			OR (
+				c.course_scope = 'global' AND EXISTS (
+					SELECT 1 FROM college_courses cc
+					WHERE cc.college_id = $2::UUID AND cc.course_id = c.id AND cc.is_enabled = TRUE
+					  AND (cc.access_start_date IS NULL OR cc.access_start_date <= CURRENT_DATE)
+					  AND (cc.access_end_date IS NULL OR cc.access_end_date >= CURRENT_DATE)
+				)
+			)
+		FROM courses c WHERE c.id = $1::UUID AND c.deleted_at IS NULL`,
+		courseID, collegeID,
+	).Scan(&available)
+	return available, err == nil
+}
+
+// AssignToCollege creates or updates a global course's college_courses
+// assignment row — the mechanism behind "Super Admin assigns a global
+// master course to a college" (spec section 17).
+func (r *CourseRepository) AssignToCollege(ctx context.Context, courseID, collegeID, assignedBy string, accessStartDate, accessEndDate *string) error {
+	_, err := r.pool.Exec(ctx, `
+		INSERT INTO college_courses (college_id, course_id, is_enabled, access_start_date, access_end_date, assigned_by)
+		VALUES ($1::UUID, $2::UUID, TRUE, NULLIF($3,'')::DATE, NULLIF($4,'')::DATE, $5::UUID)
+		ON CONFLICT (college_id, course_id) DO UPDATE SET
+			is_enabled = TRUE, access_start_date = EXCLUDED.access_start_date,
+			access_end_date = EXCLUDED.access_end_date, assigned_by = EXCLUDED.assigned_by, updated_at = NOW()`,
+		collegeID, courseID, accessStartDate, accessEndDate, assignedBy,
+	)
+	return err
 }
 
 // FindByShortID returns a single non-deleted course by its short_id.
+//
+// NOTE: deliberately NOT college-scoped — see the identical note on
+// BatchRepository.FindByShortID; detail-level hardening is a later phase.
 func (r *CourseRepository) FindByShortID(ctx context.Context, shortID string) (*models.Course, error) {
 	q := `SELECT` + courseSelectCols + ` FROM courses WHERE short_id = $1 AND deleted_at IS NULL LIMIT 1`
 	c, err := scanCourse(r.pool.QueryRow(ctx, q, shortID))
@@ -99,13 +164,21 @@ func (r *CourseRepository) FindByShortID(ctx context.Context, shortID string) (*
 	return &c, nil
 }
 
-// Search returns non-deleted courses whose name or description matches the query.
-func (r *CourseRepository) Search(ctx context.Context, query string) ([]models.Course, error) {
+// Search returns non-deleted courses whose name or description matches the
+// query. collegeID scopes the results for non-super-admin callers (empty =
+// unscoped) — same rationale as FindAll, since Search is just another list
+// endpoint and would otherwise be a scoping bypass.
+func (r *CourseRepository) Search(ctx context.Context, query, collegeID string) ([]models.Course, error) {
 	q := `SELECT` + courseSelectCols + `
 		FROM courses
-		WHERE deleted_at IS NULL AND (name ILIKE $1 OR description ILIKE $1)
-		ORDER BY created_at DESC`
-	return r.scanCourses(ctx, q, "%"+query+"%")
+		WHERE deleted_at IS NULL AND (name ILIKE $1 OR description ILIKE $1)`
+	args := []interface{}{"%" + query + "%"}
+	if collegeID != "" {
+		q += ` AND college_id = $2::UUID`
+		args = append(args, collegeID)
+	}
+	q += ` ORDER BY created_at DESC`
+	return r.scanCourses(ctx, q, args...)
 }
 
 // Update applies a partial update — only non-nil / non-empty fields are changed.
@@ -335,7 +408,7 @@ func (r *CourseRepository) scanCourses(ctx context.Context, q string, args ...in
 	for rows.Next() {
 		var c models.Course
 		if err := rows.Scan(
-			&c.ID, &c.ShortID, &c.Name, &c.Description, &c.Thumbnail,
+			&c.ID, &c.ShortID, &c.CollegeID, &c.Name, &c.Description, &c.Thumbnail,
 			&c.Overview, &c.Objectives, &c.Requirements,
 			&c.Instructor, &c.Duration, &c.Level, &c.Category,
 			&c.IsActive, &c.CreatedBy, &c.CreatedAt, &c.UpdatedAt,

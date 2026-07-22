@@ -9,6 +9,7 @@ import "time"
 type Lead struct {
 	ID              string     `json:"id"`
 	ShortID         string     `json:"short_id"`
+	CollegeID       string     `json:"college_id,omitempty"`
 	Name            string     `json:"name"`
 	Phone           string     `json:"phone"`
 	Email           string     `json:"email,omitempty"`
@@ -34,6 +35,10 @@ type Lead struct {
 
 // CreateLeadInput carries the fields for a single manually-created lead.
 type CreateLeadInput struct {
+	// CollegeShortID is only honored for super_admin callers; every other
+	// caller is forced onto their own college_id server-side. Omit for the
+	// Internal EdTech Platform's own direct-website leads.
+	CollegeShortID string `json:"college_short_id" example:"use GET /colleges to pick a real short_id, or omit for the Internal EdTech Platform"`
 	Name           string `json:"name"            binding:"required" example:"Priya Sharma"`
 	Phone          string `json:"phone"           binding:"required" example:"+919876543210"`
 	Email          string `json:"email"           example:"priya@example.com"`

@@ -34,7 +34,13 @@ func (ctrl *AnalyticsController) GetBatchAnalytics(c *gin.Context) {
 		mentorID = c.GetString("user_id")
 	}
 
-	rows, err := ctrl.analyticsRepo.GetBatchAnalytics(c.Request.Context(), mentorID)
+	collegeID, err := repository.CollegeFilter(role, c.GetString("college_id"))
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"code": "COLLEGE_SCOPE_VIOLATION", "error": "you have no college scope"})
+		return
+	}
+
+	rows, err := ctrl.analyticsRepo.GetBatchAnalytics(c.Request.Context(), mentorID, collegeID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not compute batch analytics"})
 		return

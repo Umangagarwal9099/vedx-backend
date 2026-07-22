@@ -71,12 +71,12 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	emailSvc := service.NewEmailService(cfg.Resend)
 
 	// Controllers
-	authCtrl := controller.NewAuthController(userRepo, passwordResetRepo, loginActivityRepo, emailSvc, cfg.JWT.Secret)
-	userCtrl := controller.NewUserController(userRepo, emailSvc, cfg.App.PublicURL, auditLogRepo)
-	studentRegistrationCtrl := controller.NewStudentRegistrationController(studentRegistrationRepo, studentNoteRepo, auditLogRepo)
+	authCtrl := controller.NewAuthController(userRepo, passwordResetRepo, loginActivityRepo, collegeRepo, emailSvc, cfg.JWT.Secret)
+	userCtrl := controller.NewUserController(userRepo, collegeRepo, enrollmentRepo, emailSvc, cfg.App.PublicURL, auditLogRepo)
+	studentRegistrationCtrl := controller.NewStudentRegistrationController(studentRegistrationRepo, studentNoteRepo, auditLogRepo, userRepo, collegeRepo, emailSvc, cfg.App.PublicURL)
 	loginActivityCtrl := controller.NewLoginActivityController(loginActivityRepo)
-	courseCtrl := controller.NewCourseController(courseRepo, notificationRepo)
-	batchCtrl := controller.NewBatchController(batchRepo, enrollmentRepo, notificationRepo, userRepo, emailSvc, auditLogRepo)
+	courseCtrl := controller.NewCourseController(courseRepo, notificationRepo, collegeRepo, auditLogRepo)
+	batchCtrl := controller.NewBatchController(batchRepo, enrollmentRepo, notificationRepo, userRepo, collegeRepo, courseRepo, emailSvc, auditLogRepo)
 	eventCtrl := controller.NewEventController(eventRepo, notificationRepo)
 	announcementCtrl := controller.NewAnnouncementController(announcementRepo, notificationRepo)
 	uploadCtrl := controller.NewUploadController(storageSvc)
@@ -88,7 +88,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	bannerCtrl := controller.NewBannerController(bannerRepo, notificationRepo)
 	assessmentCtrl := controller.NewAssessmentController(assessmentRepo, questionBankRepo, batchRepo, notificationRepo, auditLogRepo)
 	communityCtrl := controller.NewCommunityController(communityRepo, notificationRepo, userRepo, batchRepo, emailSvc)
-	collegeCtrl := controller.NewCollegeController(collegeRepo)
+	collegeCtrl := controller.NewCollegeController(collegeRepo, auditLogRepo)
 	communityPostCtrl := controller.NewCommunityPostController(communityPostRepo, communityRepo)
 	notificationCtrl := controller.NewNotificationController(notificationRepo)
 	sessionCtrl := controller.NewSessionController(sessionRepo, batchRepo, notificationRepo, userRepo, zoomSvc, emailSvc, cfg.App.PublicURL, cfg.App.Timezone, auditLogRepo)
@@ -107,7 +107,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	profileCtrl := controller.NewProfileController(profileRepo, userRepo)
 	dashboardCtrl := controller.NewDashboardController(batchRepo, enrollmentRepo, sessionRepo, attendanceRepo, certificateRepo)
 	analyticsCtrl := controller.NewAnalyticsController(analyticsRepo, batchRepo)
-	leadCtrl := controller.NewLeadController(leadRepo, leadCallLogRepo, leadAssignmentHistoryRepo, notificationRepo, auditLogRepo)
+	leadCtrl := controller.NewLeadController(leadRepo, leadCallLogRepo, leadAssignmentHistoryRepo, notificationRepo, auditLogRepo, collegeRepo)
 	employeeAttendanceCtrl := controller.NewEmployeeAttendanceController(employeeAttendanceRepo)
 	leaveCtrl := controller.NewLeaveController(leaveRequestRepo, leaveBalanceRepo, userRepo, emailSvc)
 	monthlyTargetCtrl := controller.NewMonthlyTargetController(monthlyTargetRepo)
@@ -143,6 +143,18 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			staffOrAbove := middleware.RequireRole(models.RoleSuperAdmin, models.RoleTeamLead, models.RoleMentor)
 			// Lead-CRM routes: team_lead carries a personal lead quota alongside employees.
 			leadOrAbove := middleware.RequireRole(models.RoleSuperAdmin, models.RoleTeamLead, models.RoleEmployee)
+			// College-scoped roles (college_admin/college_staff) are deliberately
+			// NEVER added to adminOrAbove/staffOrAbove above — those groups carry
+			// platform-wide power. This dedicated group is only for the specific
+			// student-list/creation routes where their own data is already
+			// isolated at the repository layer via CollegeFilter/
+			// resolveTargetCollege, so widening just these routes is safe.
+			studentProvisionOrAbove := middleware.RequireRole(models.RoleSuperAdmin, models.RoleTeamLead, models.RoleCollegeAdmin, models.RoleCollegeStaff)
+			studentListOrAbove := middleware.RequireRole(models.RoleSuperAdmin, models.RoleTeamLead, models.RoleMentor, models.RoleCollegeAdmin, models.RoleCollegeStaff)
+			// Same rationale as above — read-only dashboard/analytics views are
+			// already scoped by CollegeFilter at the repository layer, so a
+			// College Admin/Staff seeing only their own college's numbers is safe.
+			collegeReadOrAbove := middleware.RequireRole(models.RoleSuperAdmin, models.RoleTeamLead, models.RoleMentor, models.RoleCollegeAdmin, models.RoleCollegeStaff)
 
 			// Colleges — multi-tenancy configuration. Managing colleges/feature
 			// toggles is super_admin only; any authenticated user can read their
@@ -156,6 +168,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				colleges.PATCH("/:short_id", collegeCtrl.Update)
 				colleges.PATCH("/:short_id/features", collegeCtrl.UpdateFeatures)
 				colleges.DELETE("/:short_id", collegeCtrl.Delete)
+				colleges.POST("/:short_id/subscriptions", collegeCtrl.CreateSubscription)
 			}
 
 			// Change password — logged-in user, requires the current password.
@@ -164,14 +177,18 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			// Users — static paths registered before /:id so Gin matches them first.
 			// GetAll/GetDeleted/Search return full PII (email, phone, DOB) across every
 			// user, so they're staff-only, not just "any authenticated user."
-			protected.GET("/users", staffOrAbove, userCtrl.GetAll)
+			protected.GET("/users", studentListOrAbove, userCtrl.GetAll)
 			protected.GET("/users/deleted", staffOrAbove, userCtrl.GetDeleted)
-			protected.GET("/users/search", staffOrAbove, userCtrl.Search)
-			// Account creation is admin-provisioned only — restricted to super_admin/team_lead.
+			protected.GET("/users/search", studentListOrAbove, userCtrl.Search)
+			// Staff (mentor/employee/team_lead) creation stays internal-only.
+			// Student creation additionally admits College Admin/College Staff —
+			// their own college_id is force-resolved server-side (see
+			// resolveTargetCollege), never trusting a college_short_id they send.
 			protected.POST("/users/staff", adminOrAbove, userCtrl.CreateStaffUser)
-			protected.POST("/users/student", adminOrAbove, userCtrl.CreateStudent)
+			protected.POST("/users/student", studentProvisionOrAbove, userCtrl.CreateStudent)
 			protected.PATCH("/users/:id", userCtrl.Update)
 			protected.PATCH("/users/:id/role", middleware.RequireRole(models.RoleSuperAdmin), userCtrl.ChangeRole)
+			protected.PATCH("/users/:id/college", middleware.RequireRole(models.RoleSuperAdmin), userCtrl.TransferCollege)
 			protected.PATCH("/users/:id/email", adminOrAbove, userCtrl.ChangeEmail)
 			// Deleting an account is destructive and irreversible from the API's
 			// perspective (soft-delete, but still removes access) — super_admin only.
@@ -180,19 +197,19 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			// Mentors list — for batch manager dropdown
 			protected.GET("/mentors", userCtrl.GetMentors)
 
-			protected.GET("/dashboard/stats", staffOrAbove, dashboardCtrl.GetStats)
+			protected.GET("/dashboard/stats", collegeReadOrAbove, dashboardCtrl.GetStats)
 
 			// Batch & Progress analytics — mentors/employees see only their own batches
 			analytics := protected.Group("/analytics")
 			{
-				analytics.GET("/batches", staffOrAbove, analyticsCtrl.GetBatchAnalytics)
-				analytics.GET("/batches/:short_id/attendance-trend", staffOrAbove, analyticsCtrl.GetBatchAttendanceTrend)
+				analytics.GET("/batches", collegeReadOrAbove, analyticsCtrl.GetBatchAnalytics)
+				analytics.GET("/batches/:short_id/attendance-trend", collegeReadOrAbove, analyticsCtrl.GetBatchAttendanceTrend)
 			}
 
 			// Lead CRM — admin imports/assigns/monitors; employees (and team_lead's
 			// own quota) work only their assigned leads. Static paths registered
 			// before /:short_id so Gin matches them first.
-			leads := protected.Group("/leads", middleware.RequireFeature(collegeRepo, models.FeatureCRM))
+			leads := protected.Group("/leads", middleware.RequireActiveSubscription(collegeRepo), middleware.RequireFeature(collegeRepo, models.FeatureCRM))
 			{
 				leads.POST("", adminOrAbove, leadCtrl.Create)
 				leads.POST("/import", adminOrAbove, leadCtrl.BulkImport)
@@ -247,6 +264,9 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				courses.GET("/search", courseCtrl.Search)
 				courses.PATCH("/:short_id", adminOrAbove, courseCtrl.Update)
 				courses.DELETE("/:short_id", adminOrAbove, courseCtrl.Delete)
+				// Assigning a global course to a college is a cross-tenant
+				// operation — super_admin only, never team_lead.
+				courses.POST("/:short_id/assign", middleware.RequireRole(models.RoleSuperAdmin), courseCtrl.AssignToCollege)
 				// Curriculum — modules assigned to this course
 				courses.GET("/:short_id/curriculum", courseCtrl.GetCurriculum)
 				courses.POST("/:short_id/modules", adminOrAbove, courseCtrl.AssignModule)
@@ -325,6 +345,8 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			protected.PATCH("/users/:id/registration-details", middleware.RequireSelfOrRole("id", models.RoleSuperAdmin, models.RoleTeamLead), studentRegistrationCtrl.UpdateDetails)
 			protected.POST("/users/:id/status", adminOrAbove, studentRegistrationCtrl.UpdateStatus)
 			protected.GET("/users/:id/status-history", adminOrAbove, studentRegistrationCtrl.GetStatusHistory)
+			protected.GET("/students/statuses", adminOrAbove, studentRegistrationCtrl.GetAllStatuses)
+			protected.POST("/users/students/import", studentProvisionOrAbove, studentRegistrationCtrl.BulkImportStudents)
 			// Notes and login/device activity are administrative/counsellor-facing
 			// information — admin only, never mentor (see Mentor role lockdown).
 			protected.POST("/users/:id/notes", adminOrAbove, studentRegistrationCtrl.AddNote)
@@ -367,7 +389,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			cq := protected.Group("/coding-questions")
 			{
 				cq.POST("", staffOrAbove, codingQuestionCtrl.Create)
-				cq.GET("", codingQuestionCtrl.GetAll)
+				cq.GET("", middleware.RequireActiveSubscription(collegeRepo), middleware.RequireFeature(collegeRepo, models.FeatureCoding), codingQuestionCtrl.GetAll)
 				cq.GET("/admin", codingQuestionCtrl.GetAllAdmin)
 				cq.GET("/:short_id", codingQuestionCtrl.GetByShortID)
 				cq.PATCH("/:short_id", staffOrAbove, codingQuestionCtrl.Update)
@@ -482,7 +504,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			}
 
 			// Question bank — private/course/global visibility; staff manage, everyone reads what they can see
-			questions := protected.Group("/questions", middleware.RequireFeature(collegeRepo, models.FeatureCodingQuestionBank))
+			questions := protected.Group("/questions", middleware.RequireActiveSubscription(collegeRepo), middleware.RequireFeature(collegeRepo, models.FeatureCodingQuestionBank))
 			{
 				questions.POST("", staffOrAbove, questionBankCtrl.Create)
 				questions.GET("", questionBankCtrl.GetAll)
@@ -492,7 +514,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			}
 
 			// Question bank taxonomy — Subject -> Topic -> Subtopic reference tree + per-subject stats
-			questionBank := protected.Group("/question-bank", middleware.RequireFeature(collegeRepo, models.FeatureCodingQuestionBank))
+			questionBank := protected.Group("/question-bank", middleware.RequireActiveSubscription(collegeRepo), middleware.RequireFeature(collegeRepo, models.FeatureCodingQuestionBank))
 			{
 				questionBank.GET("/taxonomy", questionBankCtrl.GetTaxonomy)
 				questionBank.GET("/stats", questionBankCtrl.GetStats)
@@ -500,7 +522,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 
 			// Communities — scoped to a batch. super_admin / team_lead / mentor manage them;
 			// any authenticated user can read.
-			communities := protected.Group("/communities", middleware.RequireFeature(collegeRepo, models.FeatureCommunity))
+			communities := protected.Group("/communities", middleware.RequireActiveSubscription(collegeRepo), middleware.RequireFeature(collegeRepo, models.FeatureCommunity))
 			{
 				communities.POST("", staffOrAbove, communityCtrl.Create)
 				communities.GET("", communityCtrl.GetAll)
@@ -537,7 +559,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			// super_admin / team_lead only — mentors view sessions for batches they
 			// manage but never create/edit/cancel them (see Mentor role lockdown).
 			// Any authenticated user can read.
-			sessions := protected.Group("/sessions", middleware.RequireFeature(collegeRepo, models.FeatureLiveSessions))
+			sessions := protected.Group("/sessions", middleware.RequireActiveSubscription(collegeRepo), middleware.RequireFeature(collegeRepo, models.FeatureLiveSessions))
 			{
 				sessions.POST("", adminOrAbove, sessionCtrl.Create)
 				sessions.GET("", sessionCtrl.GetAll)
@@ -582,7 +604,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 
 			// Projects — scoped to a batch, made up of milestones. Team-based projects
 			// use nested teams; individual projects submit directly per student.
-			projects := protected.Group("/projects", middleware.RequireFeature(collegeRepo, models.FeatureProjects))
+			projects := protected.Group("/projects", middleware.RequireActiveSubscription(collegeRepo), middleware.RequireFeature(collegeRepo, models.FeatureProjects))
 			{
 				projects.POST("", staffOrAbove, projectCtrl.Create)
 				projects.GET("", projectCtrl.GetAll)

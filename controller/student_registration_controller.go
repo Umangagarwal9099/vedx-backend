@@ -1,23 +1,34 @@
 package controller
 
 import (
+	"encoding/csv"
 	"errors"
+	"log"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
 	"github.com/umangagarwal/vedx-backend/models"
 	"github.com/umangagarwal/vedx-backend/repository"
+	"github.com/umangagarwal/vedx-backend/service"
+	"github.com/umangagarwal/vedx-backend/util"
+	"github.com/xuri/excelize/v2"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type StudentRegistrationController struct {
 	registrationRepo *repository.StudentRegistrationRepository
 	noteRepo         *repository.StudentNoteRepository
 	auditLogRepo     *repository.AuditLogRepository
+	userRepo         *repository.UserRepository
+	collegeRepo      *repository.CollegeRepository
+	emailSvc         *service.EmailService
+	publicURL        string
 }
 
-func NewStudentRegistrationController(registrationRepo *repository.StudentRegistrationRepository, noteRepo *repository.StudentNoteRepository, auditLogRepo *repository.AuditLogRepository) *StudentRegistrationController {
-	return &StudentRegistrationController{registrationRepo: registrationRepo, noteRepo: noteRepo, auditLogRepo: auditLogRepo}
+func NewStudentRegistrationController(registrationRepo *repository.StudentRegistrationRepository, noteRepo *repository.StudentNoteRepository, auditLogRepo *repository.AuditLogRepository, userRepo *repository.UserRepository, collegeRepo *repository.CollegeRepository, emailSvc *service.EmailService, publicURL string) *StudentRegistrationController {
+	return &StudentRegistrationController{registrationRepo: registrationRepo, noteRepo: noteRepo, auditLogRepo: auditLogRepo, userRepo: userRepo, collegeRepo: collegeRepo, emailSvc: emailSvc, publicURL: publicURL}
 }
 
 // registrationUpdateDiff builds a { field: {from, to} } metadata map for only
@@ -198,6 +209,28 @@ func (ctrl *StudentRegistrationController) GetStatusHistory(c *gin.Context) {
 	c.JSON(http.StatusOK, history)
 }
 
+// GetAllStatuses godoc
+//
+//	@Summary		Bulk-fetch every student's lifecycle status
+//	@Description	Returns a map of user_id -> status (registered/enrolled/completed/on_leave/archived) for every student — backs the Learners list's status column/filters without one round-trip per row. Restricted to super_admin/team_lead/mentor.
+//	@Tags			students
+//	@Produce		json
+//	@Success		200	{object}	map[string]string
+//	@Failure		500	{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/students/statuses [get]
+func (ctrl *StudentRegistrationController) GetAllStatuses(c *gin.Context) {
+	statuses, err := ctrl.registrationRepo.GetAllStatuses(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch student statuses"})
+		return
+	}
+	if statuses == nil {
+		statuses = map[string]string{}
+	}
+	c.JSON(http.StatusOK, statuses)
+}
+
 // AddNote godoc
 //
 //	@Summary		Add a learner note
@@ -253,4 +286,193 @@ func (ctrl *StudentRegistrationController) GetNotes(c *gin.Context) {
 		notes = []models.StudentNote{}
 	}
 	c.JSON(http.StatusOK, notes)
+}
+
+// studentImportColumns maps a lowercased header cell to the StudentImportRow
+// field it feeds — flexible so the College Admin's spreadsheet doesn't need
+// exact column names. Mirrors the identical pattern in lead_controller.go.
+var studentImportColumns = map[string]string{
+	"first name": "first_name", "firstname": "first_name",
+	"last name": "last_name", "lastname": "last_name",
+	"email": "email", "email address": "email",
+	"phone": "phone", "phone number": "phone", "mobile": "phone", "mobile number": "phone",
+	"roll number": "roll_number", "roll no": "roll_number", "rollnumber": "roll_number", "admission number": "roll_number",
+}
+
+func parseStudentRows(header []string, records [][]string) []models.StudentImportRow {
+	colIndex := map[string]int{}
+	for i, h := range header {
+		if field, ok := studentImportColumns[strings.ToLower(strings.TrimSpace(h))]; ok {
+			colIndex[field] = i
+		}
+	}
+
+	get := func(row []string, field string) string {
+		i, ok := colIndex[field]
+		if !ok || i >= len(row) {
+			return ""
+		}
+		return strings.TrimSpace(row[i])
+	}
+
+	rows := make([]models.StudentImportRow, 0, len(records))
+	for i, rec := range records {
+		rows = append(rows, models.StudentImportRow{
+			RowNumber:  i + 2, // +1 for header row, +1 for 1-indexing
+			FirstName:  get(rec, "first_name"),
+			LastName:   get(rec, "last_name"),
+			Email:      get(rec, "email"),
+			Phone:      get(rec, "phone"),
+			RollNumber: get(rec, "roll_number"),
+		})
+	}
+	return rows
+}
+
+// BulkImportStudents godoc
+//
+//	@Summary		Import students from Excel/CSV
+//	@Description	Uploads a .xlsx/.xls/.csv file of students (columns: first name/last name/email/phone/roll number, header names flexible) and bulk-creates accounts. The sheet never carries a college — every imported student lands under the authenticated caller's own college (or, for super_admin, an optional college_short_id form field). Duplicate emails and duplicate roll numbers within the same college are skipped with a reason, not aborted.
+//	@Tags			students
+//	@Accept			multipart/form-data
+//	@Produce		json
+//	@Param			file	formData	file	true	"Students spreadsheet"
+//	@Success		200		{object}	models.StudentImportResult
+//	@Failure		400		{object}	map[string]string	"Missing/unreadable file"
+//	@Failure		500		{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/users/students/import [post]
+func (ctrl *StudentRegistrationController) BulkImportStudents(c *gin.Context) {
+	fileHeader, err := c.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing file"})
+		return
+	}
+
+	file, err := fileHeader.Open()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "could not open file"})
+		return
+	}
+	defer file.Close()
+
+	var header []string
+	var records [][]string
+
+	name := strings.ToLower(fileHeader.Filename)
+	if strings.HasSuffix(name, ".csv") {
+		reader := csv.NewReader(file)
+		reader.FieldsPerRecord = -1
+		all, err := reader.ReadAll()
+		if err != nil || len(all) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "could not parse CSV"})
+			return
+		}
+		header = all[0]
+		records = all[1:]
+	} else {
+		xl, err := excelize.OpenReader(file)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "could not parse spreadsheet"})
+			return
+		}
+		defer xl.Close()
+
+		sheet := xl.GetSheetName(0)
+		rows, err := xl.GetRows(sheet)
+		if err != nil || len(rows) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "spreadsheet is empty"})
+			return
+		}
+		header = rows[0]
+		records = rows[1:]
+	}
+
+	// The import sheet itself never carries a college — super_admin may
+	// optionally pass one as a form field (defaulting to the Internal EdTech
+	// Platform); every other caller is always forced onto their own college.
+	collegeID, err := resolveTargetCollege(c.Request.Context(), ctrl.collegeRepo, c.GetString("role"), c.GetString("college_id"), c.PostForm("college_short_id"))
+	if err != nil {
+		if errors.Is(err, repository.ErrCollegeScopeRequired) {
+			c.JSON(http.StatusForbidden, gin.H{"code": "COLLEGE_SCOPE_VIOLATION", "error": "you have no college scope to import students under"})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": "could not resolve target college: " + err.Error()})
+		return
+	}
+
+	rows := parseStudentRows(header, records)
+	result := &models.StudentImportResult{Skipped: []models.StudentImportRowError{}}
+
+	for _, row := range rows {
+		if strings.TrimSpace(row.FirstName) == "" || strings.TrimSpace(row.Email) == "" {
+			result.Skipped = append(result.Skipped, models.StudentImportRowError{RowNumber: row.RowNumber, Reason: "missing first name or email"})
+			continue
+		}
+
+		exists, err := ctrl.userRepo.EmailExists(c.Request.Context(), row.Email)
+		if err != nil {
+			result.Skipped = append(result.Skipped, models.StudentImportRowError{RowNumber: row.RowNumber, Reason: "could not verify email"})
+			continue
+		}
+		if exists {
+			result.Skipped = append(result.Skipped, models.StudentImportRowError{RowNumber: row.RowNumber, Reason: "email already in use"})
+			continue
+		}
+
+		if row.RollNumber != "" {
+			dup, err := ctrl.registrationRepo.EnrollmentNoExistsInCollege(c.Request.Context(), collegeID, row.RollNumber)
+			if err != nil {
+				result.Skipped = append(result.Skipped, models.StudentImportRowError{RowNumber: row.RowNumber, Reason: "could not verify roll number"})
+				continue
+			}
+			if dup {
+				result.Skipped = append(result.Skipped, models.StudentImportRowError{RowNumber: row.RowNumber, Reason: "roll number already in use in this college"})
+				continue
+			}
+		}
+
+		tempPassword := util.GenerateTemporaryPassword()
+		hash, err := bcrypt.GenerateFromPassword([]byte(tempPassword), bcrypt.DefaultCost)
+		if err != nil {
+			result.Skipped = append(result.Skipped, models.StudentImportRowError{RowNumber: row.RowNumber, Reason: "could not generate credentials"})
+			continue
+		}
+
+		var registrationNo *int
+		if n, ok := ctrl.collegeRepo.NextRegistrationNo(c.Request.Context(), collegeID); ok {
+			registrationNo = &n
+		}
+
+		userID, err := ctrl.userRepo.Register(c.Request.Context(), models.User{
+			Email: row.Email, PasswordHash: string(hash),
+			FirstName: row.FirstName, LastName: row.LastName, Phone: row.Phone,
+		}, collegeID, registrationNo)
+		if err != nil {
+			result.Skipped = append(result.Skipped, models.StudentImportRowError{RowNumber: row.RowNumber, Reason: "could not create account: " + err.Error()})
+			continue
+		}
+
+		if row.RollNumber != "" {
+			enrollmentNo := row.RollNumber
+			if err := ctrl.registrationRepo.Upsert(c.Request.Context(), userID, models.UpdateStudentRegistrationInput{EnrollmentNo: &enrollmentNo}); err != nil {
+				log.Printf("set roll number for imported student %s: %v", userID, err)
+			}
+		}
+
+		if ctrl.emailSvc != nil && ctrl.emailSvc.Configured() {
+			subject, html := service.StaffWelcomeEmail(row.FirstName, roleLabels[models.RoleStudent], row.Email, tempPassword, ctrl.publicURL)
+			ctrl.emailSvc.SendAsync(row.Email, subject, html)
+		}
+
+		result.Imported++
+	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "bulk_import", EntityType: "student",
+		EntityLabel: "bulk import",
+		Metadata:    map[string]interface{}{"imported": result.Imported, "skipped": len(result.Skipped)},
+	})
+
+	c.JSON(http.StatusOK, result)
 }

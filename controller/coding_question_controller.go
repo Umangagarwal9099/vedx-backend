@@ -72,7 +72,13 @@ func (ctrl *CodingQuestionController) Create(c *gin.Context) {
 //	@Security		BearerAuth
 //	@Router			/coding-questions [get]
 func (ctrl *CodingQuestionController) GetAll(c *gin.Context) {
-	questions, err := ctrl.repo.FindAll(c.Request.Context())
+	collegeID, err := repository.CollegeFilter(c.GetString("role"), c.GetString("college_id"))
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"code": "COLLEGE_SCOPE_VIOLATION", "error": "you have no college scope"})
+		return
+	}
+
+	questions, err := ctrl.repo.FindAllForCollege(c.Request.Context(), collegeID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch coding questions"})
 		return
