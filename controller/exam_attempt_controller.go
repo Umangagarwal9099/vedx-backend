@@ -637,11 +637,37 @@ func (ctrl *ExamAttemptController) RecordViolation(c *gin.Context) {
 	}
 	warningNumber := priorCount + 1
 
-	allowedWarnings := assessment.AllowedWarningCount
+	// assessmentBaseSelect (what FindByShortID above uses) deliberately omits
+	// the exam-security columns, so they must be read separately here — using
+	// the zero-valued fields straight off `assessment` would silently treat
+	// every assessment as AutoSubmitOnViolation=false, never auto-submitting
+	// regardless of what's actually configured. secCfg ok=false means the
+	// migration adding these columns hasn't been applied yet; degrade to the
+	// pre-existing "always just warn, never auto-submit" behavior.
+	secCfg, secCfgOK := ctrl.assessmentRepo.GetSecurityConfig(c.Request.Context(), attempt.AssessmentShortID)
+
+	// The three close_on_* flags are a per-violation-type override: when set,
+	// that specific violation ends the attempt on its very first occurrence,
+	// bypassing the generic warning grace period entirely. Any other
+	// violation type still falls back to the generic allowed_warning_count /
+	// auto_submit_on_violation threshold below.
+	closeImmediately := false
+	if secCfgOK {
+		switch input.ViolationType {
+		case "tab_switched":
+			closeImmediately = secCfg.CloseOnTabSwitch
+		case "window_blurred":
+			closeImmediately = secCfg.CloseOnWindowBlur
+		case "fullscreen_exited":
+			closeImmediately = secCfg.CloseOnFullscreenExit
+		}
+	}
+
+	allowedWarnings := secCfg.AllowedWarningCount
 	if allowedWarnings <= 0 {
 		allowedWarnings = 1
 	}
-	shouldAutoSubmit := assessment.AutoSubmitOnViolation && warningNumber > allowedWarnings
+	shouldAutoSubmit := secCfgOK && (closeImmediately || (secCfg.AutoSubmitOnViolation && warningNumber > allowedWarnings))
 	actionTaken := "warned"
 	if shouldAutoSubmit {
 		actionTaken = "auto_submitted"
