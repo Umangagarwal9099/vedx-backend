@@ -147,7 +147,27 @@ func (ctrl *AssessmentController) GetAll(c *gin.Context) {
 	if assessments == nil {
 		assessments = []models.Assessment{}
 	}
+	for i := range assessments {
+		ctrl.applySecurityConfig(c, &assessments[i])
+	}
 	c.JSON(http.StatusOK, assessments)
+}
+
+// applySecurityConfig merges the exam-security columns (isolated from
+// assessmentBaseSelect — see the comment on that const) into an assessment
+// already fetched via the base select. Fails open: if the config can't be
+// read (e.g. migration not applied yet), the assessment is left with its
+// zero-value security fields rather than erroring the whole request.
+func (ctrl *AssessmentController) applySecurityConfig(c *gin.Context, a *models.Assessment) {
+	cfg, ok := ctrl.assessmentRepo.GetSecurityConfig(c.Request.Context(), a.ShortID)
+	if !ok {
+		return
+	}
+	a.CloseOnTabSwitch = cfg.CloseOnTabSwitch
+	a.CloseOnWindowBlur = cfg.CloseOnWindowBlur
+	a.CloseOnFullscreenExit = cfg.CloseOnFullscreenExit
+	a.AllowedWarningCount = cfg.AllowedWarningCount
+	a.AutoSubmitOnViolation = cfg.AutoSubmitOnViolation
 }
 
 // GetAssessment godoc
@@ -176,6 +196,7 @@ func (ctrl *AssessmentController) GetByShortID(c *gin.Context) {
 	if !checkBatchAccess(c, ctrl.batchRepo, a.BatchShortID) {
 		return
 	}
+	ctrl.applySecurityConfig(c, a)
 	c.JSON(http.StatusOK, a)
 }
 
