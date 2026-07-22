@@ -76,7 +76,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	studentRegistrationCtrl := controller.NewStudentRegistrationController(studentRegistrationRepo, studentNoteRepo, auditLogRepo, userRepo, collegeRepo, emailSvc, cfg.App.PublicURL)
 	loginActivityCtrl := controller.NewLoginActivityController(loginActivityRepo)
 	courseCtrl := controller.NewCourseController(courseRepo, notificationRepo, collegeRepo, auditLogRepo)
-	batchCtrl := controller.NewBatchController(batchRepo, enrollmentRepo, notificationRepo, userRepo, collegeRepo, courseRepo, emailSvc, auditLogRepo)
+	batchCtrl := controller.NewBatchController(batchRepo, enrollmentRepo, notificationRepo, userRepo, collegeRepo, courseRepo, emailSvc, auditLogRepo, communityRepo)
 	eventCtrl := controller.NewEventController(eventRepo, notificationRepo)
 	announcementCtrl := controller.NewAnnouncementController(announcementRepo, notificationRepo)
 	uploadCtrl := controller.NewUploadController(storageSvc)
