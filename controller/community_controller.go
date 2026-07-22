@@ -57,6 +57,13 @@ func (ctrl *CommunityController) Create(c *gin.Context) {
 		return
 	}
 
+	// Best-effort — students are usually already enrolled in the batch by
+	// the time its community gets created, so without this they'd never
+	// see it unless someone happened to re-add them to the batch later.
+	if err := ctrl.communityRepo.BackfillMembersFromBatch(c.Request.Context(), community.ShortID, createdBy); err != nil {
+		log.Printf("backfill community members from batch: %v", err)
+	}
+
 	if err := ctrl.notificationRepo.NotifyRoles(c.Request.Context(),
 		"New community: "+community.Name,
 		fmt.Sprintf("A new community %q has been created for batch %q.", community.Name, community.BatchNumber),

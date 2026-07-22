@@ -243,6 +243,24 @@ func (r *CommunityRepository) AddMembersByBatchShortID(ctx context.Context, batc
 	return err
 }
 
+// BackfillMembersFromBatch adds every student already enrolled in a
+// community's batch as a member — used right after a community is created,
+// since a batch's students are usually enrolled before its community exists,
+// and otherwise those students would never see this community at all until
+// someone happened to re-add them to the batch.
+func (r *CommunityRepository) BackfillMembersFromBatch(ctx context.Context, communityShortID, addedBy string) error {
+	_, err := r.pool.Exec(ctx, `
+		INSERT INTO community_members (community_id, user_id, added_by)
+		SELECT c.id, bs.user_id, $2
+		FROM communities c
+		JOIN batch_students bs ON bs.batch_id = c.batch_id
+		WHERE c.short_id = $1 AND c.deleted_at IS NULL
+		ON CONFLICT (community_id, user_id) DO NOTHING`,
+		communityShortID, addedBy,
+	)
+	return err
+}
+
 // RemoveMemberByBatchShortID removes a user from every community tied to
 // batchShortID — the counterpart to AddMembersByBatchShortID, used when a
 // student leaves/transfers out of a batch. No-op if there's no community.

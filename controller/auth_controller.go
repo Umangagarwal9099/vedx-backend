@@ -126,7 +126,7 @@ type RegisterRequest struct {
 	Password    string `json:"password"      binding:"required,min=8"  example:"Secret@123"`
 	FirstName   string `json:"first_name"    binding:"required"         example:"John"`
 	LastName    string `json:"last_name"     binding:"required"         example:"Doe"`
-	Phone       string `json:"phone"                                    example:"+919876543210"`
+	Phone       string `json:"phone"         binding:"required"         example:"+919876543210"`
 	DateOfBirth string `json:"date_of_birth"                            example:"1998-05-20"`
 }
 
