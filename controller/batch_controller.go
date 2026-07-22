@@ -24,10 +24,11 @@ type BatchController struct {
 	courseRepo       *repository.CourseRepository
 	emailSvc         *service.EmailService
 	auditLogRepo     *repository.AuditLogRepository
+	communityRepo    *repository.CommunityRepository
 }
 
-func NewBatchController(batchRepo *repository.BatchRepository, enrollmentRepo *repository.EnrollmentRepository, notificationRepo *repository.NotificationRepository, userRepo *repository.UserRepository, collegeRepo *repository.CollegeRepository, courseRepo *repository.CourseRepository, emailSvc *service.EmailService, auditLogRepo *repository.AuditLogRepository) *BatchController {
-	return &BatchController{batchRepo: batchRepo, enrollmentRepo: enrollmentRepo, notificationRepo: notificationRepo, userRepo: userRepo, collegeRepo: collegeRepo, courseRepo: courseRepo, emailSvc: emailSvc, auditLogRepo: auditLogRepo}
+func NewBatchController(batchRepo *repository.BatchRepository, enrollmentRepo *repository.EnrollmentRepository, notificationRepo *repository.NotificationRepository, userRepo *repository.UserRepository, collegeRepo *repository.CollegeRepository, courseRepo *repository.CourseRepository, emailSvc *service.EmailService, auditLogRepo *repository.AuditLogRepository, communityRepo *repository.CommunityRepository) *BatchController {
+	return &BatchController{batchRepo: batchRepo, enrollmentRepo: enrollmentRepo, notificationRepo: notificationRepo, userRepo: userRepo, collegeRepo: collegeRepo, courseRepo: courseRepo, emailSvc: emailSvc, auditLogRepo: auditLogRepo, communityRepo: communityRepo}
 }
 
 // batchDateLayout matches how Batch.StartDate/EndDate are stored — plain
@@ -469,6 +470,12 @@ func (ctrl *BatchController) AddStudents(c *gin.Context) {
 			log.Printf("notify batch add students: %v", err)
 		}
 
+		// Best-effort — a batch without a community is normal (communities
+		// are optional), and this must never block the core enrollment.
+		if err := ctrl.communityRepo.AddMembersByBatchShortID(c.Request.Context(), shortID, added, addedBy); err != nil {
+			log.Printf("sync community membership for batch add students: %v", err)
+		}
+
 		logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
 			Action: "enroll", EntityType: "enrollment",
 			EntityShortID: shortID, EntityLabel: batch.BatchNumber,
@@ -568,6 +575,9 @@ func (ctrl *BatchController) RemoveStudent(c *gin.Context) {
 	if err := ctrl.enrollmentRepo.UpdateStatus(c.Request.Context(), userID, batch.ID, models.EnrollmentRemoved); err != nil {
 		log.Printf("mark enrollment removed for %s in batch %s: %v", userID, shortID, err)
 	}
+	if err := ctrl.communityRepo.RemoveMemberByBatchShortID(c.Request.Context(), shortID, userID); err != nil {
+		log.Printf("remove community membership for %s in batch %s: %v", userID, shortID, err)
+	}
 
 	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
 		Action: "remove", EntityType: "enrollment",
@@ -639,6 +649,12 @@ func (ctrl *BatchController) TransferStudent(c *gin.Context) {
 	}
 	if _, err := ctrl.batchRepo.AddStudents(c.Request.Context(), toBatch.ShortID, []string{userID}, actorID); err != nil {
 		log.Printf("add to destination batch during transfer: %v", err)
+	}
+	if err := ctrl.communityRepo.RemoveMemberByBatchShortID(c.Request.Context(), fromShortID, userID); err != nil {
+		log.Printf("remove community membership during transfer: %v", err)
+	}
+	if err := ctrl.communityRepo.AddMembersByBatchShortID(c.Request.Context(), toBatch.ShortID, []string{userID}, actorID); err != nil {
+		log.Printf("sync community membership during transfer: %v", err)
 	}
 
 	if err := ctrl.notificationRepo.NotifyUsers(c.Request.Context(),

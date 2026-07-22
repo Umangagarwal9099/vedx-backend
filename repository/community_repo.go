@@ -222,6 +222,44 @@ func (r *CommunityRepository) AddMembers(ctx context.Context, communityShortID s
 	return added, rows.Err()
 }
 
+// AddMembersByBatchShortID adds the given users to every community tied to
+// batchShortID (normally exactly one — a batch's auto-created community).
+// Used to keep community membership in sync when students are added to a
+// batch, so admins don't have to separately re-add them in Community. A
+// batch with no community is a no-op, not an error — communities are an
+// optional feature per college.
+func (r *CommunityRepository) AddMembersByBatchShortID(ctx context.Context, batchShortID string, userIDs []string, addedBy string) error {
+	_, err := r.pool.Exec(ctx, `
+		INSERT INTO community_members (community_id, user_id, added_by)
+		SELECT c.id, u.id, $3
+		FROM communities c
+		JOIN batches b ON c.batch_id = b.id
+		CROSS JOIN unnest($2::uuid[]) AS uid(user_id)
+		JOIN users u ON u.id = uid.user_id AND u.deleted_at IS NULL
+		WHERE b.short_id = $1 AND c.deleted_at IS NULL AND b.deleted_at IS NULL
+		ON CONFLICT (community_id, user_id) DO NOTHING`,
+		batchShortID, userIDs, addedBy,
+	)
+	return err
+}
+
+// RemoveMemberByBatchShortID removes a user from every community tied to
+// batchShortID — the counterpart to AddMembersByBatchShortID, used when a
+// student leaves/transfers out of a batch. No-op if there's no community.
+func (r *CommunityRepository) RemoveMemberByBatchShortID(ctx context.Context, batchShortID, userID string) error {
+	_, err := r.pool.Exec(ctx, `
+		DELETE FROM community_members
+		WHERE user_id = $2::uuid
+		  AND community_id IN (
+		      SELECT c.id FROM communities c
+		      JOIN batches b ON c.batch_id = b.id
+		      WHERE b.short_id = $1 AND c.deleted_at IS NULL
+		  )`,
+		batchShortID, userID,
+	)
+	return err
+}
+
 // RemoveMember removes a single user from a community.
 func (r *CommunityRepository) RemoveMember(ctx context.Context, communityShortID, userID string) error {
 	result, err := r.pool.Exec(ctx, `
