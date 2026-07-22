@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -300,6 +301,11 @@ func (r *UserRepository) scanUsers(ctx context.Context, q string, args ...interf
 // via a separate best-effort statement AFTER the core transaction commits —
 // deliberately not nested inside that transaction, since a failed statement
 // there would abort the whole registration rather than degrade gracefully.
+// The same registrationNo also seeds the student's roll number
+// (students.enrollment_no), formatted as "<registration year><3-digit
+// sequence>" (e.g. 2026001) — enrollment_no stays editable afterward via
+// StudentRegistrationRepository.Upsert, e.g. to apply an explicit roll
+// number from a bulk import row.
 func (r *UserRepository) Register(ctx context.Context, user models.User, collegeID string, registrationNo *int) (string, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
@@ -328,10 +334,11 @@ func (r *UserRepository) Register(ctx context.Context, user models.User, college
 	}
 
 	if registrationNo != nil {
-		if _, err := r.pool.Exec(ctx, `UPDATE students SET registration_no = $2, college_id = $3::UUID WHERE user_id = $1`,
-			userID, *registrationNo, collegeID,
+		enrollmentNo := fmt.Sprintf("%d%03d", time.Now().Year(), *registrationNo)
+		if _, err := r.pool.Exec(ctx, `UPDATE students SET registration_no = $2, college_id = $3::UUID, enrollment_no = $4 WHERE user_id = $1`,
+			userID, *registrationNo, collegeID, enrollmentNo,
 		); err != nil {
-			log.Printf("set registration_no/college_id for new student %s (migration pending?): %v", userID, err)
+			log.Printf("set registration_no/enrollment_no/college_id for new student %s (migration pending?): %v", userID, err)
 		}
 	}
 
@@ -387,7 +394,11 @@ var profileTable = map[models.Role]string{
 }
 
 // ChangeUserRole updates a user's role and swaps their role-specific profile row atomically.
-// The old profile row is deleted and a new empty one is created in the target table.
+// The old profile row is deleted and a new empty one is created in the target table — for a
+// student, that DELETE takes registration_no/enrollment_no (their roll number) with it, since
+// roll numbers only ever make sense for the student role. Moving a user INTO the student role
+// gets them a freshly assigned roll number, same as a new registration (best-effort: skipped,
+// not fatal, if the registration-numbering migration hasn't been applied yet).
 func (r *UserRepository) ChangeUserRole(ctx context.Context, userID string, newRole models.Role) error {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
@@ -397,9 +408,10 @@ func (r *UserRepository) ChangeUserRole(ctx context.Context, userID string, newR
 
 	// Fetch current role
 	var currentRole models.Role
+	var collegeID *string
 	err = tx.QueryRow(ctx,
-		`SELECT role FROM users WHERE id = $1 AND deleted_at IS NULL`, userID,
-	).Scan(&currentRole)
+		`SELECT role, college_id::TEXT FROM users WHERE id = $1 AND deleted_at IS NULL`, userID,
+	).Scan(&currentRole, &collegeID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return pgx.ErrNoRows
 	}
@@ -436,6 +448,24 @@ func (r *UserRepository) ChangeUserRole(ctx context.Context, userID string, newR
 		`UPDATE users SET role = $1 WHERE id = $2`, newRole, userID,
 	); err != nil {
 		return fmt.Errorf("update role: %w", err)
+	}
+
+	if newRole == models.RoleStudent && collegeID != nil {
+		var n int
+		if err := tx.QueryRow(ctx, `
+			UPDATE colleges SET next_registration_no = next_registration_no + 1
+			WHERE id = $1::UUID AND deleted_at IS NULL
+			RETURNING next_registration_no - 1`,
+			*collegeID,
+		).Scan(&n); err == nil {
+			enrollmentNo := fmt.Sprintf("%d%03d", time.Now().Year(), n)
+			if _, err := tx.Exec(ctx,
+				`UPDATE students SET registration_no = $2, college_id = $3::UUID, enrollment_no = $4 WHERE user_id = $1`,
+				userID, n, *collegeID, enrollmentNo,
+			); err != nil {
+				return fmt.Errorf("set roll number for new student %s: %w", userID, err)
+			}
+		}
 	}
 
 	return tx.Commit(ctx)
