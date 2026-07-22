@@ -262,6 +262,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				courses.POST("", adminOrAbove, courseCtrl.Create)
 				courses.GET("", courseCtrl.GetAll)
 				courses.GET("/search", courseCtrl.Search)
+				courses.GET("/:short_id", courseCtrl.GetByShortID)
 				courses.PATCH("/:short_id", adminOrAbove, courseCtrl.Update)
 				courses.DELETE("/:short_id", adminOrAbove, courseCtrl.Delete)
 				// Assigning a global course to a college is a cross-tenant
