@@ -106,6 +106,33 @@ func (ctrl *CourseController) GetAll(c *gin.Context) {
 	c.JSON(http.StatusOK, courses)
 }
 
+// GetByShortID godoc
+//
+//	@Summary		Get course
+//	@Description	Returns a single non-deleted course by its short_id.
+//	@Tags			courses
+//	@Produce		json
+//	@Param			short_id	path		string	true	"Course short ID"
+//	@Success		200			{object}	models.Course
+//	@Failure		404			{object}	map[string]string	"Course not found"
+//	@Failure		500			{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/courses/{short_id} [get]
+func (ctrl *CourseController) GetByShortID(c *gin.Context) {
+	shortID := c.Param("short_id")
+
+	course, err := ctrl.courseRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch course"})
+		return
+	}
+	if course == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "course not found"})
+		return
+	}
+	c.JSON(http.StatusOK, course)
+}
+
 // SearchCourses godoc
 //
 //	@Summary		Search courses
