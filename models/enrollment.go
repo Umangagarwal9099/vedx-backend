@@ -43,6 +43,10 @@ type StudentEnrollment struct {
 	CreatedBy            string     `json:"created_by,omitempty"`
 	CreatedAt            time.Time  `json:"created_at"`
 	UpdatedAt            time.Time  `json:"updated_at"`
+	// FeesPaid mirrors batch_students.fees_paid for this student/batch pair —
+	// gates access to session recordings, surfaced here so the admin can see
+	// payment status directly from the student's own enrollment history.
+	FeesPaid bool `json:"fees_paid"`
 }
 
 // UpdateEnrollmentStatusInput changes a student's enrollment status within a

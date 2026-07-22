@@ -20,12 +20,14 @@ type BatchController struct {
 	enrollmentRepo *repository.EnrollmentRepository
 	notificationRepo *repository.NotificationRepository
 	userRepo         *repository.UserRepository
+	collegeRepo      *repository.CollegeRepository
+	courseRepo       *repository.CourseRepository
 	emailSvc         *service.EmailService
 	auditLogRepo     *repository.AuditLogRepository
 }
 
-func NewBatchController(batchRepo *repository.BatchRepository, enrollmentRepo *repository.EnrollmentRepository, notificationRepo *repository.NotificationRepository, userRepo *repository.UserRepository, emailSvc *service.EmailService, auditLogRepo *repository.AuditLogRepository) *BatchController {
-	return &BatchController{batchRepo: batchRepo, enrollmentRepo: enrollmentRepo, notificationRepo: notificationRepo, userRepo: userRepo, emailSvc: emailSvc, auditLogRepo: auditLogRepo}
+func NewBatchController(batchRepo *repository.BatchRepository, enrollmentRepo *repository.EnrollmentRepository, notificationRepo *repository.NotificationRepository, userRepo *repository.UserRepository, collegeRepo *repository.CollegeRepository, courseRepo *repository.CourseRepository, emailSvc *service.EmailService, auditLogRepo *repository.AuditLogRepository) *BatchController {
+	return &BatchController{batchRepo: batchRepo, enrollmentRepo: enrollmentRepo, notificationRepo: notificationRepo, userRepo: userRepo, collegeRepo: collegeRepo, courseRepo: courseRepo, emailSvc: emailSvc, auditLogRepo: auditLogRepo}
 }
 
 // batchDateLayout matches how Batch.StartDate/EndDate are stored — plain
@@ -84,7 +86,38 @@ func (ctrl *BatchController) Create(c *gin.Context) {
 
 	createdBy := c.GetString("user_id")
 
-	batch, err := ctrl.batchRepo.Create(c.Request.Context(), input, createdBy)
+	collegeID, err := resolveTargetCollege(c.Request.Context(), ctrl.collegeRepo, c.GetString("role"), c.GetString("college_id"), input.CollegeShortID)
+	if err != nil {
+		if errors.Is(err, repository.ErrCollegeScopeRequired) {
+			c.JSON(http.StatusForbidden, gin.H{"code": "COLLEGE_SCOPE_VIOLATION", "error": "you have no college scope to create a batch under"})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": "could not resolve target college: " + err.Error()})
+		return
+	}
+
+	// The course must actually be available to this college — either
+	// organization-owned by it, or a global course explicitly assigned to
+	// it. Fails open (skips the check) if Stage 5's course_scope/
+	// college_courses columns aren't applied yet.
+	if course, cErr := ctrl.courseRepo.FindByShortID(c.Request.Context(), input.CourseShortID); cErr == nil && course != nil {
+		if available, ok := ctrl.courseRepo.IsAvailableToCollege(c.Request.Context(), course.ID, collegeID); ok && !available {
+			c.JSON(http.StatusBadRequest, gin.H{"code": "COURSE_NOT_ASSIGNED", "error": "this course is not assigned to your college"})
+			return
+		}
+	}
+
+	// The batch manager must belong to the same college as the batch —
+	// users.college_id already exists (not migration-pending), so this is
+	// always enforced, not fail-open.
+	if manager, mErr := ctrl.userRepo.FindByID(c.Request.Context(), input.BatchManagerID); mErr == nil && manager != nil {
+		if manager.CollegeID != "" && manager.CollegeID != collegeID {
+			c.JSON(http.StatusBadRequest, gin.H{"code": "BATCH_COLLEGE_MISMATCH", "error": "the batch manager does not belong to this college"})
+			return
+		}
+	}
+
+	batch, err := ctrl.batchRepo.Create(c.Request.Context(), input, createdBy, collegeID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create batch: " + err.Error()})
 		return
@@ -165,12 +198,17 @@ func (ctrl *BatchController) Create(c *gin.Context) {
 func (ctrl *BatchController) GetAll(c *gin.Context) {
 	role := c.GetString("role")
 
+	collegeID, err := repository.CollegeFilter(role, c.GetString("college_id"))
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"code": "COLLEGE_SCOPE_VIOLATION", "error": "you have no college scope"})
+		return
+	}
+
 	var batches []models.Batch
-	var err error
 	if role == string(models.RoleMentor) || role == string(models.RoleEmployee) {
-		batches, err = ctrl.batchRepo.FindAllForMentor(c.Request.Context(), c.GetString("user_id"))
+		batches, err = ctrl.batchRepo.FindAllForMentor(c.Request.Context(), c.GetString("user_id"), collegeID)
 	} else {
-		batches, err = ctrl.batchRepo.FindAll(c.Request.Context())
+		batches, err = ctrl.batchRepo.FindAll(c.Request.Context(), collegeID)
 	}
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch batches"})
@@ -588,6 +626,10 @@ func (ctrl *BatchController) TransferStudent(c *gin.Context) {
 	actorID := c.GetString("user_id")
 
 	if _, err := ctrl.enrollmentRepo.Transfer(c.Request.Context(), userID, fromBatch.ID, toBatch.ID, toBatch.CourseID, actorID); err != nil {
+		if errors.Is(err, repository.ErrBatchCollegeMismatch) {
+			c.JSON(http.StatusBadRequest, gin.H{"code": "BATCH_COLLEGE_MISMATCH", "error": "the student and destination batch belong to different colleges"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not transfer student: " + err.Error()})
 		return
 	}

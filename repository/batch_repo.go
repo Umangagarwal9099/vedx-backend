@@ -24,7 +24,9 @@ func NewBatchRepository(pool *pgxpool.Pool) *BatchRepository {
 
 // batchBaseSelect joins courses and users to return names alongside IDs.
 const batchBaseSelect = `
-	SELECT b.id, b.short_id, b.batch_number,
+	SELECT b.id, b.short_id,
+	       COALESCE(b.college_id::TEXT, ''), COALESCE(col.short_id, ''),
+	       b.batch_number,
 	       b.course_id, c.name, c.short_id,
 	       b.batch_manager_id,
 	       CONCAT(bm.first_name, ' ', bm.last_name),
@@ -39,10 +41,14 @@ const batchBaseSelect = `
 	FROM batches b
 	JOIN  courses c  ON b.course_id             = c.id  AND c.deleted_at  IS NULL
 	JOIN  users   bm ON b.batch_manager_id       = bm.id AND bm.deleted_at IS NULL
-	LEFT JOIN users am ON b.additional_manager_id = am.id AND am.deleted_at IS NULL`
+	LEFT JOIN users am ON b.additional_manager_id = am.id AND am.deleted_at IS NULL
+	LEFT JOIN colleges col ON b.college_id = col.id`
 
-// Create inserts a batch and returns the full record. Retries on short_id collision.
-func (r *BatchRepository) Create(ctx context.Context, in models.CreateBatchInput, createdBy string) (*models.Batch, error) {
+// Create inserts a batch and returns the full record. Retries on short_id
+// collision. collegeID must never be empty — resolved by the caller (see
+// controller.resolveTargetCollege) so no newly created batch is ever left
+// with a NULL college_id.
+func (r *BatchRepository) Create(ctx context.Context, in models.CreateBatchInput, createdBy, collegeID string) (*models.Batch, error) {
 	for attempt := 0; attempt < 3; attempt++ {
 		shortID := util.GenerateShortID()
 
@@ -50,20 +56,22 @@ func (r *BatchRepository) Create(ctx context.Context, in models.CreateBatchInput
 		err := r.pool.QueryRow(ctx, `
 			WITH ins AS (
 				INSERT INTO batches
-				  (short_id, batch_number, course_id, batch_manager_id,
+				  (short_id, college_id, batch_number, course_id, batch_manager_id,
 				   additional_manager_id, module, start_date, end_date, status, max_students, created_by)
 				VALUES (
-				  $1, $2,
-				  (SELECT id FROM courses WHERE short_id = $3 AND deleted_at IS NULL),
-				  $4::UUID,
-				  NULLIF($5,'')::UUID,
-				  NULLIF($6,''),
-				  $7::DATE, $8::DATE,
-				  COALESCE(NULLIF($9,'')::batch_status, 'draft'), $10, $11
+				  $1, $2::UUID, $3,
+				  (SELECT id FROM courses WHERE short_id = $4 AND deleted_at IS NULL),
+				  $5::UUID,
+				  NULLIF($6,'')::UUID,
+				  NULLIF($7,''),
+				  $8::DATE, $9::DATE,
+				  COALESCE(NULLIF($10,'')::batch_status, 'draft'), $11, $12
 				)
 				RETURNING *
 			)
-			SELECT ins.id, ins.short_id, ins.batch_number,
+			SELECT ins.id, ins.short_id,
+			       COALESCE(ins.college_id::TEXT, ''), COALESCE(col.short_id, ''),
+			       ins.batch_number,
 			       ins.course_id, c.name, c.short_id,
 			       ins.batch_manager_id,
 			       CONCAT(bm.first_name, ' ', bm.last_name),
@@ -77,12 +85,15 @@ func (r *BatchRepository) Create(ctx context.Context, in models.CreateBatchInput
 			FROM ins
 			JOIN  courses c  ON ins.course_id             = c.id
 			JOIN  users   bm ON ins.batch_manager_id       = bm.id
-			LEFT JOIN users am ON ins.additional_manager_id = am.id`,
-			shortID, in.BatchNumber, in.CourseShortID,
+			LEFT JOIN users am ON ins.additional_manager_id = am.id
+			LEFT JOIN colleges col ON ins.college_id = col.id`,
+			shortID, collegeID, in.BatchNumber, in.CourseShortID,
 			in.BatchManagerID, in.AdditionalManagerID, in.Module,
 			in.StartDate, in.EndDate, in.Status, in.MaxStudents, createdBy,
 		).Scan(
-			&b.ID, &b.ShortID, &b.BatchNumber,
+			&b.ID, &b.ShortID,
+			&b.CollegeID, &b.CollegeShortID,
+			&b.BatchNumber,
 			&b.CourseID, &b.CourseName, &b.CourseShortID,
 			&b.BatchManagerID, &b.BatchManagerName,
 			&b.AdditionalManagerID, &b.AdditionalManagerName,
@@ -103,29 +114,54 @@ func (r *BatchRepository) Create(ctx context.Context, in models.CreateBatchInput
 	return nil, fmt.Errorf("could not generate a unique short ID after 3 attempts")
 }
 
-// FindAll returns all non-deleted batches ordered newest first.
-func (r *BatchRepository) FindAll(ctx context.Context) ([]models.Batch, error) {
-	q := batchBaseSelect + ` WHERE b.deleted_at IS NULL ORDER BY b.created_at DESC`
-	return r.scanBatches(ctx, q)
+// FindAll returns all non-deleted batches ordered newest first. collegeID
+// scopes the list for non-super-admin callers (empty = unscoped) — see
+// repository.CollegeFilter.
+func (r *BatchRepository) FindAll(ctx context.Context, collegeID string) ([]models.Batch, error) {
+	q := batchBaseSelect + ` WHERE b.deleted_at IS NULL`
+	args := []interface{}{}
+	if collegeID != "" {
+		q += ` AND b.college_id = $1::UUID`
+		args = append(args, collegeID)
+	}
+	q += ` ORDER BY b.created_at DESC`
+	return r.scanBatches(ctx, q, args...)
 }
 
 // FindAllForMentor returns non-deleted batches the given mentor manages
 // (batch_manager_id or additional_manager_id) — the row-level-scoped view
-// used for mentor/employee callers instead of FindAll.
-func (r *BatchRepository) FindAllForMentor(ctx context.Context, mentorID string) ([]models.Batch, error) {
+// used for mentor/employee callers instead of FindAll. collegeID scopes
+// further for non-super-admin callers (empty = unscoped); in practice a
+// mentor's own college_id should already match every batch they manage, but
+// this is defense-in-depth against that ever drifting.
+func (r *BatchRepository) FindAllForMentor(ctx context.Context, mentorID, collegeID string) ([]models.Batch, error) {
 	q := batchBaseSelect + `
-		WHERE b.deleted_at IS NULL AND (b.batch_manager_id = $1 OR b.additional_manager_id = $1)
-		ORDER BY b.created_at DESC`
-	return r.scanBatches(ctx, q, mentorID)
+		WHERE b.deleted_at IS NULL AND (b.batch_manager_id = $1 OR b.additional_manager_id = $1)`
+	args := []interface{}{mentorID}
+	if collegeID != "" {
+		q += ` AND b.college_id = $2::UUID`
+		args = append(args, collegeID)
+	}
+	q += ` ORDER BY b.created_at DESC`
+	return r.scanBatches(ctx, q, args...)
 }
 
 // FindByShortID returns a single non-deleted batch.
+//
+// NOTE: deliberately NOT college-scoped, per an explicit scope decision —
+// list-level scoping (FindAll/FindAllForMentor) is this pass's target;
+// detail/update/delete ownership hardening across every batch-detail call
+// site (certificates, curriculum, attendance, analytics, audit log, score,
+// authz_helpers — 20 call sites as of this writing) is a distinct, larger
+// follow-up phase.
 func (r *BatchRepository) FindByShortID(ctx context.Context, shortID string) (*models.Batch, error) {
 	q := batchBaseSelect + ` WHERE b.short_id = $1 AND b.deleted_at IS NULL LIMIT 1`
 
 	var b models.Batch
 	err := r.pool.QueryRow(ctx, q, shortID).Scan(
-		&b.ID, &b.ShortID, &b.BatchNumber,
+		&b.ID, &b.ShortID,
+		&b.CollegeID, &b.CollegeShortID,
+		&b.BatchNumber,
 		&b.CourseID, &b.CourseName, &b.CourseShortID,
 		&b.BatchManagerID, &b.BatchManagerName,
 		&b.AdditionalManagerID, &b.AdditionalManagerName,
@@ -300,15 +336,18 @@ func (r *BatchRepository) UpdateScoreWeights(ctx context.Context, shortID string
 }
 
 // AddStudents bulk-enrolls students into a batch by user ID. Only users with
-// role='student' are matched; students already enrolled are left unchanged.
-// Returns the IDs of students actually added.
+// role='student' AND the same college_id as the batch are matched — a
+// student from another college is silently excluded from the "added" list,
+// the same way an already-enrolled or non-student ID already is; students
+// already enrolled are left unchanged. Returns the IDs of students actually
+// added.
 func (r *BatchRepository) AddStudents(ctx context.Context, batchShortID string, studentIDs []string, addedBy string) ([]string, error) {
 	rows, err := r.pool.Query(ctx, `
 		INSERT INTO batch_students (batch_id, user_id, added_by)
 		SELECT b.id, u.id, $3
 		FROM batches b
 		CROSS JOIN unnest($2::uuid[]) AS uid(user_id)
-		JOIN users u ON u.id = uid.user_id AND u.deleted_at IS NULL AND u.role = 'student'
+		JOIN users u ON u.id = uid.user_id AND u.deleted_at IS NULL AND u.role = 'student' AND u.college_id = b.college_id
 		WHERE b.short_id = $1 AND b.deleted_at IS NULL
 		ON CONFLICT (batch_id, user_id) DO NOTHING
 		RETURNING user_id`,
@@ -327,7 +366,18 @@ func (r *BatchRepository) AddStudents(ctx context.Context, batchShortID string, 
 		}
 		added = append(added, id)
 	}
-	return added, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// See the identical comment in AddStudentsWithEnrollment — a student's
+	// status badge should reflect that they're actually enrolled somewhere.
+	if len(added) > 0 {
+		if _, err := r.pool.Exec(ctx, `UPDATE students SET status = 'enrolled' WHERE user_id = ANY($1::uuid[]) AND status = 'registered'`, added); err != nil {
+			return nil, fmt.Errorf("update student status on enrollment: %w", err)
+		}
+	}
+	return added, nil
 }
 
 // AddStudentsWithEnrollment bulk-enrolls students into a batch AND creates
@@ -352,12 +402,14 @@ func (r *BatchRepository) AddStudentsWithEnrollment(
 	}
 	defer tx.Rollback(ctx)
 
+	// Only same-college students are matched — a cross-college student ID is
+	// silently excluded from "added," identical to AddStudents.
 	rows, err := tx.Query(ctx, `
 		INSERT INTO batch_students (batch_id, user_id, added_by)
 		SELECT b.id, u.id, $3
 		FROM batches b
 		CROSS JOIN unnest($2::uuid[]) AS uid(user_id)
-		JOIN users u ON u.id = uid.user_id AND u.deleted_at IS NULL AND u.role = 'student'
+		JOIN users u ON u.id = uid.user_id AND u.deleted_at IS NULL AND u.role = 'student' AND u.college_id = b.college_id
 		WHERE b.short_id = $1 AND b.deleted_at IS NULL
 		ON CONFLICT (batch_id, user_id) DO NOTHING
 		RETURNING user_id`,
@@ -380,6 +432,16 @@ func (r *BatchRepository) AddStudentsWithEnrollment(
 		return nil, err
 	}
 	rows.Close()
+
+	// A student's status badge should reflect that they're actually enrolled
+	// somewhere, not sit on "Registered" forever until an admin manually
+	// changes it — this only ever moves registered -> enrolled, never
+	// touches completed/on_leave/archived, which stay under explicit control.
+	if len(added) > 0 {
+		if _, err := tx.Exec(ctx, `UPDATE students SET status = 'enrolled' WHERE user_id = ANY($1::uuid[]) AND status = 'registered'`, added); err != nil {
+			return nil, fmt.Errorf("update student status on enrollment: %w", err)
+		}
+	}
 
 	for _, studentID := range added {
 		enrolled := false
@@ -577,7 +639,9 @@ func (r *BatchRepository) scanBatches(ctx context.Context, q string, args ...int
 	for rows.Next() {
 		var b models.Batch
 		if err := rows.Scan(
-			&b.ID, &b.ShortID, &b.BatchNumber,
+			&b.ID, &b.ShortID,
+			&b.CollegeID, &b.CollegeShortID,
+			&b.BatchNumber,
 			&b.CourseID, &b.CourseName, &b.CourseShortID,
 			&b.BatchManagerID, &b.BatchManagerName,
 			&b.AdditionalManagerID, &b.AdditionalManagerName,

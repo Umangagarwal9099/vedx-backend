@@ -11,11 +11,12 @@ import (
 )
 
 type CollegeController struct {
-	collegeRepo *repository.CollegeRepository
+	collegeRepo  *repository.CollegeRepository
+	auditLogRepo *repository.AuditLogRepository
 }
 
-func NewCollegeController(collegeRepo *repository.CollegeRepository) *CollegeController {
-	return &CollegeController{collegeRepo: collegeRepo}
+func NewCollegeController(collegeRepo *repository.CollegeRepository, auditLogRepo *repository.AuditLogRepository) *CollegeController {
+	return &CollegeController{collegeRepo: collegeRepo, auditLogRepo: auditLogRepo}
 }
 
 // CreateCollege godoc
@@ -43,6 +44,9 @@ func (ctrl *CollegeController) Create(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "college_created", EntityType: "college", EntityID: college.ID, EntityShortID: college.ShortID, EntityLabel: college.Name,
+	})
 	c.JSON(http.StatusCreated, college)
 }
 
@@ -181,6 +185,14 @@ func (ctrl *CollegeController) Update(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch updated college"})
 		return
 	}
+	action := "college_updated"
+	if input.Status != nil {
+		action = "college_status_changed"
+	}
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: action, EntityType: "college", EntityID: college.ID, EntityShortID: college.ShortID, EntityLabel: college.Name,
+		Metadata: map[string]interface{}{"status": college.Status},
+	})
 	c.JSON(http.StatusOK, college)
 }
 
@@ -208,7 +220,7 @@ func (ctrl *CollegeController) UpdateFeatures(c *gin.Context) {
 		return
 	}
 
-	if err := ctrl.collegeRepo.UpdateFeatures(c.Request.Context(), shortID, input.Features); err != nil {
+	if err := ctrl.collegeRepo.UpdateFeatures(c.Request.Context(), shortID, input.Features, c.GetString("user_id")); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "college not found"})
 			return
@@ -222,6 +234,10 @@ func (ctrl *CollegeController) UpdateFeatures(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch updated college"})
 		return
 	}
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "college_features_updated", EntityType: "college", EntityID: college.ID, EntityShortID: college.ShortID, EntityLabel: college.Name,
+		Metadata: map[string]interface{}{"features": input.Features},
+	})
 	c.JSON(http.StatusOK, college)
 }
 
@@ -248,5 +264,56 @@ func (ctrl *CollegeController) Delete(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not delete college"})
 		return
 	}
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{Action: "college_deleted", EntityType: "college", EntityShortID: shortID})
+	c.Status(http.StatusNoContent)
+}
+
+// CreateSubscriptionInput carries a new subscription period for a college.
+type CreateSubscriptionInput struct {
+	PlanID    string `json:"plan_id" example:"standard-annual"`
+	StartDate string `json:"start_date" binding:"required" example:"2026-08-01"`
+	EndDate   string `json:"end_date"   binding:"required" example:"2027-07-31"`
+}
+
+// CreateSubscription godoc
+//
+//	@Summary		Record a college subscription period
+//	@Description	Creates a new subscription period for a college (a renewal creates a new row rather than editing the old one, preserving history). Super_admin only.
+//	@Tags			colleges
+//	@Accept			json
+//	@Produce		json
+//	@Param			short_id	path		string					true	"College short ID"
+//	@Param			body		body		CreateSubscriptionInput	true	"Subscription period"
+//	@Success		204			"No Content"
+//	@Failure		400			{object}	map[string]string	"Validation error"
+//	@Failure		404			{object}	map[string]string	"College not found"
+//	@Failure		500			{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/colleges/{short_id}/subscriptions [post]
+func (ctrl *CollegeController) CreateSubscription(c *gin.Context) {
+	shortID := c.Param("short_id")
+
+	var input CreateSubscriptionInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	college, err := ctrl.collegeRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil || college == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "college not found"})
+		return
+	}
+
+	if err := ctrl.collegeRepo.CreateSubscription(c.Request.Context(), college.ID, input.PlanID, input.StartDate, input.EndDate, c.GetString("user_id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create subscription: " + err.Error()})
+		return
+	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "subscription_created", EntityType: "college", EntityID: college.ID, EntityShortID: college.ShortID, EntityLabel: college.Name,
+		Metadata: map[string]interface{}{"plan_id": input.PlanID, "start_date": input.StartDate, "end_date": input.EndDate},
+	})
+
 	c.Status(http.StatusNoContent)
 }

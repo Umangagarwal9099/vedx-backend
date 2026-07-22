@@ -14,14 +14,16 @@ import (
 )
 
 type UserController struct {
-	userRepo     *repository.UserRepository
-	emailSvc     *service.EmailService
-	publicURL    string
-	auditLogRepo *repository.AuditLogRepository
+	userRepo       *repository.UserRepository
+	collegeRepo    *repository.CollegeRepository
+	enrollmentRepo *repository.EnrollmentRepository
+	emailSvc       *service.EmailService
+	publicURL      string
+	auditLogRepo   *repository.AuditLogRepository
 }
 
-func NewUserController(userRepo *repository.UserRepository, emailSvc *service.EmailService, publicURL string, auditLogRepo *repository.AuditLogRepository) *UserController {
-	return &UserController{userRepo: userRepo, emailSvc: emailSvc, publicURL: publicURL, auditLogRepo: auditLogRepo}
+func NewUserController(userRepo *repository.UserRepository, collegeRepo *repository.CollegeRepository, enrollmentRepo *repository.EnrollmentRepository, emailSvc *service.EmailService, publicURL string, auditLogRepo *repository.AuditLogRepository) *UserController {
+	return &UserController{userRepo: userRepo, collegeRepo: collegeRepo, enrollmentRepo: enrollmentRepo, emailSvc: emailSvc, publicURL: publicURL, auditLogRepo: auditLogRepo}
 }
 
 // stripStudentPIIForMentor removes a student's phone/email/date-of-birth from
@@ -45,10 +47,12 @@ func stripStudentPIIForMentor(users []models.User, callerRole string) []models.U
 
 // roleLabels maps a role to the human-readable label used in the welcome email.
 var roleLabels = map[models.Role]string{
-	models.RoleMentor:   "Mentor",
-	models.RoleEmployee: "Employee",
-	models.RoleTeamLead: "Team Lead",
-	models.RoleStudent:  "Student",
+	models.RoleMentor:       "Mentor",
+	models.RoleEmployee:     "Employee",
+	models.RoleTeamLead:     "Team Lead",
+	models.RoleStudent:      "Student",
+	models.RoleCollegeAdmin: "College Admin",
+	models.RoleCollegeStaff: "College Staff",
 }
 
 // CreateStaffUserRequest carries the fields for admin-provisioned staff accounts.
@@ -57,7 +61,13 @@ type CreateStaffUserRequest struct {
 	LastName  string `json:"last_name"  binding:"required" example:"Doe"`
 	Email     string `json:"email"      binding:"required,email" example:"jane@example.com"`
 	Phone     string `json:"phone"      example:"+919876543210"`
-	Role      string `json:"role"       binding:"required,oneof=mentor employee team_lead" enums:"mentor,employee,team_lead" example:"employee"`
+	Role      string `json:"role"       binding:"required,oneof=mentor employee team_lead college_admin college_staff" enums:"mentor,employee,team_lead,college_admin,college_staff" example:"employee"`
+	// CollegeShortID is REQUIRED when role is college_admin/college_staff
+	// (only super_admin may create those roles, and every College Admin must
+	// be permanently linked to one specific college — there is no sensible
+	// default). Ignored for mentor/employee/team_lead, which always land on
+	// the Internal EdTech Platform.
+	CollegeShortID string `json:"college_short_id" example:"use GET /colleges to pick a real short_id — required for college_admin/college_staff"`
 }
 
 // CreateStaffUserResponse returns the created user plus the one-time-shown
@@ -107,13 +117,45 @@ func (ctrl *UserController) CreateStaffUser(c *gin.Context) {
 	}
 
 	role := models.Role(req.Role)
+
+	var collegeID string
+	if role == models.RoleCollegeAdmin || role == models.RoleCollegeStaff {
+		// Only super_admin may create these roles, and they must be
+		// permanently linked to one specific college — no default.
+		if c.GetString("role") != string(models.RoleSuperAdmin) {
+			c.JSON(http.StatusForbidden, gin.H{"code": "COLLEGE_SCOPE_VIOLATION", "error": "only super_admin may create a college_admin/college_staff account"})
+			return
+		}
+		if req.CollegeShortID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "college_short_id is required for college_admin/college_staff"})
+			return
+		}
+		college, err := ctrl.collegeRepo.FindByShortID(c.Request.Context(), req.CollegeShortID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not resolve target college"})
+			return
+		}
+		if college == nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "college not found"})
+			return
+		}
+		collegeID = college.ID
+	} else {
+		// mentor/employee/team_lead always land on the Internal EdTech
+		// Platform — these are internal, platform-wide staff roles.
+		collegeID, err = ctrl.collegeRepo.DefaultCollegeID(c.Request.Context())
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not resolve default organization"})
+			return
+		}
+	}
 	userID, err := ctrl.userRepo.CreateStaffUser(c.Request.Context(), models.User{
 		Email:        req.Email,
 		PasswordHash: string(hash),
 		FirstName:    req.FirstName,
 		LastName:     req.LastName,
 		Phone:        req.Phone,
-	}, role)
+	}, role, collegeID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create account: " + err.Error()})
 		return
@@ -146,6 +188,12 @@ type CreateStudentRequest struct {
 	Email       string `json:"email"         binding:"required,email" example:"jane@example.com"`
 	Phone       string `json:"phone"         example:"+919876543210"`
 	DateOfBirth string `json:"date_of_birth" example:"1998-05-20"`
+	// CollegeShortID is only honored for super_admin callers (picks which
+	// college this student belongs to; omit for the Internal EdTech
+	// Platform). A College Admin/College Staff caller is always forced onto
+	// their own college_id server-side, regardless of what's sent here — the
+	// frontend must never show them a college picker.
+	CollegeShortID string `json:"college_short_id" example:"use GET /colleges to pick a real short_id, or omit for the Internal EdTech Platform"`
 }
 
 // CreateStudent godoc
@@ -186,6 +234,24 @@ func (ctrl *UserController) CreateStudent(c *gin.Context) {
 		return
 	}
 
+	// super_admin may pick any college (or omit, defaulting to the Internal
+	// EdTech Platform); a College Admin/College Staff caller is always
+	// forced onto their own college_id, regardless of what they send.
+	collegeID, err := resolveTargetCollege(c.Request.Context(), ctrl.collegeRepo, c.GetString("role"), c.GetString("college_id"), req.CollegeShortID)
+	if err != nil {
+		if errors.Is(err, repository.ErrCollegeScopeRequired) {
+			c.JSON(http.StatusForbidden, gin.H{"code": "COLLEGE_SCOPE_VIOLATION", "error": "you have no college scope to create a student under"})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": "could not resolve target college: " + err.Error()})
+		return
+	}
+
+	var registrationNo *int
+	if n, ok := ctrl.collegeRepo.NextRegistrationNo(c.Request.Context(), collegeID); ok {
+		registrationNo = &n
+	}
+
 	userID, err := ctrl.userRepo.Register(c.Request.Context(), models.User{
 		Email:        req.Email,
 		PasswordHash: string(hash),
@@ -193,7 +259,7 @@ func (ctrl *UserController) CreateStudent(c *gin.Context) {
 		LastName:     req.LastName,
 		Phone:        req.Phone,
 		DateOfBirth:  req.DateOfBirth,
-	})
+	}, collegeID, registrationNo)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create account: " + err.Error()})
 		return
@@ -239,7 +305,12 @@ func (ctrl *UserController) GetAll(c *gin.Context) {
 		// batches only — never the full platform roster.
 		users, err = ctrl.userRepo.FindStudentsForMentor(c.Request.Context(), c.GetString("user_id"))
 	} else {
-		users, err = ctrl.userRepo.FindAll(c.Request.Context())
+		collegeID, scopeErr := repository.CollegeFilter(role, c.GetString("college_id"))
+		if scopeErr != nil {
+			c.JSON(http.StatusForbidden, gin.H{"code": "COLLEGE_SCOPE_VIOLATION", "error": "you have no college scope"})
+			return
+		}
+		users, err = ctrl.userRepo.FindAll(c.Request.Context(), collegeID)
 	}
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch users"})
@@ -285,7 +356,13 @@ func (ctrl *UserController) GetDeleted(c *gin.Context) {
 //	@Security		BearerAuth
 //	@Router			/mentors [get]
 func (ctrl *UserController) GetMentors(c *gin.Context) {
-	users, err := ctrl.userRepo.FindByRole(c.Request.Context(), models.RoleMentor)
+	collegeID, err := repository.CollegeFilter(c.GetString("role"), c.GetString("college_id"))
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"code": "COLLEGE_SCOPE_VIOLATION", "error": "you have no college scope"})
+		return
+	}
+
+	users, err := ctrl.userRepo.FindByRole(c.Request.Context(), models.RoleMentor, collegeID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch mentors"})
 		return
@@ -324,7 +401,12 @@ func (ctrl *UserController) Search(c *gin.Context) {
 		// any student on the platform just by knowing a name/email/ID.
 		users, err = ctrl.userRepo.SearchStudentsForMentor(c.Request.Context(), c.GetString("user_id"), q)
 	} else {
-		users, err = ctrl.userRepo.SearchUsers(c.Request.Context(), q)
+		collegeID, scopeErr := repository.CollegeFilter(role, c.GetString("college_id"))
+		if scopeErr != nil {
+			c.JSON(http.StatusForbidden, gin.H{"code": "COLLEGE_SCOPE_VIOLATION", "error": "you have no college scope"})
+			return
+		}
+		users, err = ctrl.userRepo.SearchUsers(c.Request.Context(), q, collegeID)
 	}
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not search users"})
@@ -486,6 +568,94 @@ func (ctrl *UserController) ChangeRole(c *gin.Context) {
 	})
 
 	c.JSON(http.StatusOK, user)
+}
+
+// TransferCollegeRequest carries the target college and an optional reason
+// for a super_admin-initiated college transfer.
+type TransferCollegeRequest struct {
+	CollegeShortID string `json:"college_short_id" binding:"required" example:"ABCENG"`
+	Reason         string `json:"reason"           example:"Student transferred to partner college"`
+	Force          bool   `json:"force"            example:"false"`
+}
+
+// TransferCollege godoc
+//
+//	@Summary		Transfer a user to a different college
+//	@Description	Moves a user (typically a student) to another college. Super_admin only. Rejects the transfer if the user has any active batch enrollment unless force=true is passed. Always writes a user_college_history audit row.
+//	@Tags			users
+//	@Accept			json
+//	@Produce		json
+//	@Param			id		path		string					true	"User ID (UUID)"
+//	@Param			body	body		TransferCollegeRequest	true	"Target college"
+//	@Success		200		{object}	models.User
+//	@Failure		400		{object}	map[string]string	"Validation error, or active enrollments block the transfer without force"
+//	@Failure		404		{object}	map[string]string	"User or college not found"
+//	@Failure		500		{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/users/{id}/college [patch]
+func (ctrl *UserController) TransferCollege(c *gin.Context) {
+	id := c.Param("id")
+
+	var req TransferCollegeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	user, err := ctrl.userRepo.FindByID(c.Request.Context(), id)
+	if err != nil || user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+
+	targetCollege, err := ctrl.collegeRepo.FindByShortID(c.Request.Context(), req.CollegeShortID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not resolve target college"})
+		return
+	}
+	if targetCollege == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "college not found"})
+		return
+	}
+
+	if user.Role == models.RoleStudent && !req.Force {
+		hasActive, err := ctrl.enrollmentRepo.HasAnyActiveEnrollment(c.Request.Context(), id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not check active enrollments"})
+			return
+		}
+		if hasActive {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "this student has active batch enrollments — pass force=true to transfer anyway",
+			})
+			return
+		}
+	}
+
+	oldCollegeID := user.CollegeID
+	if err := ctrl.userRepo.SetCollegeID(c.Request.Context(), id, targetCollege.ID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not transfer college"})
+		return
+	}
+	ctrl.userRepo.RecordCollegeTransfer(c.Request.Context(), id, oldCollegeID, targetCollege.ID, c.GetString("user_id"), req.Reason)
+
+	updated, err := ctrl.userRepo.FindByID(c.Request.Context(), id)
+	if err != nil || updated == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch updated user"})
+		return
+	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "college_transfer", EntityType: "user",
+		EntityID: updated.ID, EntityLabel: updated.FirstName + " " + updated.LastName,
+		Metadata: map[string]interface{}{"old_college_id": oldCollegeID, "new_college_id": targetCollege.ID, "reason": req.Reason, "force": req.Force},
+	})
+
+	c.JSON(http.StatusOK, updated)
 }
 
 // ChangeEmailRequest holds the new login email.

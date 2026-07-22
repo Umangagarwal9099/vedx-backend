@@ -10,6 +10,15 @@ const (
 	RoleEmployee   Role = "employee"
 	RoleTeamLead   Role = "team_lead"
 	RoleSuperAdmin Role = "super_admin"
+	// RolePlatformAdmin, RoleCollegeAdmin and RoleCollegeStaff are
+	// college-scoped roles (multi-tenant college management) — deliberately
+	// NEVER added to the existing adminOrAbove/staffOrAbove middleware
+	// groups, which grant platform-wide power. They get their own dedicated
+	// route groups so a college_admin can only ever act within their own
+	// college_id, never platform-wide.
+	RolePlatformAdmin Role = "platform_admin"
+	RoleCollegeAdmin  Role = "college_admin"
+	RoleCollegeStaff  Role = "college_staff"
 )
 
 type User struct {

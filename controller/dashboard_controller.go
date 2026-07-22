@@ -52,12 +52,17 @@ func (ctrl *DashboardController) GetStats(c *gin.Context) {
 		mentorID = c.GetString("user_id")
 	}
 
+	collegeID, err := repository.CollegeFilter(role, c.GetString("college_id"))
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"code": "COLLEGE_SCOPE_VIOLATION", "error": "you have no college scope"})
+		return
+	}
+
 	var batches []models.Batch
-	var err error
 	if mentorID != "" {
-		batches, err = ctrl.batchRepo.FindAllForMentor(ctx, mentorID)
+		batches, err = ctrl.batchRepo.FindAllForMentor(ctx, mentorID, collegeID)
 	} else {
-		batches, err = ctrl.batchRepo.FindAll(ctx)
+		batches, err = ctrl.batchRepo.FindAll(ctx, collegeID)
 	}
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch batches"})

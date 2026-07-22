@@ -19,10 +19,11 @@ type LeadController struct {
 	leadAssignmentHistoryRepo *repository.LeadAssignmentHistoryRepository
 	notificationRepo          *repository.NotificationRepository
 	auditLogRepo              *repository.AuditLogRepository
+	collegeRepo               *repository.CollegeRepository
 }
 
-func NewLeadController(leadRepo *repository.LeadRepository, leadCallLogRepo *repository.LeadCallLogRepository, leadAssignmentHistoryRepo *repository.LeadAssignmentHistoryRepository, notificationRepo *repository.NotificationRepository, auditLogRepo *repository.AuditLogRepository) *LeadController {
-	return &LeadController{leadRepo: leadRepo, leadCallLogRepo: leadCallLogRepo, leadAssignmentHistoryRepo: leadAssignmentHistoryRepo, notificationRepo: notificationRepo, auditLogRepo: auditLogRepo}
+func NewLeadController(leadRepo *repository.LeadRepository, leadCallLogRepo *repository.LeadCallLogRepository, leadAssignmentHistoryRepo *repository.LeadAssignmentHistoryRepository, notificationRepo *repository.NotificationRepository, auditLogRepo *repository.AuditLogRepository, collegeRepo *repository.CollegeRepository) *LeadController {
+	return &LeadController{leadRepo: leadRepo, leadCallLogRepo: leadCallLogRepo, leadAssignmentHistoryRepo: leadAssignmentHistoryRepo, notificationRepo: notificationRepo, auditLogRepo: auditLogRepo, collegeRepo: collegeRepo}
 }
 
 // isEmployeeOnly reports whether the caller is a plain employee (not
@@ -52,7 +53,18 @@ func (ctrl *LeadController) Create(c *gin.Context) {
 	}
 
 	createdBy := c.GetString("user_id")
-	lead, err := ctrl.leadRepo.Create(c.Request.Context(), input, createdBy)
+
+	collegeID, err := resolveTargetCollege(c.Request.Context(), ctrl.collegeRepo, c.GetString("role"), c.GetString("college_id"), input.CollegeShortID)
+	if err != nil {
+		if errors.Is(err, repository.ErrCollegeScopeRequired) {
+			c.JSON(http.StatusForbidden, gin.H{"code": "COLLEGE_SCOPE_VIOLATION", "error": "you have no college scope to create a lead under"})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": "could not resolve target college: " + err.Error()})
+		return
+	}
+
+	lead, err := ctrl.leadRepo.Create(c.Request.Context(), input, createdBy, collegeID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create lead: " + err.Error()})
 		return
@@ -86,13 +98,18 @@ func (ctrl *LeadController) GetAll(c *gin.Context) {
 	role := c.GetString("role")
 	userID := c.GetString("user_id")
 
+	collegeID, err := repository.CollegeFilter(role, c.GetString("college_id"))
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"code": "COLLEGE_SCOPE_VIOLATION", "error": "you have no college scope"})
+		return
+	}
+
 	var leads []models.Lead
-	var err error
 
 	if role == string(models.RoleEmployee) {
-		leads, err = ctrl.leadRepo.FindAllForEmployee(c.Request.Context(), userID, filter)
+		leads, err = ctrl.leadRepo.FindAllForEmployee(c.Request.Context(), userID, filter, collegeID)
 	} else {
-		leads, err = ctrl.leadRepo.FindAll(c.Request.Context(), filter)
+		leads, err = ctrl.leadRepo.FindAll(c.Request.Context(), filter, collegeID)
 	}
 
 	if err != nil {
@@ -415,7 +432,20 @@ func (ctrl *LeadController) BulkImport(c *gin.Context) {
 	parsedRows := parseLeadRows(header, records)
 	createdBy := c.GetString("user_id")
 
-	result, err := ctrl.leadRepo.BulkImport(c.Request.Context(), parsedRows, createdBy)
+	// The import sheet itself never carries a college — super_admin may
+	// optionally pass one as a form field (defaulting to the Internal EdTech
+	// Platform); every other caller is always forced onto their own college.
+	collegeID, err := resolveTargetCollege(c.Request.Context(), ctrl.collegeRepo, c.GetString("role"), c.GetString("college_id"), c.PostForm("college_short_id"))
+	if err != nil {
+		if errors.Is(err, repository.ErrCollegeScopeRequired) {
+			c.JSON(http.StatusForbidden, gin.H{"code": "COLLEGE_SCOPE_VIOLATION", "error": "you have no college scope to import leads under"})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": "could not resolve target college: " + err.Error()})
+		return
+	}
+
+	result, err := ctrl.leadRepo.BulkImport(c.Request.Context(), parsedRows, createdBy, collegeID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not import leads: " + err.Error()})
 		return

@@ -21,6 +21,25 @@ func NewStudentRegistrationRepository(pool *pgxpool.Pool) *StudentRegistrationRe
 	return &StudentRegistrationRepository{pool: pool}
 }
 
+// EnrollmentNoExistsInCollege reports whether rollNumber is already taken by
+// another student in the same college — the "duplicate roll number within
+// the same college" check required before a bulk import row is accepted.
+// Empty rollNumber never counts as a duplicate.
+func (r *StudentRegistrationRepository) EnrollmentNoExistsInCollege(ctx context.Context, collegeID, rollNumber string) (bool, error) {
+	if rollNumber == "" {
+		return false, nil
+	}
+	var exists bool
+	err := r.pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM students
+			WHERE college_id = $1::UUID AND enrollment_no = $2
+		)`,
+		collegeID, rollNumber,
+	).Scan(&exists)
+	return exists, err
+}
+
 // GetByUserID returns the student's registration details, or a zero-value
 // (empty) struct — never nil, never an error — if they haven't saved any yet.
 func (r *StudentRegistrationRepository) GetByUserID(ctx context.Context, userID string) (*models.StudentRegistrationDetails, error) {
@@ -56,6 +75,27 @@ func (r *StudentRegistrationRepository) GetByUserID(ctx context.Context, userID 
 		return nil, err
 	}
 	return &d, nil
+}
+
+// GetAllStatuses returns every student's lifecycle status keyed by user_id —
+// backs list-page status columns/filters that would otherwise need one
+// GetByUserID round-trip per row.
+func (r *StudentRegistrationRepository) GetAllStatuses(ctx context.Context) (map[string]string, error) {
+	rows, err := r.pool.Query(ctx, `SELECT user_id::TEXT, status::TEXT FROM students`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := map[string]string{}
+	for rows.Next() {
+		var userID, status string
+		if err := rows.Scan(&userID, &status); err != nil {
+			return nil, err
+		}
+		out[userID] = status
+	}
+	return out, rows.Err()
 }
 
 // Upsert creates or updates the registration-details row for userID with

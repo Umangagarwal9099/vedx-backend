@@ -15,10 +15,12 @@ import (
 type CourseController struct {
 	courseRepo       *repository.CourseRepository
 	notificationRepo *repository.NotificationRepository
+	collegeRepo      *repository.CollegeRepository
+	auditLogRepo     *repository.AuditLogRepository
 }
 
-func NewCourseController(courseRepo *repository.CourseRepository, notificationRepo *repository.NotificationRepository) *CourseController {
-	return &CourseController{courseRepo: courseRepo, notificationRepo: notificationRepo}
+func NewCourseController(courseRepo *repository.CourseRepository, notificationRepo *repository.NotificationRepository, collegeRepo *repository.CollegeRepository, auditLogRepo *repository.AuditLogRepository) *CourseController {
+	return &CourseController{courseRepo: courseRepo, notificationRepo: notificationRepo, collegeRepo: collegeRepo, auditLogRepo: auditLogRepo}
 }
 
 // CreateCourse godoc
@@ -44,7 +46,17 @@ func (ctrl *CourseController) Create(c *gin.Context) {
 
 	createdBy := c.GetString("user_id")
 
-	course, err := ctrl.courseRepo.Create(c.Request.Context(), input, createdBy)
+	collegeID, err := resolveTargetCollege(c.Request.Context(), ctrl.collegeRepo, c.GetString("role"), c.GetString("college_id"), input.CollegeShortID)
+	if err != nil {
+		if errors.Is(err, repository.ErrCollegeScopeRequired) {
+			c.JSON(http.StatusForbidden, gin.H{"code": "COLLEGE_SCOPE_VIOLATION", "error": "you have no college scope to create a course under"})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": "could not resolve target college: " + err.Error()})
+		return
+	}
+
+	course, err := ctrl.courseRepo.Create(c.Request.Context(), input, createdBy, collegeID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create course"})
 		return
@@ -58,6 +70,10 @@ func (ctrl *CourseController) Create(c *gin.Context) {
 	); err != nil {
 		log.Printf("notify course create: %v", err)
 	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "course_created", EntityType: "course", EntityID: course.ID, EntityShortID: course.ShortID, EntityLabel: course.Name,
+	})
 
 	c.JSON(http.StatusCreated, course)
 }
@@ -73,7 +89,13 @@ func (ctrl *CourseController) Create(c *gin.Context) {
 //	@Security		BearerAuth
 //	@Router			/courses [get]
 func (ctrl *CourseController) GetAll(c *gin.Context) {
-	courses, err := ctrl.courseRepo.FindAll(c.Request.Context())
+	collegeID, err := repository.CollegeFilter(c.GetString("role"), c.GetString("college_id"))
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"code": "COLLEGE_SCOPE_VIOLATION", "error": "you have no college scope"})
+		return
+	}
+
+	courses, err := ctrl.courseRepo.FindAll(c.Request.Context(), collegeID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch courses"})
 		return
@@ -103,7 +125,13 @@ func (ctrl *CourseController) Search(c *gin.Context) {
 		return
 	}
 
-	courses, err := ctrl.courseRepo.Search(c.Request.Context(), q)
+	collegeID, err := repository.CollegeFilter(c.GetString("role"), c.GetString("college_id"))
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"code": "COLLEGE_SCOPE_VIOLATION", "error": "you have no college scope"})
+		return
+	}
+
+	courses, err := ctrl.courseRepo.Search(c.Request.Context(), q, collegeID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not search courses"})
 		return
@@ -156,6 +184,10 @@ func (ctrl *CourseController) Update(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch updated course"})
 		return
 	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "course_updated", EntityType: "course", EntityID: course.ID, EntityShortID: course.ShortID, EntityLabel: course.Name,
+	})
 
 	c.JSON(http.StatusOK, course)
 }
@@ -227,6 +259,72 @@ func (ctrl *CourseController) Delete(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not delete course"})
 		return
 	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{Action: "course_deleted", EntityType: "course", EntityShortID: shortID})
+
+	c.Status(http.StatusNoContent)
+}
+
+// AssignCollegeInput carries the target college and optional access window
+// for assigning a global course to a college.
+type AssignCollegeInput struct {
+	CollegeShortID  string  `json:"college_short_id" binding:"required" example:"ABCENG"`
+	AccessStartDate *string `json:"access_start_date" example:"2026-08-01"`
+	AccessEndDate   *string `json:"access_end_date"   example:"2027-07-31"`
+}
+
+// AssignToCollege godoc
+//
+//	@Summary		Assign a global course to a college
+//	@Description	Grants a college access to a course marked course_scope=global, with an optional access window. Super_admin only. Has no effect on organization-scoped courses (those are only ever usable by the one college that owns them).
+//	@Tags			courses
+//	@Accept			json
+//	@Produce		json
+//	@Param			short_id	path		string				true	"Course short ID"
+//	@Param			body		body		AssignCollegeInput	true	"Target college"
+//	@Success		204			"No Content"
+//	@Failure		400			{object}	map[string]string	"Validation error"
+//	@Failure		404			{object}	map[string]string	"Course or college not found"
+//	@Failure		500			{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/courses/{short_id}/assign [post]
+func (ctrl *CourseController) AssignToCollege(c *gin.Context) {
+	shortID := c.Param("short_id")
+
+	var input AssignCollegeInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	course, err := ctrl.courseRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil || course == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "course not found"})
+		return
+	}
+	college, err := ctrl.collegeRepo.FindByShortID(c.Request.Context(), input.CollegeShortID)
+	if err != nil || college == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "college not found"})
+		return
+	}
+
+	var startDate, endDate string
+	if input.AccessStartDate != nil {
+		startDate = *input.AccessStartDate
+	}
+	if input.AccessEndDate != nil {
+		endDate = *input.AccessEndDate
+	}
+
+	if err := ctrl.courseRepo.AssignToCollege(c.Request.Context(), course.ID, college.ID, c.GetString("user_id"), &startDate, &endDate); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not assign course: " + err.Error()})
+		return
+	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "course_assigned_to_college", EntityType: "course", EntityID: course.ID, EntityShortID: course.ShortID, EntityLabel: course.Name,
+		Metadata: map[string]interface{}{"college_short_id": college.ShortID, "college_name": college.Name},
+	})
 
 	c.Status(http.StatusNoContent)
 }

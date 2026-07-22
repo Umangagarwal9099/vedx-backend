@@ -30,11 +30,13 @@ const enrollmentBaseSelect = `
 	       se.enrollment_date, se.enrollment_type, se.status::TEXT,
 	       se.access_start_date, se.access_end_date, se.is_late_enrollment,
 	       se.completion_percentage, se.final_score, se.final_rank,
-	       COALESCE(se.created_by::TEXT, ''), se.created_at, se.updated_at
+	       COALESCE(se.created_by::TEXT, ''), se.created_at, se.updated_at,
+	       COALESCE(bs.fees_paid, FALSE)
 	FROM student_enrollments se
 	JOIN users   u ON se.student_id = u.id
 	JOIN courses c ON se.course_id  = c.id
-	JOIN batches b ON se.batch_id   = b.id`
+	JOIN batches b ON se.batch_id   = b.id
+	LEFT JOIN batch_students bs ON bs.batch_id = se.batch_id AND bs.user_id = se.student_id`
 
 func scanEnrollment(row pgx.Row) (models.StudentEnrollment, error) {
 	var e models.StudentEnrollment
@@ -47,6 +49,7 @@ func scanEnrollment(row pgx.Row) (models.StudentEnrollment, error) {
 		&e.AccessStartDate, &e.AccessEndDate, &e.IsLateEnrollment,
 		&e.CompletionPercentage, &e.FinalScore, &e.FinalRank,
 		&e.CreatedBy, &e.CreatedAt, &e.UpdatedAt,
+		&e.FeesPaid,
 	)
 	return e, err
 }
@@ -71,6 +74,22 @@ func (r *EnrollmentRepository) HasActiveEnrollmentInCourse(ctx context.Context, 
 			  AND status = ANY($4::enrollment_status[])
 		)`,
 		studentID, courseID, excludeBatchID, activeEnrollmentStatuses,
+	).Scan(&exists)
+	return exists, err
+}
+
+// HasAnyActiveEnrollment reports whether studentID holds any active-ish
+// enrollment at all, in any course/batch — used to decide whether a college
+// transfer (PATCH /users/:id/college) can proceed without an explicit
+// force override.
+func (r *EnrollmentRepository) HasAnyActiveEnrollment(ctx context.Context, studentID string) (bool, error) {
+	var exists bool
+	err := r.pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM student_enrollments
+			WHERE student_id = $1::UUID AND status = ANY($2::enrollment_status[])
+		)`,
+		studentID, activeEnrollmentStatuses,
 	).Scan(&exists)
 	return exists, err
 }
@@ -216,7 +235,25 @@ func (r *EnrollmentRepository) UpdateStatus(ctx context.Context, studentID, batc
 // and kept for history, and a new "active" enrollment is created for the
 // destination batch. Runs in a single transaction so a mid-way failure can't
 // leave a student enrolled nowhere or in both places.
+//
+// Rejects the transfer if the student and the destination batch belong to
+// different colleges — a student must never be moved into another
+// college's batch this way. users.college_id/batches.college_id both
+// already exist (not migration-pending), so this check always runs.
 func (r *EnrollmentRepository) Transfer(ctx context.Context, studentID, fromBatchID, toBatchID, courseID, actorID string) (*models.StudentEnrollment, error) {
+	var sameCollege bool
+	if err := r.pool.QueryRow(ctx, `
+		SELECT u.college_id = b.college_id
+		FROM users u, batches b
+		WHERE u.id = $1::UUID AND b.id = $2::UUID`,
+		studentID, toBatchID,
+	).Scan(&sameCollege); err != nil {
+		return nil, fmt.Errorf("check transfer college match: %w", err)
+	}
+	if !sameCollege {
+		return nil, fmt.Errorf("%w: student and destination batch belong to different colleges", ErrBatchCollegeMismatch)
+	}
+
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return nil, err
