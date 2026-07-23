@@ -92,14 +92,34 @@ func (ctrl *CodingQuestionController) GetAll(c *gin.Context) {
 // GetAllAdmin godoc
 //
 //	@Summary		List all coding questions (admin view)
-//	@Description	Returns all non-deleted coding questions including inactive ones.
+//	@Description	Returns all non-deleted coding questions including inactive ones. Internal staff (super_admin/team_lead/mentor) see the full platform-wide bank; college_admin/college_staff see only the subset scoped to their own college (same restriction applied to the student-facing list).
 //	@Tags			coding-questions
 //	@Produce		json
 //	@Success		200	{array}		models.CodingQuestion
+//	@Failure		403	{object}	map[string]string	"Forbidden"
 //	@Failure		500	{object}	map[string]string	"Internal server error"
 //	@Security		BearerAuth
 //	@Router			/coding-questions/admin [get]
 func (ctrl *CodingQuestionController) GetAllAdmin(c *gin.Context) {
+	role := models.Role(c.GetString("role"))
+	if role == models.RoleCollegeAdmin || role == models.RoleCollegeStaff {
+		collegeID := c.GetString("college_id")
+		if collegeID == "" {
+			c.JSON(http.StatusForbidden, gin.H{"code": "COLLEGE_SCOPE_VIOLATION", "error": "you have no college scope"})
+			return
+		}
+		questions, err := ctrl.repo.FindAllForCollege(c.Request.Context(), collegeID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch coding questions"})
+			return
+		}
+		if questions == nil {
+			questions = []models.CodingQuestion{}
+		}
+		c.JSON(http.StatusOK, questions)
+		return
+	}
+
 	questions, err := ctrl.repo.FindAllAdmin(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch coding questions"})

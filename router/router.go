@@ -391,7 +391,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			{
 				cq.POST("", staffOrAbove, codingQuestionCtrl.Create)
 				cq.GET("", middleware.RequireActiveSubscription(collegeRepo), middleware.RequireFeature(collegeRepo, models.FeatureCoding), codingQuestionCtrl.GetAll)
-				cq.GET("/admin", codingQuestionCtrl.GetAllAdmin)
+				cq.GET("/admin", collegeReadOrAbove, codingQuestionCtrl.GetAllAdmin)
 				cq.GET("/:short_id", codingQuestionCtrl.GetByShortID)
 				cq.PATCH("/:short_id", staffOrAbove, codingQuestionCtrl.Update)
 				cq.DELETE("/:short_id", staffOrAbove, codingQuestionCtrl.Delete)
