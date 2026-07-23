@@ -4979,7 +4979,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Returns all non-deleted coding questions including inactive ones.",
+                "description": "Returns all non-deleted coding questions including inactive ones. Internal staff (super_admin/team_lead/mentor) see the full platform-wide bank; college_admin/college_staff see only the subset scoped to their own college (same restriction applied to the student-facing list).",
                 "produces": [
                     "application/json"
                 ],
@@ -4994,6 +4994,15 @@
                             "type": "array",
                             "items": {
                                 "$ref": "#/definitions/models.CodingQuestion"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
                             }
                         }
                     },
@@ -10888,6 +10897,292 @@
                         "type": "string",
                         "description": "Milestone short ID",
                         "name": "milestone_short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Submission short ID",
+                        "name": "submission_short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Grade details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.GradeProjectSubmissionInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Submission not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/projects/{short_id}/publish-results": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Makes every graded direct (milestone-less) submission for this project visible to students at once. Grading itself never publishes — this is a deliberate, separate action. Restricted to super_admin / team_lead / mentor (of a batch they manage).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "projects"
+                ],
+                "summary": "Publish a project's direct-submission results",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Project not found, or nothing to publish",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/projects/{short_id}/submissions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns every direct (milestone-less) submission for a project, newest first. Restricted to super_admin / team_lead / mentor.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "projects"
+                ],
+                "summary": "List direct project submissions",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.ProjectSubmission"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Submit (or resubmit, if the mentor has requested one) work for a project that has no milestones. If the project is team-based, the calling student must already belong to a team for this project. Upload files first via POST /upload/project-file and pass the URL as file_url.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "projects"
+                ],
+                "summary": "Submit project work directly (no milestone)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Submission details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateProjectSubmissionInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.ProjectSubmission"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error, not on a team, or already submitted",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/projects/{short_id}/submissions/me": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the calling student's (or their team's) direct submission for a project with no milestones, if any.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "projects"
+                ],
+                "summary": "Get my direct project submission",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.ProjectSubmission"
+                        }
+                    },
+                    "404": {
+                        "description": "No submission yet",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/projects/{short_id}/submissions/{submission_short_id}": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Records marks and feedback for a direct (milestone-less) project submission, or requests a resubmission. Restricted to super_admin / team_lead / mentor.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "projects"
+                ],
+                "summary": "Grade direct project submission",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project short ID",
+                        "name": "short_id",
                         "in": "path",
                         "required": true
                     },
@@ -19789,9 +20084,13 @@
                     "type": "integer"
                 },
                 "milestone_short_id": {
+                    "description": "MilestoneShortID is set for checkpoint submissions; empty for direct\n(milestone-less) project submissions, which set ProjectShortID instead.",
                     "type": "string"
                 },
                 "milestone_title": {
+                    "type": "string"
+                },
+                "project_short_id": {
                     "type": "string"
                 },
                 "project_title": {

@@ -903,3 +903,256 @@ func (ctrl *ProjectController) GradeSubmission(c *gin.Context) {
 
 	c.Status(http.StatusNoContent)
 }
+
+// ── Direct (milestone-less) submissions ─────────────────────────────────────
+//
+// A project can be submitted directly, without any milestone existing on it —
+// these mirror the milestone-scoped handlers above but operate on the project
+// itself (project_id, milestone_id NULL).
+
+// CreateProjectSubmission godoc
+//
+//	@Summary		Submit project work directly (no milestone)
+//	@Description	Submit (or resubmit, if the mentor has requested one) work for a project that has no milestones. If the project is team-based, the calling student must already belong to a team for this project. Upload files first via POST /upload/project-file and pass the URL as file_url.
+//	@Tags			projects
+//	@Accept			json
+//	@Produce		json
+//	@Param			short_id	path		string								true	"Project short ID"
+//	@Param			body		body		models.CreateProjectSubmissionInput	true	"Submission details"
+//	@Success		201			{object}	models.ProjectSubmission
+//	@Failure		400			{object}	map[string]string	"Validation error, not on a team, or already submitted"
+//	@Failure		500			{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/projects/{short_id}/submissions [post]
+func (ctrl *ProjectController) CreateProjectSubmission(c *gin.Context) {
+	projectShortID := c.Param("short_id")
+	studentID := c.GetString("user_id")
+
+	var input models.CreateProjectSubmissionInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	p, err := ctrl.projectRepo.FindByShortID(c.Request.Context(), projectShortID)
+	if err != nil || p == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+		return
+	}
+	if !checkStudentProjectAccess(c, ctrl.projectRepo, projectShortID) {
+		return
+	}
+
+	teamID := ""
+	individualID := studentID
+	if p.IsTeamProject {
+		teamShortID, err := ctrl.projectRepo.FindStudentTeam(c.Request.Context(), projectShortID, studentID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not resolve team"})
+			return
+		}
+		if teamShortID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "you're not assigned to a team for this project yet"})
+			return
+		}
+		teamID = teamShortID
+		individualID = ""
+	}
+
+	submission, err := ctrl.projectRepo.CreateOrResubmitDirectSubmission(c.Request.Context(), projectShortID, individualID, teamID, input)
+	if err != nil {
+		if err.Error() == "already submitted" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "already submitted for this project; ask your mentor to request a resubmission"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not submit: " + err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, submission)
+}
+
+// GetMyProjectSubmission godoc
+//
+//	@Summary		Get my direct project submission
+//	@Description	Returns the calling student's (or their team's) direct submission for a project with no milestones, if any.
+//	@Tags			projects
+//	@Produce		json
+//	@Param			short_id	path		string	true	"Project short ID"
+//	@Success		200			{object}	models.ProjectSubmission
+//	@Failure		404			{object}	map[string]string	"No submission yet"
+//	@Failure		500			{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/projects/{short_id}/submissions/me [get]
+func (ctrl *ProjectController) GetMyProjectSubmission(c *gin.Context) {
+	projectShortID := c.Param("short_id")
+	studentID := c.GetString("user_id")
+
+	p, err := ctrl.projectRepo.FindByShortID(c.Request.Context(), projectShortID)
+	if err != nil || p == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+		return
+	}
+	if !checkStudentProjectAccess(c, ctrl.projectRepo, projectShortID) {
+		return
+	}
+
+	teamID := ""
+	individualID := studentID
+	if p.IsTeamProject {
+		teamShortID, err := ctrl.projectRepo.FindStudentTeam(c.Request.Context(), projectShortID, studentID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not resolve team"})
+			return
+		}
+		teamID = teamShortID
+		individualID = ""
+	}
+
+	s, err := ctrl.projectRepo.FindMyDirectSubmission(c.Request.Context(), projectShortID, individualID, teamID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch submission"})
+		return
+	}
+	if s == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "no submission yet"})
+		return
+	}
+	if s.Status == "evaluated" {
+		publishedAt, found := ctrl.projectRepo.GetResultPublishedAt(c.Request.Context(), s.ShortID)
+		if !s.ResultsVisibleWith(publishedAt, found) {
+			s.Marks = nil
+			s.Feedback = ""
+		}
+	}
+	c.JSON(http.StatusOK, s)
+}
+
+// GetAllProjectSubmissions godoc
+//
+//	@Summary		List direct project submissions
+//	@Description	Returns every direct (milestone-less) submission for a project, newest first. Restricted to super_admin / team_lead / mentor.
+//	@Tags			projects
+//	@Produce		json
+//	@Param			short_id	path		string	true	"Project short ID"
+//	@Success		200			{array}		models.ProjectSubmission
+//	@Failure		500			{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/projects/{short_id}/submissions [get]
+func (ctrl *ProjectController) GetAllProjectSubmissions(c *gin.Context) {
+	projectShortID := c.Param("short_id")
+
+	project, err := ctrl.projectRepo.FindByShortID(c.Request.Context(), projectShortID)
+	if err != nil || project == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, project.BatchShortID) {
+		return
+	}
+
+	submissions, err := ctrl.projectRepo.FindAllDirectSubmissions(c.Request.Context(), projectShortID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch submissions"})
+		return
+	}
+	if submissions == nil {
+		submissions = []models.ProjectSubmission{}
+	}
+	c.JSON(http.StatusOK, submissions)
+}
+
+// GradeProjectSubmission godoc
+//
+//	@Summary		Grade direct project submission
+//	@Description	Records marks and feedback for a direct (milestone-less) project submission, or requests a resubmission. Restricted to super_admin / team_lead / mentor.
+//	@Tags			projects
+//	@Accept			json
+//	@Produce		json
+//	@Param			short_id			path	string								true	"Project short ID"
+//	@Param			submission_short_id	path	string								true	"Submission short ID"
+//	@Param			body				body	models.GradeProjectSubmissionInput	true	"Grade details"
+//	@Success		204					"No Content"
+//	@Failure		400					{object}	map[string]string	"Validation error"
+//	@Failure		404					{object}	map[string]string	"Submission not found"
+//	@Failure		500					{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/projects/{short_id}/submissions/{submission_short_id} [patch]
+func (ctrl *ProjectController) GradeProjectSubmission(c *gin.Context) {
+	projectShortID := c.Param("short_id")
+	submissionShortID := c.Param("submission_short_id")
+
+	project, err := ctrl.projectRepo.FindByShortID(c.Request.Context(), projectShortID)
+	if err != nil || project == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, project.BatchShortID) {
+		return
+	}
+
+	var input models.GradeProjectSubmissionInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := ctrl.projectRepo.GradeDirectSubmission(c.Request.Context(), projectShortID, submissionShortID, c.GetString("user_id"), input); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "submission not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not grade submission"})
+		return
+	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "grade", EntityType: "project_submission",
+		EntityShortID: submissionShortID, EntityLabel: project.Title,
+		BatchShortID: project.BatchShortID,
+		Metadata:     map[string]interface{}{"marks": input.Marks, "status": input.Status},
+	})
+
+	c.Status(http.StatusNoContent)
+}
+
+// PublishProjectResults godoc
+//
+//	@Summary		Publish a project's direct-submission results
+//	@Description	Makes every graded direct (milestone-less) submission for this project visible to students at once. Grading itself never publishes — this is a deliberate, separate action. Restricted to super_admin / team_lead / mentor (of a batch they manage).
+//	@Tags			projects
+//	@Produce		json
+//	@Param			short_id	path	string	true	"Project short ID"
+//	@Success		204	"No Content"
+//	@Failure		404	{object}	map[string]string	"Project not found, or nothing to publish"
+//	@Failure		500	{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/projects/{short_id}/publish-results [post]
+func (ctrl *ProjectController) PublishProjectResults(c *gin.Context) {
+	projectShortID := c.Param("short_id")
+
+	p, err := ctrl.projectRepo.FindByShortID(c.Request.Context(), projectShortID)
+	if err != nil || p == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, p.BatchShortID) {
+		return
+	}
+
+	if err := ctrl.projectRepo.PublishDirectResults(c.Request.Context(), projectShortID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "no graded submissions to publish"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not publish results"})
+		return
+	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "publish_results", EntityType: "project",
+		EntityID: p.ID, EntityShortID: p.ShortID, EntityLabel: p.Title,
+		BatchShortID: p.BatchShortID,
+	})
+
+	c.Status(http.StatusNoContent)
+}

@@ -778,8 +778,11 @@ func (r *ProjectRepository) FindAllSubmissions(ctx context.Context, milestoneSho
 // batches that mentor manages — newest first. This is the cross-project feed
 // behind the unified Submissions workspace.
 func (r *ProjectRepository) FindAllSubmissionsForMentor(ctx context.Context, mentorID string) ([]models.ProjectSubmission, error) {
+	// LEFT JOIN project_milestones: direct (milestone-less) submissions have
+	// milestone_id NULL, so p is resolved via COALESCE(pm.project_id, ps.project_id)
+	// instead of always going through the milestone.
 	q := `
-		SELECT ps.id, ps.short_id, pm.short_id, p.title, pm.title, b.short_id, b.batch_number,
+		SELECT ps.id, ps.short_id, COALESCE(pm.short_id, ''), p.short_id, p.title, COALESCE(pm.title, ''), b.short_id, b.batch_number,
 		       COALESCE(ps.student_id::TEXT, ''), COALESCE(CONCAT(su.first_name, ' ', su.last_name), ''),
 		       COALESCE(t.short_id, ''), COALESCE(t.name, ''),
 		       ps.submission_type::TEXT, COALESCE(ps.content,''), COALESCE(ps.file_url,''),
@@ -787,8 +790,8 @@ func (r *ProjectRepository) FindAllSubmissionsForMentor(ctx context.Context, men
 		       ps.submitted_at, ps.evaluated_at, COALESCE(ps.evaluated_by::TEXT,''),
 		       ps.created_at, ps.updated_at
 		FROM project_submissions ps
-		JOIN project_milestones pm ON ps.milestone_id = pm.id
-		JOIN projects p ON pm.project_id = p.id
+		LEFT JOIN project_milestones pm ON ps.milestone_id = pm.id
+		JOIN projects p ON p.id = COALESCE(pm.project_id, ps.project_id)
 		JOIN batches  b ON p.batch_id     = b.id
 		LEFT JOIN users su ON ps.student_id = su.id AND su.deleted_at IS NULL
 		LEFT JOIN project_teams t ON ps.team_id = t.id`
@@ -809,7 +812,7 @@ func (r *ProjectRepository) FindAllSubmissionsForMentor(ctx context.Context, men
 	for rows.Next() {
 		var s models.ProjectSubmission
 		if err := rows.Scan(
-			&s.ID, &s.ShortID, &s.MilestoneShortID, &s.ProjectTitle, &s.MilestoneTitle, &s.BatchShortID, &s.BatchNumber,
+			&s.ID, &s.ShortID, &s.MilestoneShortID, &s.ProjectShortID, &s.ProjectTitle, &s.MilestoneTitle, &s.BatchShortID, &s.BatchNumber,
 			&s.StudentID, &s.StudentName,
 			&s.TeamShortID, &s.TeamName,
 			&s.SubmissionType, &s.Content, &s.FileURL,
@@ -836,6 +839,205 @@ func (r *ProjectRepository) GradeSubmission(ctx context.Context, milestoneShortI
 		WHERE short_id = $5
 		  AND milestone_id = (SELECT id FROM project_milestones WHERE short_id = $6)`,
 		in.Marks, in.Feedback, status, evaluatedBy, submissionShortID, milestoneShortID,
+	)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+// ── Direct (milestone-less) submissions ────────────────────────────────────
+//
+// A project can be submitted directly, without any milestone existing —
+// these rows have project_id set and milestone_id NULL. Mirrors the
+// milestone-scoped functions above; kept separate because the join target
+// (projects vs project_milestones) and conflict target differ.
+
+const projectDirectSubmissionSelect = `
+	SELECT ps.id, ps.short_id, p.short_id,
+	       COALESCE(ps.student_id::TEXT, ''), COALESCE(CONCAT(su.first_name, ' ', su.last_name), ''),
+	       COALESCE(t.short_id, ''), COALESCE(t.name, ''),
+	       ps.submission_type::TEXT, COALESCE(ps.content,''), COALESCE(ps.file_url,''),
+	       ps.status::TEXT, ps.marks, COALESCE(ps.feedback,''),
+	       ps.submitted_at, ps.evaluated_at, COALESCE(ps.evaluated_by::TEXT,''),
+	       ps.created_at, ps.updated_at
+	FROM project_submissions ps
+	JOIN projects p ON ps.project_id = p.id
+	LEFT JOIN users su ON ps.student_id = su.id AND su.deleted_at IS NULL
+	LEFT JOIN project_teams t ON ps.team_id = t.id
+	WHERE ps.milestone_id IS NULL AND`
+
+func scanProjectDirectSubmission(row pgx.Row) (models.ProjectSubmission, error) {
+	var s models.ProjectSubmission
+	err := row.Scan(
+		&s.ID, &s.ShortID, &s.ProjectShortID,
+		&s.StudentID, &s.StudentName,
+		&s.TeamShortID, &s.TeamName,
+		&s.SubmissionType, &s.Content, &s.FileURL,
+		&s.Status, &s.Marks, &s.Feedback,
+		&s.SubmittedAt, &s.EvaluatedAt, &s.EvaluatedBy,
+		&s.CreatedAt, &s.UpdatedAt,
+	)
+	return s, err
+}
+
+// PublishDirectResults is PublishResults' counterpart for direct submissions.
+func (r *ProjectRepository) PublishDirectResults(ctx context.Context, projectShortID string) error {
+	result, err := r.pool.Exec(ctx, `
+		UPDATE project_submissions SET result_published_at = NOW(), updated_at = NOW()
+		WHERE project_id = (SELECT id FROM projects WHERE short_id = $1)
+		  AND milestone_id IS NULL
+		  AND status = 'evaluated' AND result_published_at IS NULL`,
+		projectShortID,
+	)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+// CreateOrResubmitDirectSubmission is CreateOrResubmitSubmission's counterpart
+// for projects with no milestone — keyed by project_id instead of milestone_id,
+// "late" is judged against the project's own final_deadline.
+func (r *ProjectRepository) CreateOrResubmitDirectSubmission(ctx context.Context, projectShortID, studentID, teamID string, in models.CreateProjectSubmissionInput) (*models.ProjectSubmission, error) {
+	var existingStatus string
+	checkQ := `SELECT ps.status::TEXT FROM project_submissions ps JOIN projects p ON ps.project_id = p.id WHERE p.short_id = $1 AND ps.milestone_id IS NULL AND `
+	var err error
+	if teamID != "" {
+		err = r.pool.QueryRow(ctx, checkQ+"ps.team_id = $2", projectShortID, teamID).Scan(&existingStatus)
+	} else {
+		err = r.pool.QueryRow(ctx, checkQ+"ps.student_id = $2", projectShortID, studentID).Scan(&existingStatus)
+	}
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return nil, fmt.Errorf("check existing submission: %w", err)
+	}
+	if err == nil && existingStatus != "resubmission_required" {
+		return nil, fmt.Errorf("already submitted")
+	}
+
+	conflictCol := "student_id"
+	conflictPredicate := "team_id IS NULL AND milestone_id IS NULL"
+	identifierArg := studentID
+	if teamID != "" {
+		conflictCol = "team_id"
+		conflictPredicate = "student_id IS NULL AND milestone_id IS NULL"
+	}
+
+	for attempt := 0; attempt < 3; attempt++ {
+		shortID := util.GenerateShortID()
+
+		var identifierSelect string
+		var identifierValue interface{}
+		if teamID != "" {
+			identifierSelect = "NULL, (SELECT id FROM project_teams WHERE short_id = $6 AND deleted_at IS NULL)"
+			identifierValue = teamID
+		} else {
+			identifierSelect = "$6::UUID, NULL"
+			identifierValue = identifierArg
+		}
+
+		// Same CTE-visibility caveat as CreateOrResubmitSubmission: read back
+		// through ins, not a fresh SELECT against project_submissions.
+		s, err := scanProjectDirectSubmission(r.pool.QueryRow(ctx, fmt.Sprintf(`
+			WITH ins AS (
+				INSERT INTO project_submissions (
+					short_id, project_id, student_id, team_id, submission_type, content, file_url, status, submitted_at
+				)
+				SELECT $1, p.id, %s, $2::project_submission_type, NULLIF($3,''), NULLIF($4,''),
+				       (CASE WHEN NOW() > p.final_deadline THEN 'late' ELSE 'submitted' END)::project_submission_status,
+				       NOW()
+				FROM projects p WHERE p.short_id = $5
+				ON CONFLICT (project_id, %s) WHERE %s DO UPDATE SET
+					submission_type = EXCLUDED.submission_type,
+					content = EXCLUDED.content,
+					file_url = EXCLUDED.file_url,
+					status = EXCLUDED.status,
+					submitted_at = NOW(),
+					marks = NULL, feedback = NULL, evaluated_at = NULL, evaluated_by = NULL,
+					updated_at = NOW()
+				RETURNING *
+			)
+			SELECT ins.id, ins.short_id, p.short_id,
+			       COALESCE(ins.student_id::TEXT, ''), COALESCE(CONCAT(su.first_name, ' ', su.last_name), ''),
+			       COALESCE(t.short_id, ''), COALESCE(t.name, ''),
+			       ins.submission_type::TEXT, COALESCE(ins.content,''), COALESCE(ins.file_url,''),
+			       ins.status::TEXT, ins.marks, COALESCE(ins.feedback,''),
+			       ins.submitted_at, ins.evaluated_at, COALESCE(ins.evaluated_by::TEXT,''),
+			       ins.created_at, ins.updated_at
+			FROM ins
+			JOIN projects p ON ins.project_id = p.id
+			LEFT JOIN users su ON ins.student_id = su.id AND su.deleted_at IS NULL
+			LEFT JOIN project_teams t ON ins.team_id = t.id`, identifierSelect, conflictCol, conflictPredicate),
+			shortID, in.SubmissionType, in.Content, in.FileURL, projectShortID, identifierValue,
+		))
+		if err == nil {
+			return &s, nil
+		}
+
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" && strings.Contains(pgErr.ConstraintName, "short_id") {
+			continue
+		}
+		return nil, fmt.Errorf("insert submission: %w", err)
+	}
+	return nil, fmt.Errorf("could not generate a unique short ID after 3 attempts")
+}
+
+func (r *ProjectRepository) FindMyDirectSubmission(ctx context.Context, projectShortID, studentID, teamID string) (*models.ProjectSubmission, error) {
+	var q string
+	var arg string
+	if teamID != "" {
+		q = projectDirectSubmissionSelect + " p.short_id = $1 AND ps.team_id = (SELECT id FROM project_teams WHERE short_id = $2)"
+		arg = teamID
+	} else {
+		q = projectDirectSubmissionSelect + " p.short_id = $1 AND ps.student_id = $2"
+		arg = studentID
+	}
+	s, err := scanProjectDirectSubmission(r.pool.QueryRow(ctx, q, projectShortID, arg))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	return &s, err
+}
+
+func (r *ProjectRepository) FindAllDirectSubmissions(ctx context.Context, projectShortID string) ([]models.ProjectSubmission, error) {
+	q := projectDirectSubmissionSelect + " p.short_id = $1 ORDER BY ps.submitted_at DESC"
+	rows, err := r.pool.Query(ctx, q, projectShortID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.ProjectSubmission
+	for rows.Next() {
+		s, err := scanProjectDirectSubmission(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+func (r *ProjectRepository) GradeDirectSubmission(ctx context.Context, projectShortID, submissionShortID, evaluatedBy string, in models.GradeProjectSubmissionInput) error {
+	status := in.Status
+	if status == "" {
+		status = "evaluated"
+	}
+	result, err := r.pool.Exec(ctx, `
+		UPDATE project_submissions SET
+			marks = $1, feedback = NULLIF($2,''), status = $3::project_submission_status,
+			evaluated_at = NOW(), evaluated_by = $4, updated_at = NOW()
+		WHERE short_id = $5
+		  AND milestone_id IS NULL
+		  AND project_id = (SELECT id FROM projects WHERE short_id = $6)`,
+		in.Marks, in.Feedback, status, evaluatedBy, submissionShortID, projectShortID,
 	)
 	if err != nil {
 		return err

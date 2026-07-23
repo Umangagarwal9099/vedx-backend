@@ -3340,8 +3340,13 @@ definitions:
       marks:
         type: integer
       milestone_short_id:
+        description: |-
+          MilestoneShortID is set for checkpoint submissions; empty for direct
+          (milestone-less) project submissions, which set ProjectShortID instead.
         type: string
       milestone_title:
+        type: string
+      project_short_id:
         type: string
       project_title:
         description: |-
@@ -8632,6 +8637,9 @@ paths:
   /coding-questions/admin:
     get:
       description: Returns all non-deleted coding questions including inactive ones.
+        Internal staff (super_admin/team_lead/mentor) see the full platform-wide bank;
+        college_admin/college_staff see only the subset scoped to their own college
+        (same restriction applied to the student-facing list).
       produces:
       - application/json
       responses:
@@ -8641,6 +8649,12 @@ paths:
             items:
               $ref: '#/definitions/models.CodingQuestion'
             type: array
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "500":
           description: Internal server error
           schema:
@@ -12455,6 +12469,199 @@ paths:
       security:
       - BearerAuth: []
       summary: Get my milestone submission
+      tags:
+      - projects
+  /projects/{short_id}/publish-results:
+    post:
+      description: Makes every graded direct (milestone-less) submission for this
+        project visible to students at once. Grading itself never publishes — this
+        is a deliberate, separate action. Restricted to super_admin / team_lead /
+        mentor (of a batch they manage).
+      parameters:
+      - description: Project short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Project not found, or nothing to publish
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Publish a project's direct-submission results
+      tags:
+      - projects
+  /projects/{short_id}/submissions:
+    get:
+      description: Returns every direct (milestone-less) submission for a project,
+        newest first. Restricted to super_admin / team_lead / mentor.
+      parameters:
+      - description: Project short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.ProjectSubmission'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List direct project submissions
+      tags:
+      - projects
+    post:
+      consumes:
+      - application/json
+      description: Submit (or resubmit, if the mentor has requested one) work for
+        a project that has no milestones. If the project is team-based, the calling
+        student must already belong to a team for this project. Upload files first
+        via POST /upload/project-file and pass the URL as file_url.
+      parameters:
+      - description: Project short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Submission details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateProjectSubmissionInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.ProjectSubmission'
+        "400":
+          description: Validation error, not on a team, or already submitted
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Submit project work directly (no milestone)
+      tags:
+      - projects
+  /projects/{short_id}/submissions/{submission_short_id}:
+    patch:
+      consumes:
+      - application/json
+      description: Records marks and feedback for a direct (milestone-less) project
+        submission, or requests a resubmission. Restricted to super_admin / team_lead
+        / mentor.
+      parameters:
+      - description: Project short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Submission short ID
+        in: path
+        name: submission_short_id
+        required: true
+        type: string
+      - description: Grade details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.GradeProjectSubmissionInput'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Submission not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Grade direct project submission
+      tags:
+      - projects
+  /projects/{short_id}/submissions/me:
+    get:
+      description: Returns the calling student's (or their team's) direct submission
+        for a project with no milestones, if any.
+      parameters:
+      - description: Project short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ProjectSubmission'
+        "404":
+          description: No submission yet
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get my direct project submission
       tags:
       - projects
   /projects/{short_id}/teams:

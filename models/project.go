@@ -145,9 +145,12 @@ type AddTeamMembersInput struct {
 
 // ProjectSubmission is one student's (or one team's) submission for a milestone.
 type ProjectSubmission struct {
-	ID               string `json:"id"`
-	ShortID          string `json:"short_id"`
-	MilestoneShortID string `json:"milestone_short_id"`
+	ID      string `json:"id"`
+	ShortID string `json:"short_id"`
+	// MilestoneShortID is set for checkpoint submissions; empty for direct
+	// (milestone-less) project submissions, which set ProjectShortID instead.
+	MilestoneShortID string `json:"milestone_short_id,omitempty"`
+	ProjectShortID   string `json:"project_short_id,omitempty"`
 	// ProjectTitle/MilestoneTitle/BatchShortID/BatchNumber are only populated
 	// by the cross-project workspace listing (FindAllSubmissionsForMentor).
 	ProjectTitle   string     `json:"project_title,omitempty"`

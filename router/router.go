@@ -630,6 +630,14 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				projects.GET("/:short_id/milestones/:milestone_short_id/submissions", staffOrAbove, projectCtrl.GetAllSubmissions)
 				projects.PATCH("/:short_id/milestones/:milestone_short_id/submissions/:submission_short_id", staffOrAbove, projectCtrl.GradeSubmission)
 				projects.POST("/:short_id/milestones/:milestone_short_id/publish-results", staffOrAbove, projectCtrl.PublishResults)
+
+				// Direct submissions — no milestone required; submitted straight
+				// against the project itself.
+				projects.POST("/:short_id/submissions", projectCtrl.CreateProjectSubmission)
+				projects.GET("/:short_id/submissions/me", projectCtrl.GetMyProjectSubmission)
+				projects.GET("/:short_id/submissions", staffOrAbove, projectCtrl.GetAllProjectSubmissions)
+				projects.PATCH("/:short_id/submissions/:submission_short_id", staffOrAbove, projectCtrl.GradeProjectSubmission)
+				projects.POST("/:short_id/publish-results", staffOrAbove, projectCtrl.PublishProjectResults)
 			}
 
 			// Notifications — GET/read are per-user (my inbox); manage-content is admin-only
