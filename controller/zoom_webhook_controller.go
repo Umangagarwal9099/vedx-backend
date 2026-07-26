@@ -1,7 +1,9 @@
 package controller
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -13,31 +15,60 @@ import (
 
 type ZoomWebhookController struct {
 	zoomSvc     *service.ZoomService
+	storageSvc  *service.StorageService
 	sessionRepo *repository.SessionRepository
 }
 
-func NewZoomWebhookController(zoomSvc *service.ZoomService, sessionRepo *repository.SessionRepository) *ZoomWebhookController {
-	return &ZoomWebhookController{zoomSvc: zoomSvc, sessionRepo: sessionRepo}
+func NewZoomWebhookController(zoomSvc *service.ZoomService, storageSvc *service.StorageService, sessionRepo *repository.SessionRepository) *ZoomWebhookController {
+	return &ZoomWebhookController{zoomSvc: zoomSvc, storageSvc: storageSvc, sessionRepo: sessionRepo}
 }
 
 type zoomWebhookEnvelope struct {
 	Event   string          `json:"event"`
 	Payload json.RawMessage `json:"payload"`
+	// DownloadToken authorizes downloading this meeting's recording files —
+	// sent by Zoom only alongside recording.completed events.
+	DownloadToken string `json:"download_token"`
 }
 
 type zoomURLValidationPayload struct {
 	PlainToken string `json:"plainToken"`
 }
 
+// zoomRecordingFile is one entry in recording.completed's recording_files —
+// Zoom sends a separate file per view/format (combined gallery view, audio
+// only, transcript, chat, etc.).
+type zoomRecordingFile struct {
+	ID            string `json:"id"`
+	FileType      string `json:"file_type"`
+	RecordingType string `json:"recording_type"`
+	DownloadURL   string `json:"download_url"`
+}
+
 // zoomRecordingCompletedPayload is the subset of the recording.completed
-// payload.object we care about — share_url is the link participants use to
-// watch the recording (Zoom may also require the recording's passcode,
-// configured in the account's recording settings, to view it).
+// payload.object we care about.
 type zoomRecordingCompletedPayload struct {
 	Object struct {
-		ID       int64  `json:"id"`
-		ShareURL string `json:"share_url"`
+		ID             int64               `json:"id"`
+		RecordingFiles []zoomRecordingFile `json:"recording_files"`
 	} `json:"object"`
+}
+
+// pickPrimaryRecordingFile returns the combined screen+speaker view Zoom
+// records by default, falling back to any other MP4 file if that view isn't
+// present. Audio-only, transcript and chat files are never selected.
+func pickPrimaryRecordingFile(files []zoomRecordingFile) *zoomRecordingFile {
+	for i := range files {
+		if files[i].RecordingType == "shared_screen_with_speaker_view" {
+			return &files[i]
+		}
+	}
+	for i := range files {
+		if files[i].FileType == "MP4" {
+			return &files[i]
+		}
+	}
+	return nil
 }
 
 // HandleWebhook godoc
@@ -96,10 +127,40 @@ func (ctrl *ZoomWebhookController) HandleWebhook(c *gin.Context) {
 		var payload zoomRecordingCompletedPayload
 		if err := json.Unmarshal(envelope.Payload, &payload); err != nil {
 			log.Printf("zoom webhook: invalid recording.completed payload: %v", err)
-		} else if err := ctrl.sessionRepo.UpdateRecordingURL(c.Request.Context(), payload.Object.ID, payload.Object.ShareURL); err != nil {
-			log.Printf("zoom webhook: store recording url for meeting %d: %v", payload.Object.ID, err)
+		} else if file := pickPrimaryRecordingFile(payload.Object.RecordingFiles); file == nil {
+			log.Printf("zoom webhook: no video file in recording.completed for meeting %d", payload.Object.ID)
+		} else {
+			// Run in the background: Zoom expects a fast 200 OK here, and a
+			// full lecture recording can take well over a minute to download
+			// and re-upload.
+			meetingID := payload.Object.ID
+			downloadToken := envelope.DownloadToken
+			go ctrl.processRecording(meetingID, *file, downloadToken)
 		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "received"})
+}
+
+// processRecording downloads a completed Zoom cloud recording and re-uploads
+// it to our own storage, then points the session's recording_url at it
+// instead of Zoom's share link.
+func (ctrl *ZoomWebhookController) processRecording(meetingID int64, file zoomRecordingFile, downloadToken string) {
+	body, contentType, err := ctrl.zoomSvc.DownloadRecording(file.DownloadURL, downloadToken)
+	if err != nil {
+		log.Printf("zoom webhook: download recording for meeting %d: %v", meetingID, err)
+		return
+	}
+	defer body.Close()
+
+	key := fmt.Sprintf("%d/%s.mp4", meetingID, file.ID)
+	url, err := ctrl.storageSvc.UploadRecording(context.Background(), body, key, contentType)
+	if err != nil {
+		log.Printf("zoom webhook: upload recording for meeting %d: %v", meetingID, err)
+		return
+	}
+
+	if err := ctrl.sessionRepo.UpdateRecordingURL(context.Background(), meetingID, url); err != nil {
+		log.Printf("zoom webhook: store recording url for meeting %d: %v", meetingID, err)
+	}
 }

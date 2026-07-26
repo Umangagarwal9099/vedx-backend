@@ -32,8 +32,9 @@ type ZoomMeeting struct {
 // ZoomService wraps Zoom's REST API using a Server-to-Server OAuth app.
 // Same pattern as StorageService: plain net/http, no SDK.
 type ZoomService struct {
-	cfg    config.ZoomConfig
-	client *http.Client
+	cfg            config.ZoomConfig
+	client         *http.Client
+	downloadClient *http.Client // no timeout — cloud recordings can take a while to transfer
 
 	mu          sync.Mutex
 	token       string
@@ -42,8 +43,9 @@ type ZoomService struct {
 
 func NewZoomService(cfg config.ZoomConfig) *ZoomService {
 	return &ZoomService{
-		cfg:    cfg,
-		client: &http.Client{Timeout: 15 * time.Second},
+		cfg:            cfg,
+		client:         &http.Client{Timeout: 15 * time.Second},
+		downloadClient: &http.Client{},
 	}
 }
 
@@ -241,4 +243,26 @@ func (z *ZoomService) ValidateWebhookURL(plainToken string) string {
 func (z *ZoomService) VerifyWebhookSignature(signatureHeader, timestamp string, rawBody []byte) bool {
 	expected := "v0=" + z.hmacHex("v0:"+timestamp+":"+string(rawBody))
 	return subtle.ConstantTimeCompare([]byte(signatureHeader), []byte(expected)) == 1
+}
+
+// DownloadRecording streams a completed cloud recording's file straight from
+// Zoom. downloadToken comes from the recording.completed webhook body and
+// authorizes access to that meeting's recording files without a separate
+// OAuth call. Caller must close the returned body.
+func (z *ZoomService) DownloadRecording(downloadURL, downloadToken string) (body io.ReadCloser, contentType string, err error) {
+	req, err := http.NewRequest(http.MethodGet, downloadURL+"?access_token="+downloadToken, nil)
+	if err != nil {
+		return nil, "", fmt.Errorf("build recording download request: %w", err)
+	}
+
+	resp, err := z.downloadClient.Do(req)
+	if err != nil {
+		return nil, "", fmt.Errorf("download recording: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		return nil, "", fmt.Errorf("download recording failed (%d): %s", resp.StatusCode, string(b))
+	}
+	return resp.Body, resp.Header.Get("Content-Type"), nil
 }

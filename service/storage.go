@@ -13,6 +13,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/umangagarwal/vedx-backend/config"
 )
@@ -67,8 +68,9 @@ const maxMaterialSize = 500 << 20 // 500 MB
 // buckets this app used on Supabase Storage, so existing public URLs only
 // need their host swapped, not their path.
 type StorageService struct {
-	cfg    config.StorageConfig
-	client *s3.Client
+	cfg      config.StorageConfig
+	client   *s3.Client
+	uploader *manager.Uploader
 }
 
 func NewStorageService(cfg config.StorageConfig) *StorageService {
@@ -77,7 +79,25 @@ func NewStorageService(cfg config.StorageConfig) *StorageService {
 		BaseEndpoint: aws.String(fmt.Sprintf("https://%s.r2.cloudflarestorage.com", cfg.AccountID)),
 		Credentials:  credentials.NewStaticCredentialsProvider(cfg.AccessKeyID, cfg.SecretAccessKey, ""),
 	})
-	return &StorageService{cfg: cfg, client: client}
+	return &StorageService{cfg: cfg, client: client, uploader: manager.NewUploader(client)}
+}
+
+// UploadRecording streams a session recording into "recordings/<key>".
+// Unlike the multipart-form uploads above, this takes a plain io.Reader —
+// recordings arrive as a direct byte stream from Zoom, not a browser upload
+// — and goes through the multipart upload manager since a video can be many
+// gigabytes with its total size not known upfront.
+func (s *StorageService) UploadRecording(ctx context.Context, body io.Reader, key, contentType string) (string, error) {
+	fullKey := "recordings/" + key
+	if _, err := s.uploader.Upload(ctx, &s3.PutObjectInput{
+		Bucket:      aws.String(s.cfg.Bucket),
+		Key:         aws.String(fullKey),
+		Body:        body,
+		ContentType: aws.String(contentType),
+	}); err != nil {
+		return "", fmt.Errorf("upload recording to storage: %w", err)
+	}
+	return strings.TrimRight(s.cfg.PublicURL, "/") + "/" + fullKey, nil
 }
 
 // detectImageType sniffs an image's MIME type from its first 512 bytes,
