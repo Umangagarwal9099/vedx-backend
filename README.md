@@ -38,3 +38,7 @@ Optional fields:
 
 swag init -g cmd/server/main.go   // swagger update 
 go run cmd/server/main.go // run command
+
+
+clarissa.ns.cloudflare.com
+jermaine.ns.cloudflare.com

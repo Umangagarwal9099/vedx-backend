@@ -1,0 +1,7 @@
+.git
+.env
+main
+server
+*.exe
+/bin
+/tmp

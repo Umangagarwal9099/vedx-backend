@@ -289,7 +289,7 @@ func (ctrl *UploadController) UploadProjectFile(c *gin.Context) {
 // UploadMaterial godoc
 //
 //	@Summary		Upload a material file
-//	@Description	Upload any supported material file (image, video, audio, PDF, doc, sheet, slide, zip, etc.) to Supabase Storage. Returns the public URL to use when creating a section material. Max size 500 MB.
+//	@Description	Upload any supported material file (image, video, audio, PDF, doc, sheet, slide, zip, etc.) to Cloudflare R2. Returns the public URL to use when creating a section material. Max size 500 MB.
 //	@Tags			upload
 //	@Accept			multipart/form-data
 //	@Produce		json

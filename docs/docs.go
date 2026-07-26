@@ -13564,7 +13564,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Upload any supported material file (image, video, audio, PDF, doc, sheet, slide, zip, etc.) to Supabase Storage. Returns the public URL to use when creating a section material. Max size 500 MB.",
+                "description": "Upload any supported material file (image, video, audio, PDF, doc, sheet, slide, zip, etc.) to Cloudflare R2. Returns the public URL to use when creating a section material. Max size 500 MB.",
                 "consumes": [
                     "multipart/form-data"
                 ],

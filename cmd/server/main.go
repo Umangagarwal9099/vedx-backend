@@ -56,9 +56,9 @@ func main() {
 		log.Fatalf("Database connection failed: %v", err)
 	}
 	defer pool.Close()
-	log.Println("Connected to Supabase PostgreSQL")
+	log.Println("Connected to Neon PostgreSQL")
 
-	// Keepalive: ping every 30 s so Supabase never closes idle connections.
+	// Keepalive: ping every 30 s so Neon's pooler never closes idle connections.
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()

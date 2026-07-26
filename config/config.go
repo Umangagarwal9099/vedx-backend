@@ -32,11 +32,17 @@ func (r ResendConfig) Configured() bool {
 	return r.APIKey != "" && r.FromEmail != ""
 }
 
+// StorageConfig holds credentials for Cloudflare R2 (S3-compatible object
+// storage). All uploads live in one bucket under folder prefixes (events/,
+// materials/, blogs/, banners/, assessments/, assignments/, resources/,
+// projects/) rather than separate buckets — R2 doesn't price per-bucket, so
+// splitting them buys nothing but extra credential/domain config.
 type StorageConfig struct {
-	ProjectURL     string
-	ServiceRoleKey string
-	Bucket         string
-	MaterialBucket string
+	AccountID       string
+	AccessKeyID     string
+	SecretAccessKey string
+	Bucket          string
+	PublicURL       string
 }
 
 // ZoomConfig holds Server-to-Server OAuth credentials for the Zoom API.
@@ -140,10 +146,11 @@ func Load() (*Config, error) {
 			ExpiryHours: getInt("JWT_EXPIRY_HOURS", 24),
 		},
 		Storage: StorageConfig{
-			ProjectURL:     require("SUPABASE_URL"),
-			ServiceRoleKey: require("SUPABASE_SERVICE_KEY"),
-			Bucket:         get("SUPABASE_STORAGE_BUCKET", "events"),
-			MaterialBucket: get("SUPABASE_MATERIAL_BUCKET", "materials"),
+			AccountID:       require("R2_ACCOUNT_ID"),
+			AccessKeyID:     require("R2_ACCESS_KEY_ID"),
+			SecretAccessKey: require("R2_SECRET_ACCESS_KEY"),
+			Bucket:          require("R2_BUCKET"),
+			PublicURL:       require("R2_PUBLIC_URL"),
 		},
 		Zoom: ZoomConfig{
 			AccountID:          get("ZOOM_ACCOUNT_ID", ""),

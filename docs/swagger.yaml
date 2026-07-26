@@ -14224,7 +14224,7 @@ paths:
       consumes:
       - multipart/form-data
       description: Upload any supported material file (image, video, audio, PDF, doc,
-        sheet, slide, zip, etc.) to Supabase Storage. Returns the public URL to use
+        sheet, slide, zip, etc.) to Cloudflare R2. Returns the public URL to use
         when creating a section material. Max size 500 MB.
       parameters:
       - description: Material file

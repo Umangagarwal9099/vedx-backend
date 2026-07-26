@@ -16,16 +16,17 @@ func NewPool(cfg config.DatabaseConfig) (*pgxpool.Pool, error) {
 		return nil, fmt.Errorf("unable to parse DSN: %w", err)
 	}
 
-	// Supabase pooler (port 6543) runs PgBouncer in transaction mode.
-	// Transaction mode does not support extended query protocol / prepared statements.
-	// Switching to SimpleProtocol sends plain SQL text — compatible with any pooler.
+	// Neon's pooled endpoint (host contains "-pooler") also runs PgBouncer in
+	// transaction mode. Transaction mode does not support extended query
+	// protocol / prepared statements. Switching to SimpleProtocol sends plain
+	// SQL text — compatible with any pooler.
 	poolCfg.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
 
 	// Keep 2 connections warm so concurrent page-load calls never wait.
 	poolCfg.MinConns = 2
 	poolCfg.MaxConns = 10
 
-	// Recycle connections before Supabase's idle-eviction window (~5 min).
+	// Recycle connections before Neon's idle-eviction window (~5 min).
 	poolCfg.MaxConnIdleTime = 3 * time.Minute
 	poolCfg.MaxConnLifetime = 30 * time.Minute
 
