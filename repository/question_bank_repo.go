@@ -302,7 +302,7 @@ func (r *QuestionBankRepository) AttachQuestion(ctx context.Context, assessmentS
 
 // GetQuestions returns every question attached to an assessment, in display order.
 func (r *QuestionBankRepository) GetQuestions(ctx context.Context, assessmentShortID string) ([]models.AssessmentQuestion, error) {
-	q := fmt.Sprintf(`
+	q := `
 		SELECT aql.order_index, aql.marks_override,
 		       q.id, q.short_id, q.question_type::TEXT, COALESCE(q.question_text, ''),
 		       q.options, q.correct_option_ids, COALESCE(q.correct_text, ''), COALESCE(q.explanation, ''),
@@ -316,7 +316,7 @@ func (r *QuestionBankRepository) GetQuestions(ctx context.Context, assessmentSho
 		JOIN users u ON q.created_by = u.id AND u.deleted_at IS NULL
 		LEFT JOIN coding_questions cq ON q.coding_question_id = cq.id AND cq.deleted_at IS NULL
 		WHERE a.short_id = $1
-		ORDER BY aql.order_index ASC`)
+		ORDER BY aql.order_index ASC`
 
 	rows, err := r.pool.Query(ctx, q, assessmentShortID)
 	if err != nil {

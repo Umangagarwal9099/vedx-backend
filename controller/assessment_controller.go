@@ -133,10 +133,16 @@ func (ctrl *AssessmentController) GetAll(c *gin.Context) {
 	case string(models.RoleMentor), string(models.RoleEmployee):
 		assessments, err = ctrl.assessmentRepo.FindAllForMentor(c.Request.Context(), userID)
 	default:
+		var collegeID string
+		collegeID, err = repository.CollegeFilter(role, c.GetString("college_id"))
+		if err != nil {
+			c.JSON(http.StatusForbidden, gin.H{"code": "COLLEGE_SCOPE_VIOLATION", "error": "you have no college scope"})
+			return
+		}
 		if filter.Name != "" || filter.Description != "" || filter.IsActive != "" || filter.BatchShortID != "" {
-			assessments, err = ctrl.assessmentRepo.Search(c.Request.Context(), filter)
+			assessments, err = ctrl.assessmentRepo.Search(c.Request.Context(), filter, collegeID)
 		} else {
-			assessments, err = ctrl.assessmentRepo.FindAll(c.Request.Context())
+			assessments, err = ctrl.assessmentRepo.FindAll(c.Request.Context(), collegeID)
 		}
 	}
 

@@ -155,6 +155,16 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			// already scoped by CollegeFilter at the repository layer, so a
 			// College Admin/Staff seeing only their own college's numbers is safe.
 			collegeReadOrAbove := middleware.RequireRole(models.RoleSuperAdmin, models.RoleTeamLead, models.RoleMentor, models.RoleCollegeAdmin, models.RoleCollegeStaff)
+			// Content-authoring routes for assignments/assessments/projects —
+			// create/update/delete/grade/publish. Safe to widen to
+			// college_admin/college_staff specifically because every one of
+			// these handlers calls checkBatchAccess, which now enforces that a
+			// college-scoped caller can only touch batches belonging to their
+			// own college (mirroring the mentor/employee ownership check it
+			// already did). Deliberately not folded into staffOrAbove — other
+			// staffOrAbove routes (resources, coding questions, etc.) haven't
+			// been audited for this and would leak cross-tenant power.
+			collegeContentOrAbove := middleware.RequireRole(models.RoleSuperAdmin, models.RoleTeamLead, models.RoleMentor, models.RoleCollegeAdmin, models.RoleCollegeStaff)
 
 			// Colleges — multi-tenancy configuration. Managing colleges/feature
 			// toggles is super_admin only; any authenticated user can read their
@@ -256,15 +266,19 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				targets.GET("/team", adminOrAbove, monthlyTargetCtrl.GetTeam)
 			}
 
-			// Courses — only super_admin / team_lead may create, edit, or delete
+			// Courses — super_admin/team_lead manage any course; college_admin/
+			// college_staff may create their own college's courses and edit/
+			// delete only the ones they own (checkCourseAccess) — mentor is
+			// deliberately excluded here (courses aren't batch-scoped the way
+			// assignments/projects are, so there's no per-mentor ownership).
 			courses := protected.Group("/courses")
 			{
-				courses.POST("", adminOrAbove, courseCtrl.Create)
+				courses.POST("", middleware.RequireRole(models.RoleSuperAdmin, models.RoleTeamLead, models.RoleCollegeAdmin, models.RoleCollegeStaff), courseCtrl.Create)
 				courses.GET("", courseCtrl.GetAll)
 				courses.GET("/search", courseCtrl.Search)
 				courses.GET("/:short_id", courseCtrl.GetByShortID)
-				courses.PATCH("/:short_id", adminOrAbove, courseCtrl.Update)
-				courses.DELETE("/:short_id", adminOrAbove, courseCtrl.Delete)
+				courses.PATCH("/:short_id", middleware.RequireRole(models.RoleSuperAdmin, models.RoleTeamLead, models.RoleCollegeAdmin, models.RoleCollegeStaff), courseCtrl.Update)
+				courses.DELETE("/:short_id", middleware.RequireRole(models.RoleSuperAdmin, models.RoleTeamLead, models.RoleCollegeAdmin, models.RoleCollegeStaff), courseCtrl.Delete)
 				// Assigning a global course to a college is a cross-tenant
 				// operation — super_admin only, never team_lead.
 				courses.POST("/:short_id/assign", middleware.RequireRole(models.RoleSuperAdmin), courseCtrl.AssignToCollege)
@@ -408,10 +422,11 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				subs.GET("/user/:user_id", staffOrAbove, submissionCtrl.GetByUserAdmin)
 
 				// Cross-entity feeds behind the unified Submissions workspace —
-				// role-scoped inside each handler (mentors see only their batches).
-				subs.GET("/assignments", staffOrAbove, assignmentCtrl.GetAllSubmissionsGlobal)
-				subs.GET("/projects", staffOrAbove, projectCtrl.GetAllSubmissionsGlobal)
-				subs.GET("/assessments", staffOrAbove, examAttemptCtrl.GetAllAttemptsGlobal)
+				// role-scoped inside each handler (mentors see only their
+				// batches; college_admin/college_staff see only their college's).
+				subs.GET("/assignments", collegeContentOrAbove, assignmentCtrl.GetAllSubmissionsGlobal)
+				subs.GET("/projects", collegeContentOrAbove, projectCtrl.GetAllSubmissionsGlobal)
+				subs.GET("/assessments", collegeContentOrAbove, examAttemptCtrl.GetAllAttemptsGlobal)
 			}
 
 			// Modules — only super_admin / team_lead may create, edit, or delete
@@ -477,13 +492,13 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			// Also doubles as the real exam engine: question links + timed attempts.
 			assessments := protected.Group("/assessments")
 			{
-				assessments.POST("", staffOrAbove, assessmentCtrl.Create)
+				assessments.POST("", collegeContentOrAbove, assessmentCtrl.Create)
 				assessments.GET("", assessmentCtrl.GetAll)
 				assessments.GET("/:short_id", assessmentCtrl.GetByShortID)
-				assessments.PATCH("/:short_id", staffOrAbove, assessmentCtrl.Update)
-				assessments.DELETE("/:short_id", staffOrAbove, assessmentCtrl.Delete)
-				assessments.POST("/:short_id/cancel", staffOrAbove, examAttemptCtrl.CancelAssessment)
-				assessments.POST("/:short_id/publish-results", staffOrAbove, assessmentCtrl.PublishResults)
+				assessments.PATCH("/:short_id", collegeContentOrAbove, assessmentCtrl.Update)
+				assessments.DELETE("/:short_id", collegeContentOrAbove, assessmentCtrl.Delete)
+				assessments.POST("/:short_id/cancel", collegeContentOrAbove, examAttemptCtrl.CancelAssessment)
+				assessments.POST("/:short_id/publish-results", collegeContentOrAbove, assessmentCtrl.PublishResults)
 
 				// Question links — attach/reorder/detach bank questions on an assessment
 				assessments.POST("/:short_id/questions", staffOrAbove, assessmentCtrl.AttachQuestion)
@@ -494,14 +509,14 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				// Attempts — students start/answer/submit their own; staff monitor and grade
 				assessments.GET("/:short_id/access-status", examAttemptCtrl.GetAccessStatus)
 				assessments.POST("/:short_id/attempts", examAttemptCtrl.StartAttempt)
-				assessments.GET("/:short_id/attempts", staffOrAbove, examAttemptCtrl.GetAllAttempts)
+				assessments.GET("/:short_id/attempts", collegeContentOrAbove, examAttemptCtrl.GetAllAttempts)
 				assessments.GET("/:short_id/attempts/me", examAttemptCtrl.GetMyAttempts)
 				assessments.GET("/:short_id/attempts/:attempt_short_id", examAttemptCtrl.GetAttempt)
 				assessments.POST("/:short_id/attempts/:attempt_short_id/answers", examAttemptCtrl.SubmitAnswer)
 				assessments.POST("/:short_id/attempts/:attempt_short_id/submit", examAttemptCtrl.SubmitAttempt)
 				assessments.POST("/:short_id/attempts/:attempt_short_id/violations", examAttemptCtrl.RecordViolation)
-				assessments.PATCH("/:short_id/attempts/:attempt_short_id/answers/:question_short_id/grade", staffOrAbove, examAttemptCtrl.GradeAnswer)
-				assessments.POST("/:short_id/reattempts", staffOrAbove, examAttemptCtrl.GrantReattempt)
+				assessments.PATCH("/:short_id/attempts/:attempt_short_id/answers/:question_short_id/grade", collegeContentOrAbove, examAttemptCtrl.GradeAnswer)
+				assessments.POST("/:short_id/reattempts", collegeContentOrAbove, examAttemptCtrl.GrantReattempt)
 			}
 
 			// Question bank — private/course/global visibility; staff manage, everyone reads what they can see
@@ -578,18 +593,18 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			// them and grade submissions; students submit their own work.
 			assignments := protected.Group("/assignments")
 			{
-				assignments.POST("", staffOrAbove, assignmentCtrl.Create)
+				assignments.POST("", collegeContentOrAbove, assignmentCtrl.Create)
 				assignments.GET("", assignmentCtrl.GetAll)
 				assignments.GET("/:short_id", assignmentCtrl.GetByShortID)
-				assignments.PATCH("/:short_id", staffOrAbove, assignmentCtrl.Update)
-				assignments.DELETE("/:short_id", staffOrAbove, assignmentCtrl.Delete)
-				assignments.POST("/:short_id/publish-results", staffOrAbove, assignmentCtrl.PublishResults)
+				assignments.PATCH("/:short_id", collegeContentOrAbove, assignmentCtrl.Update)
+				assignments.DELETE("/:short_id", collegeContentOrAbove, assignmentCtrl.Delete)
+				assignments.POST("/:short_id/publish-results", collegeContentOrAbove, assignmentCtrl.PublishResults)
 
 				// Submissions — nested under an assignment
 				assignments.POST("/:short_id/submissions", assignmentCtrl.CreateSubmission)
 				assignments.GET("/:short_id/submissions/me", assignmentCtrl.GetMySubmission)
-				assignments.GET("/:short_id/submissions", staffOrAbove, assignmentCtrl.GetAllSubmissions)
-				assignments.PATCH("/:short_id/submissions/:submission_short_id", staffOrAbove, assignmentCtrl.GradeSubmission)
+				assignments.GET("/:short_id/submissions", collegeContentOrAbove, assignmentCtrl.GetAllSubmissions)
+				assignments.PATCH("/:short_id/submissions/:submission_short_id", collegeContentOrAbove, assignmentCtrl.GradeSubmission)
 			}
 
 			// Resources — learning materials. Leave batch unset on create for global
@@ -607,37 +622,37 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			// use nested teams; individual projects submit directly per student.
 			projects := protected.Group("/projects", middleware.RequireActiveSubscription(collegeRepo), middleware.RequireFeature(collegeRepo, models.FeatureProjects))
 			{
-				projects.POST("", staffOrAbove, projectCtrl.Create)
+				projects.POST("", collegeContentOrAbove, projectCtrl.Create)
 				projects.GET("", projectCtrl.GetAll)
 				projects.GET("/:short_id", projectCtrl.GetByShortID)
-				projects.PATCH("/:short_id", staffOrAbove, projectCtrl.Update)
-				projects.DELETE("/:short_id", staffOrAbove, projectCtrl.Delete)
+				projects.PATCH("/:short_id", collegeContentOrAbove, projectCtrl.Update)
+				projects.DELETE("/:short_id", collegeContentOrAbove, projectCtrl.Delete)
 
 				// Milestones — nested under a project
-				projects.POST("/:short_id/milestones", staffOrAbove, projectCtrl.AddMilestone)
-				projects.PATCH("/:short_id/milestones/:milestone_short_id", staffOrAbove, projectCtrl.UpdateMilestone)
-				projects.DELETE("/:short_id/milestones/:milestone_short_id", staffOrAbove, projectCtrl.DeleteMilestone)
+				projects.POST("/:short_id/milestones", collegeContentOrAbove, projectCtrl.AddMilestone)
+				projects.PATCH("/:short_id/milestones/:milestone_short_id", collegeContentOrAbove, projectCtrl.UpdateMilestone)
+				projects.DELETE("/:short_id/milestones/:milestone_short_id", collegeContentOrAbove, projectCtrl.DeleteMilestone)
 
 				// Teams — nested under a project, only relevant when is_team_project
-				projects.POST("/:short_id/teams", staffOrAbove, projectCtrl.CreateTeam)
-				projects.DELETE("/:short_id/teams/:team_short_id", staffOrAbove, projectCtrl.DeleteTeam)
-				projects.POST("/:short_id/teams/:team_short_id/members", staffOrAbove, projectCtrl.AddTeamMembers)
-				projects.DELETE("/:short_id/teams/:team_short_id/members/:user_id", staffOrAbove, projectCtrl.RemoveTeamMember)
+				projects.POST("/:short_id/teams", collegeContentOrAbove, projectCtrl.CreateTeam)
+				projects.DELETE("/:short_id/teams/:team_short_id", collegeContentOrAbove, projectCtrl.DeleteTeam)
+				projects.POST("/:short_id/teams/:team_short_id/members", collegeContentOrAbove, projectCtrl.AddTeamMembers)
+				projects.DELETE("/:short_id/teams/:team_short_id/members/:user_id", collegeContentOrAbove, projectCtrl.RemoveTeamMember)
 
 				// Submissions — nested under a milestone
 				projects.POST("/:short_id/milestones/:milestone_short_id/submissions", projectCtrl.CreateSubmission)
 				projects.GET("/:short_id/milestones/:milestone_short_id/submissions/me", projectCtrl.GetMySubmission)
-				projects.GET("/:short_id/milestones/:milestone_short_id/submissions", staffOrAbove, projectCtrl.GetAllSubmissions)
-				projects.PATCH("/:short_id/milestones/:milestone_short_id/submissions/:submission_short_id", staffOrAbove, projectCtrl.GradeSubmission)
-				projects.POST("/:short_id/milestones/:milestone_short_id/publish-results", staffOrAbove, projectCtrl.PublishResults)
+				projects.GET("/:short_id/milestones/:milestone_short_id/submissions", collegeContentOrAbove, projectCtrl.GetAllSubmissions)
+				projects.PATCH("/:short_id/milestones/:milestone_short_id/submissions/:submission_short_id", collegeContentOrAbove, projectCtrl.GradeSubmission)
+				projects.POST("/:short_id/milestones/:milestone_short_id/publish-results", collegeContentOrAbove, projectCtrl.PublishResults)
 
 				// Direct submissions — no milestone required; submitted straight
 				// against the project itself.
 				projects.POST("/:short_id/submissions", projectCtrl.CreateProjectSubmission)
 				projects.GET("/:short_id/submissions/me", projectCtrl.GetMyProjectSubmission)
-				projects.GET("/:short_id/submissions", staffOrAbove, projectCtrl.GetAllProjectSubmissions)
-				projects.PATCH("/:short_id/submissions/:submission_short_id", staffOrAbove, projectCtrl.GradeProjectSubmission)
-				projects.POST("/:short_id/publish-results", staffOrAbove, projectCtrl.PublishProjectResults)
+				projects.GET("/:short_id/submissions", collegeContentOrAbove, projectCtrl.GetAllProjectSubmissions)
+				projects.PATCH("/:short_id/submissions/:submission_short_id", collegeContentOrAbove, projectCtrl.GradeProjectSubmission)
+				projects.POST("/:short_id/publish-results", collegeContentOrAbove, projectCtrl.PublishProjectResults)
 			}
 
 			// Notifications — GET/read are per-user (my inbox); manage-content is admin-only

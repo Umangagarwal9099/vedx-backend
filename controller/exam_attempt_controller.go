@@ -913,8 +913,13 @@ func (ctrl *ExamAttemptController) GetAllAttemptsGlobal(c *gin.Context) {
 	if role == string(models.RoleMentor) || role == string(models.RoleEmployee) {
 		mentorID = c.GetString("user_id")
 	}
+	collegeID, err := repository.CollegeFilter(role, c.GetString("college_id"))
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"code": "COLLEGE_SCOPE_VIOLATION", "error": "you have no college scope"})
+		return
+	}
 
-	attempts, err := ctrl.attemptRepo.FindAllAttemptsForMentor(c.Request.Context(), mentorID)
+	attempts, err := ctrl.attemptRepo.FindAllAttemptsForMentor(c.Request.Context(), mentorID, collegeID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch attempts"})
 		return

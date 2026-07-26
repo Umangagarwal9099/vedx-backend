@@ -146,7 +146,7 @@ func (r *ProjectRepository) scanAll(ctx context.Context, q string, args ...inter
 	return out, rows.Err()
 }
 
-func (r *ProjectRepository) FindAll(ctx context.Context, f models.ProjectFilter) ([]models.Project, error) {
+func (r *ProjectRepository) FindAll(ctx context.Context, f models.ProjectFilter, collegeID string) ([]models.Project, error) {
 	where := []string{"p.deleted_at IS NULL"}
 	args := []interface{}{}
 	i := 1
@@ -158,6 +158,11 @@ func (r *ProjectRepository) FindAll(ctx context.Context, f models.ProjectFilter)
 	if f.Status != "" {
 		where = append(where, fmt.Sprintf("p.status = $%d::project_status", i))
 		args = append(args, f.Status)
+		i++
+	}
+	if collegeID != "" {
+		where = append(where, fmt.Sprintf("b.college_id = $%d::UUID", i))
+		args = append(args, collegeID)
 		i++
 	}
 	q := fmt.Sprintf("%s WHERE %s ORDER BY p.created_at DESC", projectBaseSelect, strings.Join(where, " AND "))
@@ -337,12 +342,12 @@ func (r *ProjectRepository) AddMilestone(ctx context.Context, projectShortID str
 }
 
 func (r *ProjectRepository) GetMilestones(ctx context.Context, projectShortID string) ([]models.ProjectMilestone, error) {
-	rows, err := r.pool.Query(ctx, fmt.Sprintf(`
+	rows, err := r.pool.Query(ctx, `
 		SELECT pm.id, pm.short_id, pm.project_id, pm.title, COALESCE(pm.description,''), pm.due_date, pm.order_index, pm.is_final, pm.created_at, pm.updated_at
 		FROM project_milestones pm
 		JOIN projects p ON pm.project_id = p.id
 		WHERE p.short_id = $1 AND pm.deleted_at IS NULL
-		ORDER BY pm.order_index ASC, pm.created_at ASC`),
+		ORDER BY pm.order_index ASC, pm.created_at ASC`,
 		projectShortID,
 	)
 	if err != nil {
@@ -777,7 +782,7 @@ func (r *ProjectRepository) FindAllSubmissions(ctx context.Context, milestoneSho
 // across every project — or, when mentorID is non-empty, only those in
 // batches that mentor manages — newest first. This is the cross-project feed
 // behind the unified Submissions workspace.
-func (r *ProjectRepository) FindAllSubmissionsForMentor(ctx context.Context, mentorID string) ([]models.ProjectSubmission, error) {
+func (r *ProjectRepository) FindAllSubmissionsForMentor(ctx context.Context, mentorID, collegeID string) ([]models.ProjectSubmission, error) {
 	// LEFT JOIN project_milestones: direct (milestone-less) submissions have
 	// milestone_id NULL, so p is resolved via COALESCE(pm.project_id, ps.project_id)
 	// instead of always going through the milestone.
@@ -795,10 +800,21 @@ func (r *ProjectRepository) FindAllSubmissionsForMentor(ctx context.Context, men
 		JOIN batches  b ON p.batch_id     = b.id
 		LEFT JOIN users su ON ps.student_id = su.id AND su.deleted_at IS NULL
 		LEFT JOIN project_teams t ON ps.team_id = t.id`
+	where := []string{}
 	args := []interface{}{}
+	i := 1
 	if mentorID != "" {
-		q += ` WHERE b.batch_manager_id = $1 OR b.additional_manager_id = $1`
+		where = append(where, fmt.Sprintf("(b.batch_manager_id = $%d OR b.additional_manager_id = $%d)", i, i))
 		args = append(args, mentorID)
+		i++
+	}
+	if collegeID != "" {
+		where = append(where, fmt.Sprintf("b.college_id = $%d::UUID", i))
+		args = append(args, collegeID)
+		i++
+	}
+	if len(where) > 0 {
+		q += " WHERE " + strings.Join(where, " AND ")
 	}
 	q += ` ORDER BY ps.submitted_at DESC LIMIT 500`
 

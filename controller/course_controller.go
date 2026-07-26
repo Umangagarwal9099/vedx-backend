@@ -180,6 +180,9 @@ func (ctrl *CourseController) Update(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	if !checkCourseAccess(c, ctrl.courseRepo, shortID) {
+		return
+	}
 
 	if err := ctrl.courseRepo.Update(c.Request.Context(), shortID, input); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -265,6 +268,10 @@ func (ctrl *CourseController) UnassignModule(c *gin.Context) {
 //	@Router			/courses/{short_id} [delete]
 func (ctrl *CourseController) Delete(c *gin.Context) {
 	shortID := c.Param("short_id")
+
+	if !checkCourseAccess(c, ctrl.courseRepo, shortID) {
+		return
+	}
 
 	if err := ctrl.courseRepo.Delete(c.Request.Context(), shortID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

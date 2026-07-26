@@ -177,7 +177,7 @@ func (r *ExamAttemptRepository) FindAllAttempts(ctx context.Context, assessmentS
 // batches that mentor manages (global, batchless assessments always pass
 // through) — newest first. This is the cross-assessment feed behind the
 // unified Submissions workspace.
-func (r *ExamAttemptRepository) FindAllAttemptsForMentor(ctx context.Context, mentorID string) ([]models.ExamAttempt, error) {
+func (r *ExamAttemptRepository) FindAllAttemptsForMentor(ctx context.Context, mentorID, collegeID string) ([]models.ExamAttempt, error) {
 	q := `
 		SELECT ea.id, ea.short_id, a.short_id, a.name, COALESCE(b.short_id, ''), COALESCE(b.batch_number, ''),
 		       ea.student_id, CONCAT(u.first_name, ' ', u.last_name),
@@ -189,9 +189,16 @@ func (r *ExamAttemptRepository) FindAllAttemptsForMentor(ctx context.Context, me
 		LEFT JOIN batches b ON a.batch_id = b.id
 		WHERE ea.status IN ('submitted', 'evaluated')`
 	args := []interface{}{}
+	i := 1
 	if mentorID != "" {
-		q += ` AND (a.batch_id IS NULL OR b.batch_manager_id = $1 OR b.additional_manager_id = $1)`
+		q += fmt.Sprintf(` AND (a.batch_id IS NULL OR b.batch_manager_id = $%d OR b.additional_manager_id = $%d)`, i, i)
 		args = append(args, mentorID)
+		i++
+	}
+	if collegeID != "" {
+		q += fmt.Sprintf(` AND (a.batch_id IS NULL OR b.college_id = $%d::UUID)`, i)
+		args = append(args, collegeID)
+		i++
 	}
 	q += ` ORDER BY ea.submitted_at DESC LIMIT 500`
 

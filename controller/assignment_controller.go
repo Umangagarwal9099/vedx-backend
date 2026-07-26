@@ -146,7 +146,13 @@ func (ctrl *AssignmentController) GetAll(c *gin.Context) {
 	case string(models.RoleMentor), string(models.RoleEmployee):
 		assignments, err = ctrl.assignmentRepo.FindAllForMentor(c.Request.Context(), userID)
 	default:
-		assignments, err = ctrl.assignmentRepo.FindAll(c.Request.Context(), filter)
+		var collegeID string
+		collegeID, err = repository.CollegeFilter(role, c.GetString("college_id"))
+		if err != nil {
+			c.JSON(http.StatusForbidden, gin.H{"code": "COLLEGE_SCOPE_VIOLATION", "error": "you have no college scope"})
+			return
+		}
+		assignments, err = ctrl.assignmentRepo.FindAll(c.Request.Context(), filter, collegeID)
 	}
 
 	if err != nil {
@@ -480,8 +486,13 @@ func (ctrl *AssignmentController) GetAllSubmissionsGlobal(c *gin.Context) {
 	if role == string(models.RoleMentor) || role == string(models.RoleEmployee) {
 		mentorID = c.GetString("user_id")
 	}
+	collegeID, err := repository.CollegeFilter(role, c.GetString("college_id"))
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"code": "COLLEGE_SCOPE_VIOLATION", "error": "you have no college scope"})
+		return
+	}
 
-	submissions, err := ctrl.assignmentRepo.FindAllSubmissionsForMentor(c.Request.Context(), mentorID)
+	submissions, err := ctrl.assignmentRepo.FindAllSubmissionsForMentor(c.Request.Context(), mentorID, collegeID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch submissions"})
 		return

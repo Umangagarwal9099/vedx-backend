@@ -152,8 +152,10 @@ func (r *AssignmentRepository) scanAll(ctx context.Context, q string, args ...in
 	return out, rows.Err()
 }
 
-// FindAll returns every non-deleted assignment (staff view — unscoped).
-func (r *AssignmentRepository) FindAll(ctx context.Context, f models.AssignmentFilter) ([]models.Assignment, error) {
+// FindAll returns every non-deleted assignment. collegeID narrows to batches
+// owned by that college (per repository.CollegeFilter) — empty means
+// unscoped (super_admin).
+func (r *AssignmentRepository) FindAll(ctx context.Context, f models.AssignmentFilter, collegeID string) ([]models.Assignment, error) {
 	where := []string{"a.deleted_at IS NULL"}
 	args := []interface{}{}
 	i := 1
@@ -165,6 +167,11 @@ func (r *AssignmentRepository) FindAll(ctx context.Context, f models.AssignmentF
 	if f.Status != "" {
 		where = append(where, fmt.Sprintf("a.status = $%d::assignment_status", i))
 		args = append(args, f.Status)
+		i++
+	}
+	if collegeID != "" {
+		where = append(where, fmt.Sprintf("b.college_id = $%d::UUID", i))
+		args = append(args, collegeID)
 		i++
 	}
 	q := fmt.Sprintf("%s WHERE %s ORDER BY a.created_at DESC", assignmentBaseSelect, strings.Join(where, " AND "))
@@ -463,7 +470,7 @@ func (r *AssignmentRepository) FindAllSubmissions(ctx context.Context, assignmen
 // every assignment — or, when mentorID is non-empty, only those in batches
 // that mentor manages — newest first. This is the cross-assignment feed
 // behind the unified Submissions workspace.
-func (r *AssignmentRepository) FindAllSubmissionsForMentor(ctx context.Context, mentorID string) ([]models.AssignmentSubmission, error) {
+func (r *AssignmentRepository) FindAllSubmissionsForMentor(ctx context.Context, mentorID, collegeID string) ([]models.AssignmentSubmission, error) {
 	q := `
 		SELECT asub.id, asub.short_id, a.short_id, a.title, b.short_id, b.batch_number,
 		       asub.student_id, CONCAT(u.first_name, ' ', u.last_name), u.email,
@@ -475,10 +482,21 @@ func (r *AssignmentRepository) FindAllSubmissionsForMentor(ctx context.Context, 
 		JOIN assignments a ON asub.assignment_id = a.id
 		JOIN batches     b ON a.batch_id         = b.id
 		JOIN users       u ON asub.student_id    = u.id AND u.deleted_at IS NULL`
+	where := []string{}
 	args := []interface{}{}
+	i := 1
 	if mentorID != "" {
-		q += ` WHERE b.batch_manager_id = $1 OR b.additional_manager_id = $1`
+		where = append(where, fmt.Sprintf("(b.batch_manager_id = $%d OR b.additional_manager_id = $%d)", i, i))
 		args = append(args, mentorID)
+		i++
+	}
+	if collegeID != "" {
+		where = append(where, fmt.Sprintf("b.college_id = $%d::UUID", i))
+		args = append(args, collegeID)
+		i++
+	}
+	if len(where) > 0 {
+		q += " WHERE " + strings.Join(where, " AND ")
 	}
 	q += ` ORDER BY asub.submitted_at DESC LIMIT 500`
 

@@ -211,9 +211,18 @@ func (r *AssessmentRepository) scanAll(ctx context.Context, q string, args ...in
 	return out, rows.Err()
 }
 
-func (r *AssessmentRepository) FindAll(ctx context.Context) ([]models.Assessment, error) {
-	q := fmt.Sprintf("%s WHERE a.deleted_at IS NULL ORDER BY a.created_at DESC", assessmentBaseSelect)
-	return r.scanAll(ctx, q)
+// FindAll returns every non-deleted assessment. collegeID narrows to global
+// (batch-less) assessments plus ones scoped to that college's batches — empty
+// means unscoped (super_admin).
+func (r *AssessmentRepository) FindAll(ctx context.Context, collegeID string) ([]models.Assessment, error) {
+	q := fmt.Sprintf("%s WHERE a.deleted_at IS NULL", assessmentBaseSelect)
+	args := []interface{}{}
+	if collegeID != "" {
+		q += " AND (a.batch_id IS NULL OR b.college_id = $1::UUID)"
+		args = append(args, collegeID)
+	}
+	q += " ORDER BY a.created_at DESC"
+	return r.scanAll(ctx, q, args...)
 }
 
 // FindAllForMentor returns global assessments plus assessments scoped to batches the mentor manages.
@@ -245,7 +254,7 @@ func (r *AssessmentRepository) FindByShortID(ctx context.Context, shortID string
 	return a, err
 }
 
-func (r *AssessmentRepository) Search(ctx context.Context, f models.AssessmentFilter) ([]models.Assessment, error) {
+func (r *AssessmentRepository) Search(ctx context.Context, f models.AssessmentFilter, collegeID string) ([]models.Assessment, error) {
 	args := []interface{}{}
 	where := []string{"a.deleted_at IS NULL"}
 	i := 1
@@ -268,6 +277,11 @@ func (r *AssessmentRepository) Search(ctx context.Context, f models.AssessmentFi
 	if f.BatchShortID != "" {
 		where = append(where, fmt.Sprintf("b.short_id = $%d", i))
 		args = append(args, f.BatchShortID)
+		i++
+	}
+	if collegeID != "" {
+		where = append(where, fmt.Sprintf("(a.batch_id IS NULL OR b.college_id = $%d::UUID)", i))
+		args = append(args, collegeID)
 		i++
 	}
 
