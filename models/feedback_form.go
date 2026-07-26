@@ -8,6 +8,7 @@ type FeedbackFormResponse struct {
 	ID          string    `json:"id"`
 	ShortID     string    `json:"short_id"`
 	FormID      string    `json:"form_id"`
+	SessionID   string    `json:"session_id,omitempty"`
 	SubmittedBy string    `json:"submitted_by"`
 	SubmittedAt time.Time `json:"submitted_at"`
 }
@@ -22,7 +23,11 @@ type AnswerInput struct {
 }
 
 type SubmitFeedbackFormInput struct {
-	Answers []AnswerInput `json:"answers" binding:"required,min=1"`
+	// SessionShortID identifies which session this feedback is for — forms
+	// are reusable templates attached to many sessions, so the form alone
+	// doesn't say which occurrence the student is responding about.
+	SessionShortID string        `json:"session_short_id" binding:"required"`
+	Answers        []AnswerInput `json:"answers" binding:"required,min=1"`
 }
 
 // ── Feedback Form ─────────────────────────────────────────────────────────────

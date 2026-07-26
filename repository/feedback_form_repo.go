@@ -350,6 +350,16 @@ func (r *FeedbackFormRepository) DeleteQuestion(ctx context.Context, formShortID
 	return nil
 }
 
+// ErrFeedbackAlreadySubmitted is returned by CreateResponse when this user has
+// already submitted a response for this session (DB-enforced via a unique
+// index on (session_id, submitted_by)).
+var ErrFeedbackAlreadySubmitted = errors.New("feedback already submitted for this session")
+
+// ErrSessionFormMismatch is returned by CreateResponse when the given session
+// isn't the one this form is actually attached to — forms are reusable
+// templates, so this guards against submitting against the wrong session.
+var ErrSessionFormMismatch = errors.New("this form is not attached to that session")
+
 // CreateResponse stores a student's feedback submission inside a transaction.
 // It inserts one row into feedback_form_responses and one row per answer into
 // feedback_form_answers, resolving question short_ids to UUIDs within the same tx.
@@ -366,6 +376,20 @@ func (r *FeedbackFormRepository) CreateResponse(ctx context.Context, formShortID
 		return nil, fmt.Errorf("fetch form: %w", err)
 	}
 
+	// Resolve session → UUID and confirm this form is actually the one
+	// attached to it (catches a stale/wrong session_short_id from the client).
+	var sessionID string
+	err = r.pool.QueryRow(ctx,
+		`SELECT id FROM sessions WHERE short_id = $1 AND deleted_at IS NULL AND feedback_form_id = $2::UUID`,
+		in.SessionShortID, formID,
+	).Scan(&sessionID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrSessionFormMismatch
+	}
+	if err != nil {
+		return nil, fmt.Errorf("fetch session: %w", err)
+	}
+
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
@@ -376,12 +400,16 @@ func (r *FeedbackFormRepository) CreateResponse(ctx context.Context, formShortID
 	var resp models.FeedbackFormResponse
 	shortID := util.GenerateShortID()
 	err = tx.QueryRow(ctx,
-		`INSERT INTO feedback_form_responses (short_id, form_id, submitted_by)
-		 VALUES ($1, $2, $3::UUID)
-		 RETURNING id, short_id, form_id::TEXT, submitted_by::TEXT, submitted_at`,
-		shortID, formID, userID,
-	).Scan(&resp.ID, &resp.ShortID, &resp.FormID, &resp.SubmittedBy, &resp.SubmittedAt)
+		`INSERT INTO feedback_form_responses (short_id, form_id, session_id, submitted_by)
+		 VALUES ($1, $2, $3::UUID, $4::UUID)
+		 RETURNING id, short_id, form_id::TEXT, session_id::TEXT, submitted_by::TEXT, submitted_at`,
+		shortID, formID, sessionID, userID,
+	).Scan(&resp.ID, &resp.ShortID, &resp.FormID, &resp.SessionID, &resp.SubmittedBy, &resp.SubmittedAt)
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return nil, ErrFeedbackAlreadySubmitted
+		}
 		return nil, fmt.Errorf("insert response: %w", err)
 	}
 
@@ -418,6 +446,25 @@ func (r *FeedbackFormRepository) CreateResponse(ctx context.Context, formShortID
 		return nil, fmt.Errorf("commit tx: %w", err)
 	}
 	return &resp, nil
+}
+
+// HasSubmittedFeedback reports whether userID has already submitted a
+// response for sessionShortID's feedback form. Used to decide whether the
+// frontend should still prompt for feedback after the session ends.
+func (r *FeedbackFormRepository) HasSubmittedFeedback(ctx context.Context, sessionShortID string, userID string) (bool, error) {
+	var exists bool
+	err := r.pool.QueryRow(ctx,
+		`SELECT EXISTS (
+			SELECT 1 FROM feedback_form_responses ffr
+			JOIN sessions s ON s.id = ffr.session_id
+			WHERE s.short_id = $1 AND ffr.submitted_by = $2::UUID
+		)`,
+		sessionShortID, userID,
+	).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("check feedback submission: %w", err)
+	}
+	return exists, nil
 }
 
 func (r *FeedbackFormRepository) findQuestions(ctx context.Context, formID string) ([]models.FeedbackFormQuestion, error) {

@@ -91,7 +91,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	collegeCtrl := controller.NewCollegeController(collegeRepo, auditLogRepo)
 	communityPostCtrl := controller.NewCommunityPostController(communityPostRepo, communityRepo)
 	notificationCtrl := controller.NewNotificationController(notificationRepo)
-	sessionCtrl := controller.NewSessionController(sessionRepo, batchRepo, notificationRepo, userRepo, zoomSvc, emailSvc, cfg.App.PublicURL, cfg.App.Timezone, auditLogRepo)
+	sessionCtrl := controller.NewSessionController(sessionRepo, batchRepo, notificationRepo, userRepo, zoomSvc, emailSvc, cfg.App.PublicURL, cfg.App.Timezone, auditLogRepo, feedbackFormRepo)
 	zoomWebhookCtrl := controller.NewZoomWebhookController(zoomSvc, storageSvc, sessionRepo)
 	assignmentCtrl := controller.NewAssignmentController(assignmentRepo, batchRepo, notificationRepo, auditLogRepo)
 	resourceCtrl := controller.NewResourceController(resourceRepo, batchRepo, auditLogRepo)
@@ -580,6 +580,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				sessions.POST("", adminOrAbove, sessionCtrl.Create)
 				sessions.GET("", sessionCtrl.GetAll)
 				sessions.GET("/:short_id", sessionCtrl.GetByShortID)
+				sessions.GET("/:short_id/feedback-status", sessionCtrl.GetFeedbackStatus)
 				sessions.PATCH("/:short_id", adminOrAbove, sessionCtrl.Update)
 				sessions.DELETE("/:short_id", adminOrAbove, sessionCtrl.Delete)
 

@@ -298,15 +298,16 @@ func (ctrl *FeedbackFormController) DeleteQuestion(c *gin.Context) {
 // SubmitResponse godoc
 //
 //	@Summary		Submit feedback form response
-//	@Description	Student submits answers to an active feedback form. Each answer must reference a question_short_id belonging to this form. For text questions supply "text", for numeric (star/scale/number) supply "number", for choice questions supply "array".
+//	@Description	Student submits answers to an active feedback form, for a specific session (forms are reusable templates, so session_short_id says which occurrence this is feedback for). Each answer must reference a question_short_id belonging to this form. For text questions supply "text", for numeric (star/scale/number) supply "number", for choice questions supply "array".
 //	@Tags			feedback-forms
 //	@Accept			json
 //	@Produce		json
 //	@Param			short_id	path		string							true	"Form short ID"
-//	@Param			body		body		models.SubmitFeedbackFormInput	true	"Answers array"
+//	@Param			body		body		models.SubmitFeedbackFormInput	true	"session_short_id and answers array"
 //	@Success		201			{object}	models.FeedbackFormResponse
 //	@Failure		400			{object}	map[string]string	"Validation error or question not found in form"
-//	@Failure		404			{object}	map[string]string	"Form not found or not active"
+//	@Failure		404			{object}	map[string]string	"Form not found/not active, or session doesn't use this form"
+//	@Failure		409			{object}	map[string]string	"Already submitted feedback for this session"
 //	@Failure		500			{object}	map[string]string	"Internal server error"
 //	@Security		BearerAuth
 //	@Router			/feedback-forms/{short_id}/responses [post]
@@ -322,8 +323,12 @@ func (ctrl *FeedbackFormController) SubmitResponse(c *gin.Context) {
 
 	resp, err := ctrl.repo.CreateResponse(c.Request.Context(), shortID, userID, input)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "feedback form not found or not active"})
+		if errors.Is(err, pgx.ErrNoRows) || errors.Is(err, repository.ErrSessionFormMismatch) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "feedback form not found, not active, or not attached to that session"})
+			return
+		}
+		if errors.Is(err, repository.ErrFeedbackAlreadySubmitted) {
+			c.JSON(http.StatusConflict, gin.H{"error": "feedback already submitted for this session"})
 			return
 		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

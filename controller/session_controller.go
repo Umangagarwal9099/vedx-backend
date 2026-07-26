@@ -26,9 +26,10 @@ type SessionController struct {
 	publicBaseURL    string
 	timezone         string
 	auditLogRepo     *repository.AuditLogRepository
+	feedbackFormRepo *repository.FeedbackFormRepository
 }
 
-func NewSessionController(repo *repository.SessionRepository, batchRepo *repository.BatchRepository, notificationRepo *repository.NotificationRepository, userRepo *repository.UserRepository, zoomSvc *service.ZoomService, emailSvc *service.EmailService, publicBaseURL, timezone string, auditLogRepo *repository.AuditLogRepository) *SessionController {
+func NewSessionController(repo *repository.SessionRepository, batchRepo *repository.BatchRepository, notificationRepo *repository.NotificationRepository, userRepo *repository.UserRepository, zoomSvc *service.ZoomService, emailSvc *service.EmailService, publicBaseURL, timezone string, auditLogRepo *repository.AuditLogRepository, feedbackFormRepo *repository.FeedbackFormRepository) *SessionController {
 	return &SessionController{
 		sessionRepo:      repo,
 		batchRepo:        batchRepo,
@@ -39,7 +40,43 @@ func NewSessionController(repo *repository.SessionRepository, batchRepo *reposit
 		publicBaseURL:    publicBaseURL,
 		timezone:         timezone,
 		auditLogRepo:     auditLogRepo,
+		feedbackFormRepo: feedbackFormRepo,
 	}
+}
+
+// GetFeedbackStatus godoc
+//
+//	@Summary		Check feedback submission status for a session
+//	@Description	Reports whether the current user has already submitted the feedback form attached to this session. Feedback forms are reusable templates, so this is not the same as "has this user ever submitted this form" — it's scoped to this specific session.
+//	@Tags			sessions
+//	@Produce		json
+//	@Param			short_id	path		string	true	"Session short ID"
+//	@Success		200			{object}	map[string]bool
+//	@Failure		404			{object}	map[string]string	"Session not found"
+//	@Security		BearerAuth
+//	@Router			/sessions/{short_id}/feedback-status [get]
+func (ctrl *SessionController) GetFeedbackStatus(c *gin.Context) {
+	shortID := c.Param("short_id")
+	userID := c.GetString("user_id")
+
+	session, err := ctrl.sessionRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil || session == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+		return
+	}
+
+	if session.FeedbackFormShortID == "" {
+		c.JSON(http.StatusOK, gin.H{"has_form": false, "submitted": false})
+		return
+	}
+
+	submitted, err := ctrl.feedbackFormRepo.HasSubmittedFeedback(c.Request.Context(), shortID, userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not check feedback status"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"has_form": true, "submitted": submitted})
 }
 
 // withShareLink fills in ShareLink from ShareToken for API responses.
