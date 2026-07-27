@@ -163,6 +163,15 @@ definitions:
         example: ok
         type: string
     type: object
+  controller.LoginOTPRequiredResponse:
+    properties:
+      email:
+        example: user@example.com
+        type: string
+      message:
+        example: verification code sent to your email
+        type: string
+    type: object
   controller.LoginRequest:
     properties:
       email:
@@ -276,6 +285,18 @@ definitions:
         type: string
     required:
     - college_short_id
+    type: object
+  controller.VerifyLoginOTPRequest:
+    properties:
+      email:
+        example: user@example.com
+        type: string
+      otp:
+        example: "042913"
+        type: string
+    required:
+    - email
+    - otp
     type: object
   models.AddBatchStudentsInput:
     properties:
@@ -2609,6 +2630,8 @@ definitions:
         type: string
       id:
         type: string
+      session_id:
+        type: string
       short_id:
         type: string
       submitted_at:
@@ -4235,8 +4258,15 @@ definitions:
           $ref: '#/definitions/models.AnswerInput'
         minItems: 1
         type: array
+      session_short_id:
+        description: |-
+          SessionShortID identifies which session this feedback is for — forms
+          are reusable templates attached to many sessions, so the form alone
+          doesn't say which occurrence the student is responding about.
+        type: string
     required:
     - answers
+    - session_short_id
     type: object
   models.TopicCount:
     properties:
@@ -6897,8 +6927,9 @@ paths:
     post:
       consumes:
       - application/json
-      description: 'Single login endpoint for all roles. Returns a JWT — send it as
-        `Authorization: Bearer <token>` on protected requests.'
+      description: Verifies email/password for any role. On success, emails a 6-digit
+        verification code (valid 5 minutes) and returns without a token — call POST
+        /auth/login/verify-otp with that code to receive the JWT.
       parameters:
       - description: Email and password
         in: body
@@ -6912,7 +6943,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/controller.LoginResponse'
+            $ref: '#/definitions/controller.LoginOTPRequiredResponse'
         "400":
           description: Validation error
           schema:
@@ -6931,7 +6962,43 @@ paths:
             additionalProperties:
               type: string
             type: object
-      summary: Login
+      summary: Login (step 1 of 2) — verify credentials, send OTP
+      tags:
+      - auth
+  /auth/login/verify-otp:
+    post:
+      consumes:
+      - application/json
+      description: 'Verifies the 6-digit code emailed by POST /auth/login and, if
+        valid and unexpired, returns a JWT — send it as `Authorization: Bearer <token>`
+        on protected requests. The OTP is single-use.'
+      parameters:
+      - description: Email and verification code
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/controller.VerifyLoginOTPRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/controller.LoginResponse'
+        "400":
+          description: Invalid or expired OTP / validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Login (step 2 of 2) — verify OTP, get JWT
       tags:
       - auth
   /auth/register:
@@ -10167,17 +10234,18 @@ paths:
     post:
       consumes:
       - application/json
-      description: Student submits answers to an active feedback form. Each answer
-        must reference a question_short_id belonging to this form. For text questions
-        supply "text", for numeric (star/scale/number) supply "number", for choice
-        questions supply "array".
+      description: Student submits answers to an active feedback form, for a specific
+        session (forms are reusable templates, so session_short_id says which occurrence
+        this is feedback for). Each answer must reference a question_short_id belonging
+        to this form. For text questions supply "text", for numeric (star/scale/number)
+        supply "number", for choice questions supply "array".
       parameters:
       - description: Form short ID
         in: path
         name: short_id
         required: true
         type: string
-      - description: Answers array
+      - description: session_short_id and answers array
         in: body
         name: body
         required: true
@@ -10197,7 +10265,13 @@ paths:
               type: string
             type: object
         "404":
-          description: Form not found or not active
+          description: Form not found/not active, or session doesn't use this form
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Already submitted feedback for this session
           schema:
             additionalProperties:
               type: string
@@ -13593,6 +13667,38 @@ paths:
       summary: Mark attendance for a whole session
       tags:
       - attendance
+  /sessions/{short_id}/feedback-status:
+    get:
+      description: Reports whether the current user has already submitted the feedback
+        form attached to this session. Feedback forms are reusable templates, so this
+        is not the same as "has this user ever submitted this form" — it's scoped
+        to this specific session.
+      parameters:
+      - description: Session short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: boolean
+            type: object
+        "404":
+          description: Session not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Check feedback submission status for a session
+      tags:
+      - sessions
   /sessions/by-token/{token}:
     get:
       description: Public, unauthenticated lookup of a session by its share token
@@ -14224,8 +14330,8 @@ paths:
       consumes:
       - multipart/form-data
       description: Upload any supported material file (image, video, audio, PDF, doc,
-        sheet, slide, zip, etc.) to Cloudflare R2. Returns the public URL to use
-        when creating a section material. Max size 500 MB.
+        sheet, slide, zip, etc.) to Cloudflare R2. Returns the public URL to use when
+        creating a section material. Max size 500 MB.
       parameters:
       - description: Material file
         in: formData

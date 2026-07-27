@@ -16,20 +16,21 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// otpExpiry is how long a forgot-password OTP stays valid after being issued.
+// otpExpiry is how long a forgot-password or login OTP stays valid after being issued.
 const otpExpiry = 5 * time.Minute
 
 type AuthController struct {
 	userRepo          *repository.UserRepository
 	otpRepo           *repository.PasswordResetRepository
+	loginOtpRepo      *repository.LoginOTPRepository
 	loginActivityRepo *repository.LoginActivityRepository
 	collegeRepo       *repository.CollegeRepository
 	emailSvc          *service.EmailService
 	jwtSecret         string
 }
 
-func NewAuthController(userRepo *repository.UserRepository, otpRepo *repository.PasswordResetRepository, loginActivityRepo *repository.LoginActivityRepository, collegeRepo *repository.CollegeRepository, emailSvc *service.EmailService, jwtSecret string) *AuthController {
-	return &AuthController{userRepo: userRepo, otpRepo: otpRepo, loginActivityRepo: loginActivityRepo, collegeRepo: collegeRepo, emailSvc: emailSvc, jwtSecret: jwtSecret}
+func NewAuthController(userRepo *repository.UserRepository, otpRepo *repository.PasswordResetRepository, loginOtpRepo *repository.LoginOTPRepository, loginActivityRepo *repository.LoginActivityRepository, collegeRepo *repository.CollegeRepository, emailSvc *service.EmailService, jwtSecret string) *AuthController {
+	return &AuthController{userRepo: userRepo, otpRepo: otpRepo, loginOtpRepo: loginOtpRepo, loginActivityRepo: loginActivityRepo, collegeRepo: collegeRepo, emailSvc: emailSvc, jwtSecret: jwtSecret}
 }
 
 // ── Login ─────────────────────────────────────────────────────────────────────
@@ -40,7 +41,7 @@ type LoginRequest struct {
 	Password string `json:"password" binding:"required,min=6" example:"secret123"`
 }
 
-// LoginResponse is returned on successful authentication.
+// LoginResponse is returned on successful authentication (after OTP verification).
 type LoginResponse struct {
 	Token     string `json:"token"      example:"eyJhbGci..."`
 	Role      string `json:"role"       example:"student"`
@@ -49,15 +50,23 @@ type LoginResponse struct {
 	LastName  string `json:"last_name"  example:"Doe"`
 }
 
+// LoginOTPRequiredResponse is returned when credentials are valid — a
+// verification code has been emailed and must be submitted to
+// /auth/login/verify-otp to receive the JWT.
+type LoginOTPRequiredResponse struct {
+	Message string `json:"message" example:"verification code sent to your email"`
+	Email   string `json:"email"   example:"user@example.com"`
+}
+
 // Login godoc
 //
-//	@Summary		Login
-//	@Description	Single login endpoint for all roles. Returns a JWT — send it as `Authorization: Bearer <token>` on protected requests.
+//	@Summary		Login (step 1 of 2) — verify credentials, send OTP
+//	@Description	Verifies email/password for any role. On success, emails a 6-digit verification code (valid 5 minutes) and returns without a token — call POST /auth/login/verify-otp with that code to receive the JWT.
 //	@Tags			auth
 //	@Accept			json
 //	@Produce		json
 //	@Param			body	body		LoginRequest	true	"Email and password"
-//	@Success		200		{object}	LoginResponse
+//	@Success		200		{object}	LoginOTPRequiredResponse
 //	@Failure		400		{object}	map[string]string	"Validation error"
 //	@Failure		401		{object}	map[string]string	"Invalid credentials"
 //	@Failure		500		{object}	map[string]string	"Internal server error"
@@ -83,6 +92,86 @@ func (ctrl *AuthController) Login(c *gin.Context) {
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid email or password"})
+		return
+	}
+
+	otp := util.GenerateOTP()
+	otpHash, err := bcrypt.GenerateFromPassword([]byte(otp), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+	if err := ctrl.loginOtpRepo.CreateOTP(c.Request.Context(), user.ID, string(otpHash), time.Now().Add(otpExpiry)); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+
+	if ctrl.emailSvc.Configured() {
+		subject, html := service.LoginOTPEmail(otp)
+		ctrl.emailSvc.SendAsync(user.Email, subject, html)
+	}
+
+	c.JSON(http.StatusOK, LoginOTPRequiredResponse{
+		Message: "verification code sent to your email",
+		Email:   user.Email,
+	})
+}
+
+// ── Verify login OTP (step 2 of 2, issues the JWT) ────────────────────────────
+
+// VerifyLoginOTPRequest carries the email and OTP emailed by /auth/login.
+type VerifyLoginOTPRequest struct {
+	Email string `json:"email" binding:"required,email" example:"user@example.com"`
+	OTP   string `json:"otp"   binding:"required,len=6"  example:"042913"`
+}
+
+// VerifyLoginOTP godoc
+//
+//	@Summary		Login (step 2 of 2) — verify OTP, get JWT
+//	@Description	Verifies the 6-digit code emailed by POST /auth/login and, if valid and unexpired, returns a JWT — send it as `Authorization: Bearer <token>` on protected requests. The OTP is single-use.
+//	@Tags			auth
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body		VerifyLoginOTPRequest	true	"Email and verification code"
+//	@Success		200		{object}	LoginResponse
+//	@Failure		400		{object}	map[string]string	"Invalid or expired OTP / validation error"
+//	@Failure		500		{object}	map[string]string	"Internal server error"
+//	@Router			/auth/login/verify-otp [post]
+func (ctrl *AuthController) VerifyLoginOTP(c *gin.Context) {
+	var req VerifyLoginOTPRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+
+	const invalidOTPMsg = "invalid or expired verification code"
+
+	user, err := ctrl.userRepo.FindByEmail(c.Request.Context(), req.Email)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+	if user == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": invalidOTPMsg})
+		return
+	}
+
+	record, err := ctrl.loginOtpRepo.FindLatestOTP(c.Request.Context(), user.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+	if record == nil || record.UsedAt != nil || time.Now().After(record.ExpiresAt) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": invalidOTPMsg})
+		return
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(record.OTPHash), []byte(req.OTP)); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": invalidOTPMsg})
+		return
+	}
+	if err := ctrl.loginOtpRepo.MarkOTPUsed(c.Request.Context(), record.ID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 		return
 	}
 

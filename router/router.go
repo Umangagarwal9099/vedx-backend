@@ -53,6 +53,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	auditLogRepo := repository.NewAuditLogRepository(pool)
 	profileRepo := repository.NewProfileRepository(pool)
 	passwordResetRepo := repository.NewPasswordResetRepository(pool)
+	loginOtpRepo := repository.NewLoginOTPRepository(pool)
 	studentRegistrationRepo := repository.NewStudentRegistrationRepository(pool)
 	studentNoteRepo := repository.NewStudentNoteRepository(pool)
 	loginActivityRepo := repository.NewLoginActivityRepository(pool)
@@ -71,7 +72,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	emailSvc := service.NewEmailService(cfg.Resend)
 
 	// Controllers
-	authCtrl := controller.NewAuthController(userRepo, passwordResetRepo, loginActivityRepo, collegeRepo, emailSvc, cfg.JWT.Secret)
+	authCtrl := controller.NewAuthController(userRepo, passwordResetRepo, loginOtpRepo, loginActivityRepo, collegeRepo, emailSvc, cfg.JWT.Secret)
 	userCtrl := controller.NewUserController(userRepo, collegeRepo, enrollmentRepo, emailSvc, cfg.App.PublicURL, auditLogRepo)
 	studentRegistrationCtrl := controller.NewStudentRegistrationController(studentRegistrationRepo, studentNoteRepo, auditLogRepo, userRepo, collegeRepo, emailSvc, cfg.App.PublicURL)
 	loginActivityCtrl := controller.NewLoginActivityController(loginActivityRepo)
@@ -120,6 +121,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 		auth := v1.Group("/auth")
 		{
 			auth.POST("/login", authCtrl.Login)
+			auth.POST("/login/verify-otp", authCtrl.VerifyLoginOTP)
 			auth.POST("/register", authCtrl.Register)
 			auth.POST("/forgot-password", authCtrl.ForgotPassword)
 			auth.POST("/reset-password", authCtrl.ResetPassword)

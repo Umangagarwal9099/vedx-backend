@@ -2537,7 +2537,7 @@ const docTemplate = `{
         },
         "/auth/login": {
             "post": {
-                "description": "Single login endpoint for all roles. Returns a JWT — send it as ` + "`" + `Authorization: Bearer \u003ctoken\u003e` + "`" + ` on protected requests.",
+                "description": "Verifies email/password for any role. On success, emails a 6-digit verification code (valid 5 minutes) and returns without a token — call POST /auth/login/verify-otp with that code to receive the JWT.",
                 "consumes": [
                     "application/json"
                 ],
@@ -2547,7 +2547,7 @@ const docTemplate = `{
                 "tags": [
                     "auth"
                 ],
-                "summary": "Login",
+                "summary": "Login (step 1 of 2) — verify credentials, send OTP",
                 "parameters": [
                     {
                         "description": "Email and password",
@@ -2563,7 +2563,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/controller.LoginResponse"
+                            "$ref": "#/definitions/controller.LoginOTPRequiredResponse"
                         }
                     },
                     "400": {
@@ -2577,6 +2577,58 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Invalid credentials",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/login/verify-otp": {
+            "post": {
+                "description": "Verifies the 6-digit code emailed by POST /auth/login and, if valid and unexpired, returns a JWT — send it as ` + "`" + `Authorization: Bearer \u003ctoken\u003e` + "`" + ` on protected requests. The OTP is single-use.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Login (step 2 of 2) — verify OTP, get JWT",
+                "parameters": [
+                    {
+                        "description": "Email and verification code",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/controller.VerifyLoginOTPRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/controller.LoginResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid or expired OTP / validation error",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -7463,7 +7515,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Student submits answers to an active feedback form. Each answer must reference a question_short_id belonging to this form. For text questions supply \"text\", for numeric (star/scale/number) supply \"number\", for choice questions supply \"array\".",
+                "description": "Student submits answers to an active feedback form, for a specific session (forms are reusable templates, so session_short_id says which occurrence this is feedback for). Each answer must reference a question_short_id belonging to this form. For text questions supply \"text\", for numeric (star/scale/number) supply \"number\", for choice questions supply \"array\".",
                 "consumes": [
                     "application/json"
                 ],
@@ -7483,7 +7535,7 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "Answers array",
+                        "description": "session_short_id and answers array",
                         "name": "body",
                         "in": "body",
                         "required": true,
@@ -7509,7 +7561,16 @@ const docTemplate = `{
                         }
                     },
                     "404": {
-                        "description": "Form not found or not active",
+                        "description": "Form not found/not active, or session doesn't use this form",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Already submitted feedback for this session",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -12666,6 +12727,52 @@ const docTemplate = `{
                 }
             }
         },
+        "/sessions/{short_id}/feedback-status": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Reports whether the current user has already submitted the feedback form attached to this session. Feedback forms are reusable templates, so this is not the same as \"has this user ever submitted this form\" — it's scoped to this specific session.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Check feedback submission status for a session",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Session short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "boolean"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Session not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/students/statuses": {
             "get": {
                 "security": [
@@ -15554,6 +15661,19 @@ const docTemplate = `{
                 }
             }
         },
+        "controller.LoginOTPRequiredResponse": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "example": "user@example.com"
+                },
+                "message": {
+                    "type": "string",
+                    "example": "verification code sent to your email"
+                }
+            }
+        },
         "controller.LoginRequest": {
             "type": "object",
             "required": [
@@ -15708,6 +15828,23 @@ const docTemplate = `{
                 "reason": {
                     "type": "string",
                     "example": "Student transferred to partner college"
+                }
+            }
+        },
+        "controller.VerifyLoginOTPRequest": {
+            "type": "object",
+            "required": [
+                "email",
+                "otp"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "example": "user@example.com"
+                },
+                "otp": {
+                    "type": "string",
+                    "example": "042913"
                 }
             }
         },
@@ -19004,6 +19141,9 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
+                "session_id": {
+                    "type": "string"
+                },
                 "short_id": {
                     "type": "string"
                 },
@@ -21383,7 +21523,8 @@ const docTemplate = `{
         "models.SubmitFeedbackFormInput": {
             "type": "object",
             "required": [
-                "answers"
+                "answers",
+                "session_short_id"
             ],
             "properties": {
                 "answers": {
@@ -21392,6 +21533,10 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/models.AnswerInput"
                     }
+                },
+                "session_short_id": {
+                    "description": "SessionShortID identifies which session this feedback is for — forms\nare reusable templates attached to many sessions, so the form alone\ndoesn't say which occurrence the student is responding about.",
+                    "type": "string"
                 }
             }
         },

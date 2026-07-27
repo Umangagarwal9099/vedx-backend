@@ -48,6 +48,17 @@ type PasswordResetOTP struct {
 	CreatedAt time.Time
 }
 
+// LoginOTP is a single row in login_otps — one issued code for the
+// mandatory email-OTP second factor checked on every password login.
+type LoginOTP struct {
+	ID        string
+	UserID    string
+	OTPHash   string
+	ExpiresAt time.Time
+	UsedAt    *time.Time
+	CreatedAt time.Time
+}
+
 // UpdateUserInput carries the editable fields for PATCH /users/:id.
 // All fields are optional — send only the ones you want to change.
 type UpdateUserInput struct {
