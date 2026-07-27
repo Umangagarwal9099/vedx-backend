@@ -368,7 +368,9 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			// information — admin only, never mentor (see Mentor role lockdown).
 			protected.POST("/users/:id/notes", adminOrAbove, studentRegistrationCtrl.AddNote)
 			protected.GET("/users/:id/notes", adminOrAbove, studentRegistrationCtrl.GetNotes)
-			protected.POST("/users/:id/reset-password", adminOrAbove, userCtrl.ResetPassword)
+			// college_admin/college_staff may reset passwords too, but only for
+			// their own college's users — enforced inside ResetPassword itself.
+			protected.POST("/users/:id/reset-password", middleware.RequireRole(models.RoleSuperAdmin, models.RoleTeamLead, models.RoleCollegeAdmin, models.RoleCollegeStaff), userCtrl.ResetPassword)
 			protected.GET("/users/:id/login-activity", adminOrAbove, loginActivityCtrl.GetForUser)
 			protected.DELETE("/users/:id/login-activity/:deviceId", adminOrAbove, loginActivityCtrl.RemoveDevice)
 

@@ -788,6 +788,18 @@ func (ctrl *UserController) ResetPassword(c *gin.Context) {
 		return
 	}
 
+	// college_admin/college_staff were only just widened onto this route —
+	// unlike super_admin/team_lead (trusted platform-wide), they may only
+	// reset a password for a user in their own college.
+	role := c.GetString("role")
+	if role == string(models.RoleCollegeAdmin) || role == string(models.RoleCollegeStaff) {
+		callerCollegeID := c.GetString("college_id")
+		if callerCollegeID == "" || user.CollegeID != callerCollegeID {
+			c.JSON(http.StatusForbidden, gin.H{"code": "COLLEGE_SCOPE_VIOLATION", "error": "this user does not belong to your college"})
+			return
+		}
+	}
+
 	tempPassword := util.GenerateTemporaryPassword()
 	hash, err := bcrypt.GenerateFromPassword([]byte(tempPassword), bcrypt.DefaultCost)
 	if err != nil {
