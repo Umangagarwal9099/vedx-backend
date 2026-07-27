@@ -7,6 +7,7 @@ import "fmt"
 const emailSignatureHTML = `
 	<p>Warm regards,<br>
 	<strong>The Vedxlence Support Team</strong></p>
+	<p><img src="https://pub-85988f26b7e644d9b4f7cdf19f6c67d6.r2.dev/assests/WhatsApp%20Image%202026-07-27%20at%2010.55.31%20PM%20(1).jpeg" alt="Vedxlence" width="200" style="max-width:200px;height:auto;display:block;"></p>
 	<hr style="border:none;border-top:1px solid #e5e5e5;margin:20px 0;">
 	<p style="font-size:12px;color:#888888;">
 		This is an automated message from Vedxlence. For any questions, reach out to us at
