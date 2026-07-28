@@ -47,3 +47,22 @@ type CreateSubmissionInput struct {
 	PassedTests     int              `json:"passed_tests"`
 	TotalTests      int              `json:"total_tests"`
 }
+
+// LeaderboardEntry is one student's row on the coding-practice leaderboard —
+// ranked by distinct problems solved (accepted submissions), not by academic
+// score. Ties (equal SolvedCount + AcceptedSubmissions) share the same rank,
+// standard competition-ranking style (1, 2, 2, 4).
+type LeaderboardEntry struct {
+	Rank                int        `json:"rank"`
+	StudentID           string     `json:"student_id"`
+	StudentName         string     `json:"student_name"`
+	// CollegeID is only meaningful to super_admin (unscoped view spans every
+	// college) — used client-side to render/filter by college, the same way
+	// the Learners list does. Always empty for a college-scoped caller since
+	// every row is already their own college.
+	CollegeID           string     `json:"college_id,omitempty"`
+	SolvedCount         int        `json:"solved_count"`
+	AcceptedSubmissions int        `json:"accepted_submissions"`
+	TotalSubmissions    int        `json:"total_submissions"`
+	LastSolvedAt        *time.Time `json:"last_solved_at,omitempty"`
+}

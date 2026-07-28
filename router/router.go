@@ -431,6 +431,11 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				subs.GET("/assignments", collegeContentOrAbove, assignmentCtrl.GetAllSubmissionsGlobal)
 				subs.GET("/projects", collegeContentOrAbove, projectCtrl.GetAllSubmissionsGlobal)
 				subs.GET("/assessments", collegeContentOrAbove, examAttemptCtrl.GetAllAttemptsGlobal)
+
+				// Coding-practice leaderboard — student-facing, wires up the
+				// previously-inert "coding_leaderboard" feature flag. Scoped to
+				// the caller's own college inside GetLeaderboard.
+				subs.GET("/coding-leaderboard", middleware.RequireActiveSubscription(collegeRepo), middleware.RequireFeature(collegeRepo, models.FeatureCodingLeaderboard), submissionCtrl.GetLeaderboard)
 			}
 
 			// Modules — only super_admin / team_lead may create, edit, or delete

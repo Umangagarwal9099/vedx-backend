@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/umangagarwal/vedx-backend/models"
@@ -128,4 +129,62 @@ func (r *SubmissionRepository) FindByUserAndQuestion(ctx context.Context, userID
 		list = append(list, s)
 	}
 	return list, nil
+}
+
+// GetLeaderboard ranks students by distinct problems solved (accepted
+// submissions), most-solved first. collegeID scopes the ranking to peers
+// within that college — "peer ranking" only means something among students
+// who actually share a college; empty collegeID (super_admin/unscoped)
+// ranks across every student on the platform. Only students who have solved
+// at least one problem show up — no zero-solved noise at the bottom.
+func (r *SubmissionRepository) GetLeaderboard(ctx context.Context, collegeID string) ([]models.LeaderboardEntry, error) {
+	args := []interface{}{}
+	collegeClause := ""
+	if collegeID != "" {
+		collegeClause = " AND u.college_id = $1::UUID"
+		args = append(args, collegeID)
+	}
+
+	q := fmt.Sprintf(`
+		SELECT u.id, u.first_name || ' ' || u.last_name AS student_name, COALESCE(u.college_id::TEXT, ''),
+		       COUNT(DISTINCT CASE WHEN s.status = 'accepted' THEN s.question_short_id END) AS solved_count,
+		       COUNT(CASE WHEN s.status = 'accepted' THEN 1 END) AS accepted_submissions,
+		       COUNT(*) AS total_submissions,
+		       MAX(CASE WHEN s.status = 'accepted' THEN s.created_at END) AS last_solved_at
+		FROM submissions s
+		JOIN users u ON u.id = s.user_id AND u.deleted_at IS NULL AND u.role = 'student'
+		WHERE TRUE%s
+		GROUP BY u.id, u.first_name, u.last_name
+		HAVING COUNT(DISTINCT CASE WHEN s.status = 'accepted' THEN s.question_short_id END) > 0
+		ORDER BY solved_count DESC, accepted_submissions ASC, student_name ASC
+		LIMIT 100`, collegeClause)
+
+	rows, err := r.pool.Query(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var entries []models.LeaderboardEntry
+	for rows.Next() {
+		var e models.LeaderboardEntry
+		if err := rows.Scan(&e.StudentID, &e.StudentName, &e.CollegeID, &e.SolvedCount, &e.AcceptedSubmissions, &e.TotalSubmissions, &e.LastSolvedAt); err != nil {
+			return nil, err
+		}
+		entries = append(entries, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Standard competition ranking: ties (same solved_count + accepted_submissions)
+	// share a rank, and the next distinct rank skips ahead accordingly (1, 2, 2, 4).
+	rank := 0
+	for i := range entries {
+		if i == 0 || entries[i].SolvedCount != entries[i-1].SolvedCount || entries[i].AcceptedSubmissions != entries[i-1].AcceptedSubmissions {
+			rank = i + 1
+		}
+		entries[i].Rank = rank
+	}
+	return entries, nil
 }

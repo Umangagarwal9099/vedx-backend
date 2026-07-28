@@ -141,3 +141,32 @@ func (ctrl *SubmissionController) GetByUserAdmin(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, list)
 }
+
+// GetLeaderboard godoc
+//
+//	@Summary		Coding practice leaderboard
+//	@Description	Ranks students by distinct problems solved (accepted submissions), scoped to the caller's own college — super_admin sees the platform-wide ranking.
+//	@Tags			submissions
+//	@Produce		json
+//	@Success		200	{array}		models.LeaderboardEntry
+//	@Failure		403	{object}	map[string]string	"Forbidden"
+//	@Failure		500	{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/submissions/coding-leaderboard [get]
+func (ctrl *SubmissionController) GetLeaderboard(c *gin.Context) {
+	collegeID, err := repository.CollegeFilter(c.GetString("role"), c.GetString("college_id"))
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"code": "COLLEGE_SCOPE_VIOLATION", "error": "you have no college scope"})
+		return
+	}
+
+	entries, err := ctrl.repo.GetLeaderboard(c.Request.Context(), collegeID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch leaderboard"})
+		return
+	}
+	if entries == nil {
+		entries = []models.LeaderboardEntry{}
+	}
+	c.JSON(http.StatusOK, entries)
+}
