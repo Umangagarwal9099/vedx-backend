@@ -91,7 +91,18 @@ func (ctrl *CollegeController) GetMyFeatures(c *gin.Context) {
 		c.JSON(http.StatusOK, MyFeaturesResponse{Unscoped: true, Features: map[string]bool{}})
 		return
 	}
-	c.JSON(http.StatusOK, MyFeaturesResponse{CollegeID: college.ShortID, CollegeName: college.Name, Features: college.EnabledFeatures})
+
+	// Must resolve features with the exact same precedence RequireFeature
+	// uses (repository.HasFeature: relational college_features table first,
+	// legacy enabled_features JSONB only as a fallback) — otherwise this
+	// endpoint (which drives what the sidebar shows) and the middleware
+	// that actually enforces access on routes like /projects can disagree,
+	// letting a disabled nav item render as clickable and then 403 for real.
+	features := college.EnabledFeatures
+	if relational, ok := ctrl.collegeRepo.GetEnabledFeatures(c.Request.Context(), collegeID); ok {
+		features = relational
+	}
+	c.JSON(http.StatusOK, MyFeaturesResponse{CollegeID: college.ShortID, CollegeName: college.Name, Features: features})
 }
 
 // GetAllColleges godoc
