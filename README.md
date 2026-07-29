@@ -42,3 +42,10 @@ go run cmd/server/main.go // run command
 
 clarissa.ns.cloudflare.com
 jermaine.ns.cloudflare.com
+
+
+gcloud run deploy vedx-backend --source . --region asia-southeast1 --project vedx-backend --- deploy to google run cloud command 
+
+gcloud run services describe vedx-backend --region=asia-southeast1 --format="value(status.latestReadyRevisionName,status.traffic)"  --- check whether the deployment was success or failed 
+
+gcloud run revisions list --service=vedx-backend --region=asia-southeast1 --limit=3 --- Confirm the deploy timestamp is recent
