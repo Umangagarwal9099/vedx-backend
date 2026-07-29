@@ -62,6 +62,17 @@ var allowedMaterialMIME = map[string]struct {
 
 const maxUploadSize = 10 << 20    // 10 MB
 const maxMaterialSize = 500 << 20 // 500 MB
+const maxVideoSize = 3 << 30      // 3 GB — recorded lectures run long
+
+// allowedVideoMIME restricts batch-recording uploads to actual video files
+// (unlike allowedMaterialMIME, which UploadMaterial uses to accept any
+// material type including video as one option among many).
+var allowedVideoMIME = map[string]string{
+	"video/mp4":       ".mp4",
+	"video/quicktime": ".mov",
+	"video/x-msvideo": ".avi",
+	"video/webm":      ".webm",
+}
 
 // StorageService uploads files to Cloudflare R2. All files live in one
 // bucket, under "events/" and "materials/" prefixes that mirror the two
@@ -98,6 +109,64 @@ func (s *StorageService) UploadRecording(ctx context.Context, body io.Reader, ke
 		return "", fmt.Errorf("upload recording to storage: %w", err)
 	}
 	return strings.TrimRight(s.cfg.PublicURL, "/") + "/" + fullKey, nil
+}
+
+// detectVideoType sniffs a video file's MIME type the same way
+// detectImageType does for images, restricted to allowedVideoMIME.
+func detectVideoType(f multipart.File, filename string) (ext, mimeType string, err error) {
+	buf := make([]byte, 512)
+	if _, err := f.Read(buf); err != nil {
+		return "", "", fmt.Errorf("cannot read file: %w", err)
+	}
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return "", "", fmt.Errorf("cannot seek file: %w", err)
+	}
+	mimeType = strings.TrimSpace(strings.Split(http.DetectContentType(buf), ";")[0])
+
+	if e, ok := allowedVideoMIME[mimeType]; ok {
+		return e, mimeType, nil
+	}
+	origExt := strings.ToLower(filepath.Ext(filename))
+	for mime, e := range allowedVideoMIME {
+		if e == origExt {
+			return e, mime, nil
+		}
+	}
+	return "", "", fmt.Errorf("unsupported file type: only MP4, MOV, AVI and WebM videos are allowed")
+}
+
+// UploadBatchRecording validates fh as a video (max 3 GB) and uploads it to
+// "recordings/batch/<batchShortID>/" via the multipart upload manager — like
+// UploadRecording, since a lecture recording can be gigabytes. Returns the
+// public URL, detected content type, and file size for the caller to
+// persist alongside a batch_recordings row.
+func (s *StorageService) UploadBatchRecording(fh *multipart.FileHeader, batchShortID string) (url, contentType string, size int64, err error) {
+	if fh.Size > maxVideoSize {
+		return "", "", 0, fmt.Errorf("file too large: maximum size is 3 GB")
+	}
+
+	f, err := fh.Open()
+	if err != nil {
+		return "", "", 0, fmt.Errorf("cannot open file: %w", err)
+	}
+	defer f.Close()
+
+	ext, mimeType, err := detectVideoType(f, fh.Filename)
+	if err != nil {
+		return "", "", 0, err
+	}
+
+	key := fmt.Sprintf("recordings/batch/%s/%s%s", batchShortID, randomHex(), ext)
+	if _, err := s.uploader.Upload(context.Background(), &s3.PutObjectInput{
+		Bucket:      aws.String(s.cfg.Bucket),
+		Key:         aws.String(key),
+		Body:        f,
+		ContentType: aws.String(mimeType),
+	}); err != nil {
+		return "", "", 0, fmt.Errorf("upload recording to storage: %w", err)
+	}
+
+	return strings.TrimRight(s.cfg.PublicURL, "/") + "/" + key, mimeType, fh.Size, nil
 }
 
 // detectImageType sniffs an image's MIME type from its first 512 bytes,

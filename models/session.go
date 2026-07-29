@@ -107,13 +107,20 @@ type SessionJoinInfo struct {
 	ZoomJoinURL     string `json:"zoom_join_url,omitempty"`
 }
 
-// RecordingListItem is one session's recording, as returned by the
-// batch-recordings endpoint.
+// RecordingListItem is one recording, as returned by the batch-recordings
+// endpoint. Source is "session" for a recording auto-attached to a live
+// Zoom session, or "upload" for a video an admin/mentor uploaded directly
+// via POST /batches/{short_id}/recordings/upload. SessionShortID is only
+// set for the former; RecordingShortID (the batch_recordings row) only for
+// the latter — use RecordingShortID with DELETE
+// /batches/{short_id}/recordings/{recording_short_id} to remove an upload.
 type RecordingListItem struct {
-	SessionShortID string `json:"session_short_id"`
-	Name           string `json:"name"`
-	SessionDate    string `json:"session_date"`
-	RecordingURL   string `json:"recording_url"`
+	SessionShortID   string `json:"session_short_id"`
+	RecordingShortID string `json:"recording_short_id,omitempty"`
+	Source           string `json:"source"`
+	Name             string `json:"name"`
+	SessionDate      string `json:"session_date"`
+	RecordingURL     string `json:"recording_url"`
 }
 
 // BatchRecordingsResponse is the student-facing view of a batch's session

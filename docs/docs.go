@@ -3947,14 +3947,14 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Student-facing view of every recorded session in a batch. If the caller is a student who hasn't been marked fees_paid, recordings is empty and message explains why — staff always see the full list, regardless of any student's payment status.",
+                "description": "Student-facing view of every recording in a batch — both session-linked recordings (auto-attached from Zoom) and videos uploaded directly via POST /batches/{short_id}/recordings/upload. If the caller is a student who hasn't been marked fees_paid, recordings is empty and message explains why — staff always see the full list, regardless of any student's payment status. Each item's source field is \"session\" or \"upload\".",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "sessions"
                 ],
-                "summary": "List a batch's session recordings",
+                "summary": "List a batch's recordings",
                 "parameters": [
                     {
                         "type": "string",
@@ -3969,6 +3969,136 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/models.BatchRecordingsResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/batches/{short_id}/recordings/upload": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Upload one or more recorded lecture videos directly to a batch — for recordings that didn't come from a live Zoom session (e.g. bulk-attaching an existing archive). Each file is stored in Cloudflare R2 and immediately visible to students who are enrolled and fees_paid in this batch via GET /batches/{short_id}/recordings — a student in a different batch can never see them. Attach multiple files under the same \"files\" form field in one request. Max 3 GB per file. Allowed types: MP4, MOV, AVI, WebM. Restricted to super_admin / team_lead / mentor (mentor must manage this batch).",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Upload batch recordings",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Batch short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "file",
+                        "description": "One or more video files",
+                        "name": "files",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.BatchRecording"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden — not your batch",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Upload failed",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/batches/{short_id}/recordings/{recording_short_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Soft-deletes an admin-uploaded batch recording. Does not affect session-linked recordings (those come from GET /sessions, not this table). Restricted to super_admin / team_lead / mentor managing this batch.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Delete a batch recording",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Batch short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Recording short ID",
+                        "name": "recording_short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Recording not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "500": {
@@ -12978,6 +13108,52 @@ const docTemplate = `{
                 }
             }
         },
+        "/submissions/coding-leaderboard": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Ranks students by distinct problems solved (accepted submissions), scoped to the caller's own college — super_admin sees the platform-wide ranking.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "submissions"
+                ],
+                "summary": "Coding practice leaderboard",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.LeaderboardEntry"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/submissions/me": {
             "get": {
                 "security": [
@@ -16786,6 +16962,50 @@ const docTemplate = `{
                 }
             }
         },
+        "models.BatchRecording": {
+            "type": "object",
+            "properties": {
+                "batch_id": {
+                    "type": "string"
+                },
+                "batch_number": {
+                    "type": "string"
+                },
+                "batch_short_id": {
+                    "type": "string"
+                },
+                "content_type": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "file_size": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "uploaded_by": {
+                    "type": "string"
+                },
+                "uploaded_by_name": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
         "models.BatchRecordingsResponse": {
             "type": "object",
             "properties": {
@@ -19498,6 +19718,36 @@ const docTemplate = `{
                 }
             }
         },
+        "models.LeaderboardEntry": {
+            "type": "object",
+            "properties": {
+                "accepted_submissions": {
+                    "type": "integer"
+                },
+                "college_id": {
+                    "description": "CollegeID is only meaningful to super_admin (unscoped view spans every\ncollege) — used client-side to render/filter by college, the same way\nthe Learners list does. Always empty for a college-scoped caller since\nevery row is already their own college.",
+                    "type": "string"
+                },
+                "last_solved_at": {
+                    "type": "string"
+                },
+                "rank": {
+                    "type": "integer"
+                },
+                "solved_count": {
+                    "type": "integer"
+                },
+                "student_id": {
+                    "type": "string"
+                },
+                "student_name": {
+                    "type": "string"
+                },
+                "total_submissions": {
+                    "type": "integer"
+                }
+            }
+        },
         "models.LeaveBalance": {
             "type": "object",
             "properties": {
@@ -20573,6 +20823,9 @@ const docTemplate = `{
                 "name": {
                     "type": "string"
                 },
+                "recording_short_id": {
+                    "type": "string"
+                },
                 "recording_url": {
                     "type": "string"
                 },
@@ -20580,6 +20833,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "session_short_id": {
+                    "type": "string"
+                },
+                "source": {
                     "type": "string"
                 }
             }

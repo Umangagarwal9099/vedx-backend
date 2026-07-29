@@ -25,6 +25,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	userRepo := repository.NewUserRepository(pool)
 	courseRepo := repository.NewCourseRepository(pool)
 	batchRepo := repository.NewBatchRepository(pool)
+	batchRecordingRepo := repository.NewBatchRecordingRepository(pool)
 	enrollmentRepo := repository.NewEnrollmentRepository(pool)
 	eventRepo := repository.NewEventRepository(pool)
 	announcementRepo := repository.NewAnnouncementRepository(pool)
@@ -92,7 +93,8 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	collegeCtrl := controller.NewCollegeController(collegeRepo, auditLogRepo)
 	communityPostCtrl := controller.NewCommunityPostController(communityPostRepo, communityRepo)
 	notificationCtrl := controller.NewNotificationController(notificationRepo)
-	sessionCtrl := controller.NewSessionController(sessionRepo, batchRepo, notificationRepo, userRepo, zoomSvc, emailSvc, cfg.App.PublicURL, cfg.App.Timezone, auditLogRepo, feedbackFormRepo)
+	sessionCtrl := controller.NewSessionController(sessionRepo, batchRepo, notificationRepo, userRepo, zoomSvc, emailSvc, cfg.App.PublicURL, cfg.App.Timezone, auditLogRepo, feedbackFormRepo, batchRecordingRepo)
+	batchRecordingCtrl := controller.NewBatchRecordingController(batchRecordingRepo, batchRepo, storageSvc, auditLogRepo)
 	zoomWebhookCtrl := controller.NewZoomWebhookController(zoomSvc, storageSvc, sessionRepo)
 	assignmentCtrl := controller.NewAssignmentController(assignmentRepo, batchRepo, notificationRepo, auditLogRepo)
 	resourceCtrl := controller.NewResourceController(resourceRepo, batchRepo, auditLogRepo)
@@ -315,6 +317,8 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				// Sessions — scoped to this batch
 				batches.GET("/:short_id/sessions", sessionCtrl.GetByBatch)
 				batches.GET("/:short_id/recordings", sessionCtrl.GetBatchRecordings)
+				batches.POST("/:short_id/recordings/upload", staffOrAbove, batchRecordingCtrl.Upload)
+				batches.DELETE("/:short_id/recordings/:recording_short_id", staffOrAbove, batchRecordingCtrl.Delete)
 
 				// Attendance rollup — every enrolled student's present/absent/late/
 				// excused counts and percentage across the batch's held sessions.

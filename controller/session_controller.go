@@ -17,30 +17,32 @@ import (
 )
 
 type SessionController struct {
-	sessionRepo      *repository.SessionRepository
-	batchRepo        *repository.BatchRepository
-	notificationRepo *repository.NotificationRepository
-	userRepo         *repository.UserRepository
-	zoomSvc          *service.ZoomService
-	emailSvc         *service.EmailService
-	publicBaseURL    string
-	timezone         string
-	auditLogRepo     *repository.AuditLogRepository
-	feedbackFormRepo *repository.FeedbackFormRepository
+	sessionRepo        *repository.SessionRepository
+	batchRepo          *repository.BatchRepository
+	notificationRepo   *repository.NotificationRepository
+	userRepo           *repository.UserRepository
+	zoomSvc            *service.ZoomService
+	emailSvc           *service.EmailService
+	publicBaseURL      string
+	timezone           string
+	auditLogRepo       *repository.AuditLogRepository
+	feedbackFormRepo   *repository.FeedbackFormRepository
+	batchRecordingRepo *repository.BatchRecordingRepository
 }
 
-func NewSessionController(repo *repository.SessionRepository, batchRepo *repository.BatchRepository, notificationRepo *repository.NotificationRepository, userRepo *repository.UserRepository, zoomSvc *service.ZoomService, emailSvc *service.EmailService, publicBaseURL, timezone string, auditLogRepo *repository.AuditLogRepository, feedbackFormRepo *repository.FeedbackFormRepository) *SessionController {
+func NewSessionController(repo *repository.SessionRepository, batchRepo *repository.BatchRepository, notificationRepo *repository.NotificationRepository, userRepo *repository.UserRepository, zoomSvc *service.ZoomService, emailSvc *service.EmailService, publicBaseURL, timezone string, auditLogRepo *repository.AuditLogRepository, feedbackFormRepo *repository.FeedbackFormRepository, batchRecordingRepo *repository.BatchRecordingRepository) *SessionController {
 	return &SessionController{
-		sessionRepo:      repo,
-		batchRepo:        batchRepo,
-		notificationRepo: notificationRepo,
-		userRepo:         userRepo,
-		zoomSvc:          zoomSvc,
-		emailSvc:         emailSvc,
-		publicBaseURL:    publicBaseURL,
-		timezone:         timezone,
-		auditLogRepo:     auditLogRepo,
-		feedbackFormRepo: feedbackFormRepo,
+		sessionRepo:        repo,
+		batchRepo:          batchRepo,
+		notificationRepo:   notificationRepo,
+		userRepo:           userRepo,
+		zoomSvc:            zoomSvc,
+		emailSvc:           emailSvc,
+		publicBaseURL:      publicBaseURL,
+		timezone:           timezone,
+		auditLogRepo:       auditLogRepo,
+		feedbackFormRepo:   feedbackFormRepo,
+		batchRecordingRepo: batchRecordingRepo,
 	}
 }
 
@@ -400,8 +402,8 @@ func (ctrl *SessionController) GetByBatch(c *gin.Context) {
 
 // GetBatchRecordings godoc
 //
-//	@Summary		List a batch's session recordings
-//	@Description	Student-facing view of every recorded session in a batch. If the caller is a student who hasn't been marked fees_paid, recordings is empty and message explains why — staff always see the full list, regardless of any student's payment status.
+//	@Summary		List a batch's recordings
+//	@Description	Student-facing view of every recording in a batch — both session-linked recordings (auto-attached from Zoom) and videos uploaded directly via POST /batches/{short_id}/recordings/upload. If the caller is a student who hasn't been marked fees_paid, recordings is empty and message explains why — staff always see the full list, regardless of any student's payment status. Each item's source field is "session" or "upload".
 //	@Tags			sessions
 //	@Produce		json
 //	@Param			short_id	path		string	true	"Batch short ID"
@@ -455,9 +457,28 @@ func (ctrl *SessionController) GetBatchRecordings(c *gin.Context) {
 		}
 		recordings = append(recordings, models.RecordingListItem{
 			SessionShortID: s.ShortID,
+			Source:         "session",
 			Name:           s.Name,
 			SessionDate:    s.SessionDate,
 			RecordingURL:   s.RecordingURL,
+		})
+	}
+
+	// Videos uploaded directly to this batch (not tied to any live session) —
+	// same batch/fee gate already enforced above, so every row here is fair
+	// game for the caller regardless of role.
+	uploaded, err := ctrl.batchRecordingRepo.FindByBatchShortID(c.Request.Context(), batchShortID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch uploaded recordings"})
+		return
+	}
+	for _, u := range uploaded {
+		recordings = append(recordings, models.RecordingListItem{
+			RecordingShortID: u.ShortID,
+			Source:           "upload",
+			Name:             u.Title,
+			SessionDate:      u.CreatedAt.Format("2006-01-02"),
+			RecordingURL:     u.URL,
 		})
 	}
 
