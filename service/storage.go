@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -79,9 +80,10 @@ var allowedVideoMIME = map[string]string{
 // buckets this app used on Supabase Storage, so existing public URLs only
 // need their host swapped, not their path.
 type StorageService struct {
-	cfg      config.StorageConfig
-	client   *s3.Client
-	uploader *manager.Uploader
+	cfg           config.StorageConfig
+	client        *s3.Client
+	uploader      *manager.Uploader
+	presignClient *s3.PresignClient
 }
 
 func NewStorageService(cfg config.StorageConfig) *StorageService {
@@ -90,7 +92,7 @@ func NewStorageService(cfg config.StorageConfig) *StorageService {
 		BaseEndpoint: aws.String(fmt.Sprintf("https://%s.r2.cloudflarestorage.com", cfg.AccountID)),
 		Credentials:  credentials.NewStaticCredentialsProvider(cfg.AccessKeyID, cfg.SecretAccessKey, ""),
 	})
-	return &StorageService{cfg: cfg, client: client, uploader: manager.NewUploader(client)}
+	return &StorageService{cfg: cfg, client: client, uploader: manager.NewUploader(client), presignClient: s3.NewPresignClient(client)}
 }
 
 // UploadRecording streams a session recording into "recordings/<key>".
@@ -167,6 +169,50 @@ func (s *StorageService) UploadBatchRecording(fh *multipart.FileHeader, batchSho
 	}
 
 	return strings.TrimRight(s.cfg.PublicURL, "/") + "/" + key, mimeType, fh.Size, nil
+}
+
+// PresignBatchRecordingUpload validates contentType (falling back to
+// filename's extension) against allowedVideoMIME and returns a short-lived
+// URL the client PUTs the raw video bytes to directly against R2, bypassing
+// our API server entirely — this is what lets an upload skip whatever
+// request-size cap sits in front of the server (e.g. Cloud Run's ~32MB GFE
+// limit), since the bytes never pass through it. key follows the same
+// "recordings/batch/<batchShortID>/<random>.<ext>" scheme UploadBatchRecording
+// uses, so BatchRecordingController.Complete can hand it straight to
+// recordingRepo.Create once the client confirms the PUT succeeded.
+func (s *StorageService) PresignBatchRecordingUpload(ctx context.Context, batchShortID, filename, contentType string) (uploadURL, key, publicURL string, err error) {
+	ext, ok := allowedVideoMIME[contentType]
+	if !ok {
+		origExt := strings.ToLower(filepath.Ext(filename))
+		for mime, e := range allowedVideoMIME {
+			if e == origExt {
+				ext, contentType, ok = e, mime, true
+				break
+			}
+		}
+	}
+	if !ok {
+		return "", "", "", fmt.Errorf("unsupported file type: only MP4, MOV, AVI and WebM videos are allowed")
+	}
+
+	key = fmt.Sprintf("recordings/batch/%s/%s%s", batchShortID, randomHex(), ext)
+
+	req, err := s.presignClient.PresignPutObject(ctx, &s3.PutObjectInput{
+		Bucket:      aws.String(s.cfg.Bucket),
+		Key:         aws.String(key),
+		ContentType: aws.String(contentType),
+	}, s3.WithPresignExpires(15*time.Minute))
+	if err != nil {
+		return "", "", "", fmt.Errorf("create presigned upload url: %w", err)
+	}
+
+	return req.URL, key, s.PublicURLForKey(key), nil
+}
+
+// PublicURLForKey returns the public R2 URL for an object key that's
+// already been uploaded (e.g. via a presigned PUT).
+func (s *StorageService) PublicURLForKey(key string) string {
+	return strings.TrimRight(s.cfg.PublicURL, "/") + "/" + key
 }
 
 // detectImageType sniffs an image's MIME type from its first 512 bytes,

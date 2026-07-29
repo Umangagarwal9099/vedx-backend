@@ -85,6 +85,109 @@ func (ctrl *BatchRecordingController) Upload(c *gin.Context) {
 	c.JSON(http.StatusCreated, created)
 }
 
+type presignRecordingRequest struct {
+	Filename    string `json:"filename" binding:"required"`
+	ContentType string `json:"content_type" binding:"required"`
+}
+
+// Presign godoc
+//
+//	@Summary		Get a presigned URL to upload a batch recording directly to storage
+//	@Description	Returns a short-lived URL the client PUTs the raw video bytes to directly against Cloudflare R2 storage, bypassing this API server entirely (avoids the request-size cap enforced in front of it). Send the raw file bytes in the PUT body with the same Content-Type used here — no multipart wrapper. Call POST .../recordings/complete afterwards to persist the recording. Restricted to super_admin / team_lead / mentor (mentor must manage this batch).
+//	@Tags			sessions
+//	@Accept			json
+//	@Produce		json
+//	@Param			short_id	path		string					true	"Batch short ID"
+//	@Param			body		body		presignRecordingRequest	true	"Filename and content type of the video to upload"
+//	@Success		200			{object}	map[string]string	"upload_url, key, public_url"
+//	@Failure		400			{object}	map[string]string	"Validation error"
+//	@Failure		403			{object}	map[string]string	"Forbidden — not your batch"
+//	@Failure		500			{object}	map[string]string	"Could not create upload URL"
+//	@Security		BearerAuth
+//	@Router			/batches/{short_id}/recordings/presign [post]
+func (ctrl *BatchRecordingController) Presign(c *gin.Context) {
+	batchShortID := c.Param("short_id")
+	if !checkBatchAccess(c, ctrl.batchRepo, batchShortID) {
+		return
+	}
+
+	var req presignRecordingRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "filename and content_type are required"})
+		return
+	}
+
+	uploadURL, key, publicURL, err := ctrl.storage.PresignBatchRecordingUpload(c.Request.Context(), batchShortID, req.Filename, req.ContentType)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"upload_url": uploadURL, "key": key, "public_url": publicURL})
+}
+
+type completeRecordingRequest struct {
+	Key         string `json:"key" binding:"required"`
+	Title       string `json:"title"`
+	ContentType string `json:"content_type"`
+	FileSize    int64  `json:"file_size"`
+}
+
+// Complete godoc
+//
+//	@Summary		Record a batch recording uploaded via a presigned URL
+//	@Description	Call after the client finishes PUTting the file to the URL returned by POST .../recordings/presign. Persists the batch_recordings row so the video shows up in GET /batches/{short_id}/recordings. Restricted to super_admin / team_lead / mentor (mentor must manage this batch).
+//	@Tags			sessions
+//	@Accept			json
+//	@Produce		json
+//	@Param			short_id	path		string						true	"Batch short ID"
+//	@Param			body		body		completeRecordingRequest	true	"Key returned by the presign call, plus metadata"
+//	@Success		201			{object}	models.BatchRecording
+//	@Failure		400			{object}	map[string]string	"Validation error"
+//	@Failure		403			{object}	map[string]string	"Forbidden — not your batch"
+//	@Failure		500			{object}	map[string]string	"Could not save recording"
+//	@Security		BearerAuth
+//	@Router			/batches/{short_id}/recordings/complete [post]
+func (ctrl *BatchRecordingController) Complete(c *gin.Context) {
+	batchShortID := c.Param("short_id")
+	if !checkBatchAccess(c, ctrl.batchRepo, batchShortID) {
+		return
+	}
+
+	var req completeRecordingRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "key is required — use the value returned by the presign call"})
+		return
+	}
+
+	prefix := fmt.Sprintf("recordings/batch/%s/", batchShortID)
+	if !strings.HasPrefix(req.Key, prefix) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "key does not belong to this batch"})
+		return
+	}
+
+	title := req.Title
+	if title == "" {
+		title = strings.TrimSuffix(filepath.Base(req.Key), filepath.Ext(req.Key))
+	}
+
+	uploadedBy := c.GetString("user_id")
+	url := ctrl.storage.PublicURLForKey(req.Key)
+	rec, err := ctrl.recordingRepo.Create(c.Request.Context(), batchShortID, title, url, req.FileSize, req.ContentType, uploadedBy)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not save recording: " + err.Error()})
+		return
+	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "create", EntityType: "batch_recording",
+		EntityID: rec.ID, EntityShortID: rec.ShortID, EntityLabel: rec.Title,
+		BatchShortID: batchShortID,
+	})
+
+	c.JSON(http.StatusCreated, rec)
+}
+
 // Delete godoc
 //
 //	@Summary		Delete a batch recording

@@ -298,6 +298,29 @@ definitions:
     - email
     - otp
     type: object
+  controller.completeRecordingRequest:
+    properties:
+      content_type:
+        type: string
+      file_size:
+        type: integer
+      key:
+        type: string
+      title:
+        type: string
+    required:
+    - key
+    type: object
+  controller.presignRecordingRequest:
+    properties:
+      content_type:
+        type: string
+      filename:
+        type: string
+    required:
+    - content_type
+    - filename
+    type: object
   models.AddBatchStudentsInput:
     properties:
       student_ids:
@@ -7908,6 +7931,110 @@ paths:
       security:
       - BearerAuth: []
       summary: Delete a batch recording
+      tags:
+      - sessions
+  /batches/{short_id}/recordings/complete:
+    post:
+      consumes:
+      - application/json
+      description: Call after the client finishes PUTting the file to the URL returned
+        by POST .../recordings/presign. Persists the batch_recordings row so the video
+        shows up in GET /batches/{short_id}/recordings. Restricted to super_admin
+        / team_lead / mentor (mentor must manage this batch).
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Key returned by the presign call, plus metadata
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/controller.completeRecordingRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.BatchRecording'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden — not your batch
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Could not save recording
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Record a batch recording uploaded via a presigned URL
+      tags:
+      - sessions
+  /batches/{short_id}/recordings/presign:
+    post:
+      consumes:
+      - application/json
+      description: Returns a short-lived URL the client PUTs the raw video bytes to
+        directly against Cloudflare R2 storage, bypassing this API server entirely
+        (avoids the request-size cap enforced in front of it). Send the raw file bytes
+        in the PUT body with the same Content-Type used here — no multipart wrapper.
+        Call POST .../recordings/complete afterwards to persist the recording. Restricted
+        to super_admin / team_lead / mentor (mentor must manage this batch).
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Filename and content type of the video to upload
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/controller.presignRecordingRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: upload_url, key, public_url
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden — not your batch
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Could not create upload URL
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a presigned URL to upload a batch recording directly to storage
       tags:
       - sessions
   /batches/{short_id}/recordings/upload:

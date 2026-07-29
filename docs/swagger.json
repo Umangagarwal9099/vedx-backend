@@ -3981,6 +3981,155 @@
                 }
             }
         },
+        "/batches/{short_id}/recordings/complete": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Call after the client finishes PUTting the file to the URL returned by POST .../recordings/presign. Persists the batch_recordings row so the video shows up in GET /batches/{short_id}/recordings. Restricted to super_admin / team_lead / mentor (mentor must manage this batch).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Record a batch recording uploaded via a presigned URL",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Batch short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Key returned by the presign call, plus metadata",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/controller.completeRecordingRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.BatchRecording"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden — not your batch",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Could not save recording",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/batches/{short_id}/recordings/presign": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns a short-lived URL the client PUTs the raw video bytes to directly against Cloudflare R2 storage, bypassing this API server entirely (avoids the request-size cap enforced in front of it). Send the raw file bytes in the PUT body with the same Content-Type used here — no multipart wrapper. Call POST .../recordings/complete afterwards to persist the recording. Restricted to super_admin / team_lead / mentor (mentor must manage this batch).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Get a presigned URL to upload a batch recording directly to storage",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Batch short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Filename and content type of the video to upload",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/controller.presignRecordingRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "upload_url, key, public_url",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden — not your batch",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Could not create upload URL",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/batches/{short_id}/recordings/upload": {
             "post": {
                 "security": [
@@ -16019,6 +16168,41 @@
                 "otp": {
                     "type": "string",
                     "example": "042913"
+                }
+            }
+        },
+        "controller.completeRecordingRequest": {
+            "type": "object",
+            "required": [
+                "key"
+            ],
+            "properties": {
+                "content_type": {
+                    "type": "string"
+                },
+                "file_size": {
+                    "type": "integer"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "controller.presignRecordingRequest": {
+            "type": "object",
+            "required": [
+                "content_type",
+                "filename"
+            ],
+            "properties": {
+                "content_type": {
+                    "type": "string"
+                },
+                "filename": {
+                    "type": "string"
                 }
             }
         },
