@@ -49,3 +49,8 @@ gcloud run deploy vedx-backend --source . --region asia-southeast1 --project ved
 gcloud run services describe vedx-backend --region=asia-southeast1 --format="value(status.latestReadyRevisionName,status.traffic)"  --- check whether the deployment was success or failed 
 
 gcloud run revisions list --service=vedx-backend --region=asia-southeast1 --limit=3 --- Confirm the deploy timestamp is recent
+
+
+go run ./cmd/importbatchrecordings -batch B2D26722 -email umangagarwal9099@gmail.com -dry-run   ( check videos )
+
+go run ./cmd/importbatchrecordings -batch B2D26722 -email umangagarwal9099@gmail.com  ( upload to db )

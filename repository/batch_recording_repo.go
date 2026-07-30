@@ -100,28 +100,3 @@ func (r *BatchRecordingRepository) FindByBatchShortID(ctx context.Context, batch
 	return out, rows.Err()
 }
 
-// FindByShortID returns a single non-deleted uploaded recording.
-func (r *BatchRecordingRepository) FindByShortID(ctx context.Context, shortID string) (*models.BatchRecording, error) {
-	q := fmt.Sprintf(`%s WHERE r.short_id = $1 AND r.deleted_at IS NULL`, batchRecordingBaseSelect)
-	rec, err := scanBatchRecording(r.pool.QueryRow(ctx, q, shortID))
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
-	}
-	return &rec, err
-}
-
-// Delete soft-deletes an uploaded recording. Does not remove the underlying
-// R2 object — this only hides it from API responses, matching the
-// soft-delete convention used elsewhere in this codebase (e.g. resources).
-func (r *BatchRecordingRepository) Delete(ctx context.Context, shortID string) error {
-	result, err := r.pool.Exec(ctx,
-		`UPDATE batch_recordings SET deleted_at = NOW() WHERE short_id = $1 AND deleted_at IS NULL`, shortID,
-	)
-	if err != nil {
-		return err
-	}
-	if result.RowsAffected() == 0 {
-		return pgx.ErrNoRows
-	}
-	return nil
-}
