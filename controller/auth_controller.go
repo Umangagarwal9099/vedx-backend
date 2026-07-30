@@ -9,12 +9,30 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/umangagarwal/vedx-backend/auth"
+	"github.com/umangagarwal/vedx-backend/middleware"
 	"github.com/umangagarwal/vedx-backend/models"
 	"github.com/umangagarwal/vedx-backend/repository"
 	"github.com/umangagarwal/vedx-backend/service"
 	"github.com/umangagarwal/vedx-backend/util"
 	"golang.org/x/crypto/bcrypt"
 )
+
+// streamCookieMaxAge matches the 24h expiry auth.GenerateToken hardcodes for
+// the JWT itself, so the cookie and the token it carries expire together.
+const streamCookieMaxAge = 24 * 60 * 60
+
+// setStreamCookie issues the httpOnly cookie that authenticates video
+// recording streaming (see middleware.JWTAuthCookieOrHeader) — a second
+// delivery of the same JWT, since <video src> can't send a custom
+// Authorization header the way normal API calls do. SameSite=None+Secure is
+// required for it to work when the frontend is on a different origin than
+// this API, which also means it requires HTTPS — it simply won't be set over
+// plain HTTP in local dev, leaving the rest of the app (which uses the
+// Bearer token) unaffected.
+func setStreamCookie(c *gin.Context, token string) {
+	c.SetSameSite(http.SameSiteNoneMode)
+	c.SetCookie(middleware.StreamCookieName, token, streamCookieMaxAge, "/", "", true, true)
+}
 
 // otpExpiry is how long a forgot-password or login OTP stays valid after being issued.
 const otpExpiry = 5 * time.Minute
@@ -189,6 +207,7 @@ func (ctrl *AuthController) VerifyLoginOTP(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not generate token"})
 		return
 	}
+	setStreamCookie(c, token)
 
 	// Best-effort device/login tracking — never blocks or fails the login itself.
 	if deviceID := c.GetHeader("X-Device-Id"); deviceID != "" && ctrl.loginActivityRepo != nil {
@@ -205,6 +224,20 @@ func (ctrl *AuthController) VerifyLoginOTP(c *gin.Context) {
 		FirstName: user.FirstName,
 		LastName:  user.LastName,
 	})
+}
+
+// Logout godoc
+//
+//	@Summary		Logout
+//	@Description	Clears the httpOnly video-streaming session cookie set at login. The Bearer token itself is stateless and just discarded client-side as before — this only covers the cookie, which client-side JS can't clear on its own.
+//	@Tags			auth
+//	@Produce		json
+//	@Success		200	{object}	map[string]string
+//	@Router			/auth/logout [post]
+func (ctrl *AuthController) Logout(c *gin.Context) {
+	c.SetSameSite(http.SameSiteNoneMode)
+	c.SetCookie(middleware.StreamCookieName, "", -1, "/", "", true, true)
+	c.JSON(http.StatusOK, gin.H{"message": "logged out"})
 }
 
 // ── Register ──────────────────────────────────────────────────────────────────

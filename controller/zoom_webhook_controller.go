@@ -142,9 +142,13 @@ func (ctrl *ZoomWebhookController) HandleWebhook(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "received"})
 }
 
-// processRecording downloads a completed Zoom cloud recording and re-uploads
-// it to our own storage, then points the session's recording_url at it
-// instead of Zoom's share link.
+// processRecording downloads a completed Zoom cloud recording, burns a
+// watermark into it, and re-uploads the result to our own storage, then
+// points the session's recording_url at it instead of Zoom's share link.
+// Watermarking happens here rather than relying on Zoom's own recording
+// watermark feature because that only renders inside Zoom's own web player —
+// once we re-host the raw file and play it back in our own frontend player,
+// Zoom's overlay never applies.
 func (ctrl *ZoomWebhookController) processRecording(meetingID int64, file zoomRecordingFile, downloadToken string) {
 	body, contentType, err := ctrl.zoomSvc.DownloadRecording(file.DownloadURL, downloadToken)
 	if err != nil {
@@ -153,8 +157,15 @@ func (ctrl *ZoomWebhookController) processRecording(meetingID int64, file zoomRe
 	}
 	defer body.Close()
 
+	watermarked, err := service.WatermarkRecording(context.Background(), body, service.DefaultWatermarkText)
+	if err != nil {
+		log.Printf("zoom webhook: watermark recording for meeting %d: %v", meetingID, err)
+		return
+	}
+	defer watermarked.Close()
+
 	key := fmt.Sprintf("%d/%s.mp4", meetingID, file.ID)
-	url, err := ctrl.storageSvc.UploadRecording(context.Background(), body, key, contentType)
+	url, err := ctrl.storageSvc.UploadRecording(context.Background(), watermarked, key, contentType)
 	if err != nil {
 		log.Printf("zoom webhook: upload recording for meeting %d: %v", meetingID, err)
 		return

@@ -33,6 +33,46 @@ func JWTAuth(jwtSecret string) gin.HandlerFunc {
 	}
 }
 
+// StreamCookieName is the httpOnly session cookie set at login, used only to
+// authenticate requests a browser makes without a custom Authorization
+// header — namely <video src> for recording streaming. It carries the same
+// JWT as the Bearer token; it's just delivered a second way for the one kind
+// of request that can't attach a header.
+const StreamCookieName = "vedx_stream_session"
+
+// JWTAuthCookieOrHeader validates either the Bearer token in the
+// Authorization header (same as JWTAuth) or, when that's absent, the
+// StreamCookieName cookie. Reserved for routes a <video> element hits
+// directly — every other route keeps using JWTAuth, so the cookie's blast
+// radius stays limited to streaming instead of becoming a second, parallel
+// auth path for the whole API.
+func JWTAuthCookieOrHeader(jwtSecret string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		tokenStr := ""
+		if header := c.GetHeader("Authorization"); strings.HasPrefix(header, "Bearer ") {
+			tokenStr = strings.TrimPrefix(header, "Bearer ")
+		} else if cookie, err := c.Cookie(StreamCookieName); err == nil {
+			tokenStr = cookie
+		}
+		if tokenStr == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing or invalid authorization"})
+			return
+		}
+
+		claims, err := auth.ValidateToken(tokenStr, jwtSecret)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
+			return
+		}
+
+		c.Set("user_id", claims.UserID)
+		c.Set("email", claims.Email)
+		c.Set("role", claims.Role)
+		c.Set("college_id", claims.CollegeID)
+		c.Next()
+	}
+}
+
 // RequireRole restricts a route to users whose role is in the allowed list.
 // Must be placed after JWTAuth in the middleware chain.
 //

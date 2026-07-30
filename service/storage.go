@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -69,10 +68,9 @@ const maxMaterialSize = 500 << 20 // 500 MB
 // buckets this app used on Supabase Storage, so existing public URLs only
 // need their host swapped, not their path.
 type StorageService struct {
-	cfg           config.StorageConfig
-	client        *s3.Client
-	uploader      *manager.Uploader
-	presignClient *s3.PresignClient
+	cfg      config.StorageConfig
+	client   *s3.Client
+	uploader *manager.Uploader
 }
 
 func NewStorageService(cfg config.StorageConfig) *StorageService {
@@ -81,7 +79,7 @@ func NewStorageService(cfg config.StorageConfig) *StorageService {
 		BaseEndpoint: aws.String(fmt.Sprintf("https://%s.r2.cloudflarestorage.com", cfg.AccountID)),
 		Credentials:  credentials.NewStaticCredentialsProvider(cfg.AccessKeyID, cfg.SecretAccessKey, ""),
 	})
-	return &StorageService{cfg: cfg, client: client, uploader: manager.NewUploader(client), presignClient: s3.NewPresignClient(client)}
+	return &StorageService{cfg: cfg, client: client, uploader: manager.NewUploader(client)}
 }
 
 // UploadRecording streams a session recording into "recordings/<key>".
@@ -108,27 +106,55 @@ func (s *StorageService) PublicURLForKey(key string) string {
 	return strings.TrimRight(s.cfg.PublicURL, "/") + "/" + key
 }
 
-// PresignRecordingURL exchanges a stored recording URL (the permanent
-// pub-*.r2.dev link saved on Session/BatchRecording rows) for a fresh,
-// time-limited signed URL good for ttl. Recordings are paid content gated by
-// fees_paid/visibility checks upstream, but the stored URL itself is a
-// public, unauthenticated, non-expiring link — anyone who captures one (e.g.
-// from the browser's Network tab) could otherwise open or download it
-// forever, bypassing those checks entirely. Signing it here means a copied
-// link stops working once ttl elapses instead of staying valid forever.
-func (s *StorageService) PresignRecordingURL(ctx context.Context, storedURL string, ttl time.Duration) (string, error) {
+// RecordingObjectStream is one GetObject read of a recording, proxied
+// through this server rather than handed to the browser as a direct or
+// presigned R2 URL — R2 itself is never reachable from the browser on this
+// path. ContentRange/Partial are only set when a Range header was forwarded
+// and R2 honored it, so the controller can mirror a 206 back to the client
+// the same way R2 would have — that's what lets browser seeking/scrubbing
+// keep working.
+type RecordingObjectStream struct {
+	Body          io.ReadCloser
+	ContentType   string
+	ContentLength int64
+	ContentRange  string
+	Partial       bool
+}
+
+// OpenRecordingStream opens a stored recording for proxied reading,
+// forwarding rangeHeader (the client's Range request header, if any)
+// straight through to R2. Callers must Close() the returned Body.
+func (s *StorageService) OpenRecordingStream(ctx context.Context, storedURL, rangeHeader string) (*RecordingObjectStream, error) {
 	key := s.recordingKeyFromURL(storedURL)
 	if key == "" {
-		return "", fmt.Errorf("cannot determine object key from recording url %q", storedURL)
+		return nil, fmt.Errorf("cannot determine object key from recording url %q", storedURL)
 	}
-	req, err := s.presignClient.PresignGetObject(ctx, &s3.GetObjectInput{
+
+	input := &s3.GetObjectInput{
 		Bucket: aws.String(s.cfg.Bucket),
 		Key:    aws.String(key),
-	}, s3.WithPresignExpires(ttl))
-	if err != nil {
-		return "", fmt.Errorf("presign recording url: %w", err)
 	}
-	return req.URL, nil
+	if rangeHeader != "" {
+		input.Range = aws.String(rangeHeader)
+	}
+
+	out, err := s.client.GetObject(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("get recording object: %w", err)
+	}
+
+	stream := &RecordingObjectStream{
+		Body:        out.Body,
+		ContentType: aws.ToString(out.ContentType),
+	}
+	if out.ContentLength != nil {
+		stream.ContentLength = *out.ContentLength
+	}
+	if out.ContentRange != nil {
+		stream.ContentRange = *out.ContentRange
+		stream.Partial = true
+	}
+	return stream, nil
 }
 
 // recordingKeyFromURL strips the configured public URL prefix off a stored

@@ -144,6 +144,7 @@ type zoomMeetingSettings struct {
 	JoinBeforeHost bool   `json:"join_before_host"`
 	WaitingRoom    bool   `json:"waiting_room"`
 	AutoRecording  string `json:"auto_recording"` // "cloud" starts recording the moment the host starts the meeting, no manual click needed
+	Watermark      bool   `json:"watermark"`      // overlays each viewer's name/email translucently over shared screen content, live — Zoom's own anti-leak deterrent, rendered by the Zoom client itself
 }
 
 type zoomMeetingRequest struct {
@@ -175,6 +176,7 @@ func (z *ZoomService) CreateMeeting(topic string, start time.Time, durationMin i
 			JoinBeforeHost: false,
 			WaitingRoom:    false,
 			AutoRecording:  "cloud",
+			Watermark:      true,
 		},
 	}
 
@@ -197,6 +199,7 @@ func (z *ZoomService) UpdateMeeting(meetingID int64, topic string, start time.Ti
 			JoinBeforeHost: false,
 			WaitingRoom:    false,
 			AutoRecording:  "cloud",
+			Watermark:      true,
 		},
 	}
 	if err := z.do(http.MethodPatch, fmt.Sprintf("%s/meetings/%d", zoomAPIBase, meetingID), req, nil); err != nil {

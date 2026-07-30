@@ -79,6 +79,20 @@ func (r *BatchRecordingRepository) Create(ctx context.Context, batchShortID, tit
 	return nil, fmt.Errorf("could not generate a unique short ID after 3 attempts")
 }
 
+// FindByShortID returns one uploaded recording by its own short_id, or nil
+// if it doesn't exist / has been deleted.
+func (r *BatchRecordingRepository) FindByShortID(ctx context.Context, shortID string) (*models.BatchRecording, error) {
+	q := fmt.Sprintf(`%s WHERE r.short_id = $1 AND r.deleted_at IS NULL`, batchRecordingBaseSelect)
+	rec, err := scanBatchRecording(r.pool.QueryRow(ctx, q, shortID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &rec, nil
+}
+
 // FindByBatchShortID returns every non-deleted uploaded recording for a
 // batch, newest first.
 func (r *BatchRecordingRepository) FindByBatchShortID(ctx context.Context, batchShortID string) ([]models.BatchRecording, error) {

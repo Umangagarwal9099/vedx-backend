@@ -71,6 +71,13 @@ type AppConfig struct {
 	Port      string
 	PublicURL string
 	Timezone  string
+	// AllowedOrigins are the exact frontend origins allowed to make
+	// credentialed (cookie-carrying) requests — needed for the httpOnly
+	// session cookie that authenticates video-recording streaming, since
+	// browsers reject Access-Control-Allow-Origin: "*" for credentialed
+	// fetches. Always includes PublicURL; CORS_ALLOWED_ORIGINS adds more
+	// (comma-separated), e.g. for a local dev frontend origin.
+	AllowedOrigins []string
 }
 
 type DatabaseConfig struct {
@@ -126,12 +133,26 @@ func Load() (*Config, error) {
 		return i
 	}
 
+	appPublicURL := get("APP_PUBLIC_URL", "")
+	allowedOrigins := []string{}
+	if appPublicURL != "" {
+		allowedOrigins = append(allowedOrigins, strings.TrimRight(appPublicURL, "/"))
+	}
+	if v := os.Getenv("CORS_ALLOWED_ORIGINS"); v != "" {
+		for _, o := range strings.Split(v, ",") {
+			if o = strings.TrimRight(strings.TrimSpace(o), "/"); o != "" {
+				allowedOrigins = append(allowedOrigins, o)
+			}
+		}
+	}
+
 	cfg := &Config{
 		App: AppConfig{
-			Env:       get("APP_ENV", "development"),
-			Port:      get("PORT", get("APP_PORT", "8080")), // PORT is set automatically by Render
-			PublicURL: get("APP_PUBLIC_URL", ""),            // base URL used to build session share links, e.g. https://app.example.com
-			Timezone:  get("APP_TIMEZONE", "Asia/Kolkata"),  // used when scheduling Zoom meetings
+			Env:            get("APP_ENV", "development"),
+			Port:           get("PORT", get("APP_PORT", "8080")), // PORT is set automatically by Render
+			PublicURL:      appPublicURL,                         // base URL used to build session share links, e.g. https://app.example.com
+			Timezone:       get("APP_TIMEZONE", "Asia/Kolkata"),  // used when scheduling Zoom meetings
+			AllowedOrigins: allowedOrigins,
 		},
 		Database: DatabaseConfig{
 			Host:     require("DB_HOST"),

@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -48,28 +47,6 @@ func NewSessionController(repo *repository.SessionRepository, batchRepo *reposit
 	}
 }
 
-// recordingURLTTL bounds how long a signed recording URL stays valid once
-// handed to a client. Long enough to watch a full class recording start to
-// finish without the link expiring mid-playback; short enough that a URL
-// copied out of the browser's Network tab (or shared outside the app) stops
-// working well before it could be reused later.
-const recordingURLTTL = 6 * time.Hour
-
-// presignRecording exchanges a stored recording URL for a fresh, short-lived
-// signed one. Returns "" (and logs) on failure so a signing hiccup degrades
-// to "recording temporarily unavailable" rather than 500ing the whole
-// response.
-func (ctrl *SessionController) presignRecording(ctx context.Context, storedURL string) string {
-	if storedURL == "" {
-		return ""
-	}
-	signed, err := ctrl.storageSvc.PresignRecordingURL(ctx, storedURL, recordingURLTTL)
-	if err != nil {
-		log.Printf("presign recording url: %v", err)
-		return ""
-	}
-	return signed
-}
 
 // GetFeedbackStatus godoc
 //
@@ -128,15 +105,16 @@ func sanitizeForRole(s *models.Session, role string) *models.Session {
 // stripRecordingIfUnpaid removes RecordingURL for students unless they've been
 // marked fees_paid for the session's batch. Live-class access (ZoomJoinURL) is
 // never touched here — only recordings are fee-gated. Staff roles always see it.
-// Whatever URL survives the fee check is then swapped for a short-lived signed
-// one via presignRecording, so what actually reaches the client is never the
-// permanent public R2 link.
-func (ctrl *SessionController) stripRecordingIfUnpaid(ctx context.Context, s *models.Session, role, userID string) *models.Session {
+// Whatever URL survives the fee check is then replaced with this server's own
+// streaming endpoint (see StreamSessionRecording) rather than the stored R2
+// URL — the browser never learns where the file actually lives, and the
+// streaming endpoint re-checks auth itself via the httpOnly session cookie.
+func (ctrl *SessionController) stripRecordingIfUnpaid(c *gin.Context, s *models.Session, role, userID string) *models.Session {
 	if s == nil || s.RecordingURL == "" {
 		return s
 	}
 	if role == string(models.RoleStudent) {
-		paid, err := ctrl.batchRepo.IsFeesPaid(ctx, s.BatchID, userID)
+		paid, err := ctrl.batchRepo.IsFeesPaid(c.Request.Context(), s.BatchID, userID)
 		if err != nil {
 			log.Printf("check fees paid for session %s: %v", s.ShortID, err)
 		}
@@ -145,8 +123,39 @@ func (ctrl *SessionController) stripRecordingIfUnpaid(ctx context.Context, s *mo
 			return s
 		}
 	}
-	s.RecordingURL = ctrl.presignRecording(ctx, s.RecordingURL)
+	s.RecordingURL = ctrl.sessionRecordingStreamURL(c, s.ShortID)
 	return s
+}
+
+// apiBaseURL reconstructs this server's own public origin from the incoming
+// request, so streaming URLs handed to the client are always correct without
+// needing a separate "what's my own public URL" config value. Cloud Run/
+// Render both terminate TLS upstream and forward the original scheme via
+// X-Forwarded-Proto, so that's checked first.
+func apiBaseURL(c *gin.Context) string {
+	scheme := c.GetHeader("X-Forwarded-Proto")
+	if scheme == "" {
+		if c.Request.TLS != nil {
+			scheme = "https"
+		} else {
+			scheme = "http"
+		}
+	}
+	return scheme + "://" + c.Request.Host
+}
+
+// sessionRecordingStreamURL builds the URL a <video> element should point at
+// for a session-linked recording — this server's own proxy endpoint, never a
+// direct or presigned R2 link.
+func (ctrl *SessionController) sessionRecordingStreamURL(c *gin.Context, sessionShortID string) string {
+	return apiBaseURL(c) + "/api/v1/stream/sessions/" + sessionShortID
+}
+
+// batchRecordingStreamURL is the same as sessionRecordingStreamURL, but for
+// a video uploaded/migrated directly to a batch rather than tied to a
+// session.
+func (ctrl *SessionController) batchRecordingStreamURL(c *gin.Context, recordingShortID string) string {
+	return apiBaseURL(c) + "/api/v1/stream/batch-recordings/" + recordingShortID
 }
 
 // sessionStartTime combines a session's date ("2025-09-15") and start time ("10:00")
@@ -389,7 +398,7 @@ func (ctrl *SessionController) GetAll(c *gin.Context) {
 	for i := range sessions {
 		ctrl.withShareLink(&sessions[i])
 		sanitizeForRole(&sessions[i], role)
-		ctrl.stripRecordingIfUnpaid(c.Request.Context(), &sessions[i], role, userID)
+		ctrl.stripRecordingIfUnpaid(c, &sessions[i], role, userID)
 		ctrl.withStatus(&sessions[i])
 	}
 	c.JSON(http.StatusOK, sessions)
@@ -426,7 +435,7 @@ func (ctrl *SessionController) GetByBatch(c *gin.Context) {
 	for i := range sessions {
 		ctrl.withShareLink(&sessions[i])
 		sanitizeForRole(&sessions[i], role)
-		ctrl.stripRecordingIfUnpaid(c.Request.Context(), &sessions[i], role, userID)
+		ctrl.stripRecordingIfUnpaid(c, &sessions[i], role, userID)
 		ctrl.withStatus(&sessions[i])
 	}
 	c.JSON(http.StatusOK, sessions)
@@ -492,7 +501,7 @@ func (ctrl *SessionController) GetBatchRecordings(c *gin.Context) {
 			Source:         "session",
 			Name:           s.Name,
 			SessionDate:    s.SessionDate,
-			RecordingURL:   ctrl.presignRecording(c.Request.Context(), s.RecordingURL),
+			RecordingURL:   ctrl.sessionRecordingStreamURL(c, s.ShortID),
 		})
 	}
 
@@ -510,11 +519,98 @@ func (ctrl *SessionController) GetBatchRecordings(c *gin.Context) {
 			Source:           "upload",
 			Name:             u.Title,
 			SessionDate:      u.CreatedAt.Format("2006-01-02"),
-			RecordingURL:     ctrl.presignRecording(c.Request.Context(), u.URL),
+			RecordingURL:     ctrl.batchRecordingStreamURL(c, u.ShortID),
 		})
 	}
 
 	c.JSON(http.StatusOK, models.BatchRecordingsResponse{FeesPaid: true, Recordings: recordings})
+}
+
+// StreamSessionRecording godoc
+//
+//	@Summary		Stream a session recording
+//	@Description	Proxies a session-linked recording's bytes from storage. This is what a <video> element's src should point at — never a direct or presigned storage URL — since a plain <video> tag can't send an Authorization header, this route authenticates via the httpOnly session cookie set at login (or a Bearer token, for non-browser callers) instead. Forwards Range requests so seeking/scrubbing works. Applies the same fees_paid gate as GET /sessions/{short_id}.
+//	@Tags			sessions
+//	@Param			short_id	path	string	true	"Session short ID"
+//	@Success		200
+//	@Success		206
+//	@Failure		403	{object}	map[string]string	"Fees not paid"
+//	@Failure		404	{object}	map[string]string	"Recording not found"
+//	@Router			/stream/sessions/{short_id} [get]
+func (ctrl *SessionController) StreamSessionRecording(c *gin.Context) {
+	shortID := c.Param("short_id")
+	role := c.GetString("role")
+	userID := c.GetString("user_id")
+
+	session, err := ctrl.sessionRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil || session == nil || session.RecordingURL == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "recording not found"})
+		return
+	}
+
+	if role == string(models.RoleStudent) {
+		paid, err := ctrl.batchRepo.IsFeesPaid(c.Request.Context(), session.BatchID, userID)
+		if err != nil || !paid {
+			c.JSON(http.StatusForbidden, gin.H{"error": "please pay your fees for this batch to access session recordings"})
+			return
+		}
+	}
+
+	ctrl.streamRecording(c, session.RecordingURL)
+}
+
+// StreamBatchRecording godoc
+//
+//	@Summary		Stream an uploaded/migrated batch recording
+//	@Description	Same as GET /stream/sessions/{short_id}, but for a video uploaded directly to a batch (or backfilled via the importbatchrecordings tool) rather than tied to a Zoom session.
+//	@Tags			sessions
+//	@Param			short_id	path	string	true	"Recording short ID"
+//	@Success		200
+//	@Success		206
+//	@Failure		403	{object}	map[string]string	"Fees not paid"
+//	@Failure		404	{object}	map[string]string	"Recording not found"
+//	@Router			/stream/batch-recordings/{short_id} [get]
+func (ctrl *SessionController) StreamBatchRecording(c *gin.Context) {
+	shortID := c.Param("short_id")
+	role := c.GetString("role")
+	userID := c.GetString("user_id")
+
+	rec, err := ctrl.batchRecordingRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil || rec == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "recording not found"})
+		return
+	}
+
+	if role == string(models.RoleStudent) {
+		paid, err := ctrl.batchRepo.IsFeesPaidByBatchShortID(c.Request.Context(), rec.BatchShortID, userID)
+		if err != nil || !paid {
+			c.JSON(http.StatusForbidden, gin.H{"error": "please pay your fees for this batch to access session recordings"})
+			return
+		}
+	}
+
+	ctrl.streamRecording(c, rec.URL)
+}
+
+// streamRecording proxies storedURL's bytes to the client, forwarding any
+// Range header so the browser can seek — R2 itself is never reachable from
+// the browser on this path, only from this server.
+func (ctrl *SessionController) streamRecording(c *gin.Context, storedURL string) {
+	stream, err := ctrl.storageSvc.OpenRecordingStream(c.Request.Context(), storedURL, c.GetHeader("Range"))
+	if err != nil {
+		log.Printf("stream recording: %v", err)
+		c.JSON(http.StatusBadGateway, gin.H{"error": "could not load recording"})
+		return
+	}
+	defer stream.Body.Close()
+
+	c.Header("Accept-Ranges", "bytes")
+	status := http.StatusOK
+	if stream.Partial {
+		c.Header("Content-Range", stream.ContentRange)
+		status = http.StatusPartialContent
+	}
+	c.DataFromReader(status, stream.ContentLength, stream.ContentType, stream.Body, nil)
 }
 
 // GetSession godoc
@@ -546,7 +642,7 @@ func (ctrl *SessionController) GetByShortID(c *gin.Context) {
 	userID := c.GetString("user_id")
 	ctrl.withShareLink(session)
 	sanitizeForRole(session, role)
-	ctrl.stripRecordingIfUnpaid(c.Request.Context(), session, role, userID)
+	ctrl.stripRecordingIfUnpaid(c, session, role, userID)
 	ctrl.withStatus(session)
 
 	c.JSON(http.StatusOK, session)

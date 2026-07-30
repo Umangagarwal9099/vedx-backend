@@ -16,7 +16,7 @@ import (
 
 func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	r := gin.Default()
-	r.Use(middleware.CORS())
+	r.Use(middleware.CORS(cfg.App.AllowedOrigins))
 
 	// Swagger UI — http://localhost:8080/swagger/index.html
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
@@ -126,6 +126,19 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			auth.POST("/register", authCtrl.Register)
 			auth.POST("/forgot-password", authCtrl.ForgotPassword)
 			auth.POST("/reset-password", authCtrl.ResetPassword)
+			auth.POST("/logout", authCtrl.Logout)
+		}
+
+		// Recording streaming — hit directly by <video src>, which can't send a
+		// custom Authorization header, so these authenticate via the httpOnly
+		// session cookie set at login instead (falling back to a Bearer token
+		// for non-browser callers). Kept out of the `protected` group below
+		// because it uses a different auth middleware.
+		stream := v1.Group("/stream")
+		stream.Use(middleware.JWTAuthCookieOrHeader(cfg.JWT.Secret))
+		{
+			stream.GET("/sessions/:short_id", sessionCtrl.StreamSessionRecording)
+			stream.GET("/batch-recordings/:short_id", sessionCtrl.StreamBatchRecording)
 		}
 
 		// Public session join-link resolution — the token itself is the credential
