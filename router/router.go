@@ -93,7 +93,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	collegeCtrl := controller.NewCollegeController(collegeRepo, auditLogRepo)
 	communityPostCtrl := controller.NewCommunityPostController(communityPostRepo, communityRepo)
 	notificationCtrl := controller.NewNotificationController(notificationRepo)
-	sessionCtrl := controller.NewSessionController(sessionRepo, batchRepo, notificationRepo, userRepo, zoomSvc, emailSvc, cfg.App.PublicURL, cfg.App.Timezone, auditLogRepo, feedbackFormRepo, batchRecordingRepo)
+	sessionCtrl := controller.NewSessionController(sessionRepo, batchRepo, notificationRepo, userRepo, zoomSvc, emailSvc, storageSvc, cfg.App.PublicURL, cfg.App.Timezone, auditLogRepo, feedbackFormRepo, batchRecordingRepo)
 	zoomWebhookCtrl := controller.NewZoomWebhookController(zoomSvc, storageSvc, sessionRepo)
 	assignmentCtrl := controller.NewAssignmentController(assignmentRepo, batchRepo, notificationRepo, auditLogRepo)
 	resourceCtrl := controller.NewResourceController(resourceRepo, batchRepo, auditLogRepo)

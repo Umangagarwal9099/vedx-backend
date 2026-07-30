@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -68,9 +69,10 @@ const maxMaterialSize = 500 << 20 // 500 MB
 // buckets this app used on Supabase Storage, so existing public URLs only
 // need their host swapped, not their path.
 type StorageService struct {
-	cfg      config.StorageConfig
-	client   *s3.Client
-	uploader *manager.Uploader
+	cfg           config.StorageConfig
+	client        *s3.Client
+	uploader      *manager.Uploader
+	presignClient *s3.PresignClient
 }
 
 func NewStorageService(cfg config.StorageConfig) *StorageService {
@@ -79,7 +81,7 @@ func NewStorageService(cfg config.StorageConfig) *StorageService {
 		BaseEndpoint: aws.String(fmt.Sprintf("https://%s.r2.cloudflarestorage.com", cfg.AccountID)),
 		Credentials:  credentials.NewStaticCredentialsProvider(cfg.AccessKeyID, cfg.SecretAccessKey, ""),
 	})
-	return &StorageService{cfg: cfg, client: client, uploader: manager.NewUploader(client)}
+	return &StorageService{cfg: cfg, client: client, uploader: manager.NewUploader(client), presignClient: s3.NewPresignClient(client)}
 }
 
 // UploadRecording streams a session recording into "recordings/<key>".
@@ -104,6 +106,43 @@ func (s *StorageService) UploadRecording(ctx context.Context, body io.Reader, ke
 // already been uploaded (e.g. via a presigned PUT).
 func (s *StorageService) PublicURLForKey(key string) string {
 	return strings.TrimRight(s.cfg.PublicURL, "/") + "/" + key
+}
+
+// PresignRecordingURL exchanges a stored recording URL (the permanent
+// pub-*.r2.dev link saved on Session/BatchRecording rows) for a fresh,
+// time-limited signed URL good for ttl. Recordings are paid content gated by
+// fees_paid/visibility checks upstream, but the stored URL itself is a
+// public, unauthenticated, non-expiring link — anyone who captures one (e.g.
+// from the browser's Network tab) could otherwise open or download it
+// forever, bypassing those checks entirely. Signing it here means a copied
+// link stops working once ttl elapses instead of staying valid forever.
+func (s *StorageService) PresignRecordingURL(ctx context.Context, storedURL string, ttl time.Duration) (string, error) {
+	key := s.recordingKeyFromURL(storedURL)
+	if key == "" {
+		return "", fmt.Errorf("cannot determine object key from recording url %q", storedURL)
+	}
+	req, err := s.presignClient.PresignGetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(s.cfg.Bucket),
+		Key:    aws.String(key),
+	}, s3.WithPresignExpires(ttl))
+	if err != nil {
+		return "", fmt.Errorf("presign recording url: %w", err)
+	}
+	return req.URL, nil
+}
+
+// recordingKeyFromURL strips the configured public URL prefix off a stored
+// recording URL to recover the bare R2 object key. Passing an already-bare
+// key through unchanged keeps this safe to call defensively.
+func (s *StorageService) recordingKeyFromURL(storedURL string) string {
+	prefix := strings.TrimRight(s.cfg.PublicURL, "/") + "/"
+	if strings.HasPrefix(storedURL, prefix) {
+		return strings.TrimPrefix(storedURL, prefix)
+	}
+	if !strings.Contains(storedURL, "://") {
+		return storedURL
+	}
+	return ""
 }
 
 // detectImageType sniffs an image's MIME type from its first 512 bytes,

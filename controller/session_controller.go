@@ -23,6 +23,7 @@ type SessionController struct {
 	userRepo           *repository.UserRepository
 	zoomSvc            *service.ZoomService
 	emailSvc           *service.EmailService
+	storageSvc         *service.StorageService
 	publicBaseURL      string
 	timezone           string
 	auditLogRepo       *repository.AuditLogRepository
@@ -30,7 +31,7 @@ type SessionController struct {
 	batchRecordingRepo *repository.BatchRecordingRepository
 }
 
-func NewSessionController(repo *repository.SessionRepository, batchRepo *repository.BatchRepository, notificationRepo *repository.NotificationRepository, userRepo *repository.UserRepository, zoomSvc *service.ZoomService, emailSvc *service.EmailService, publicBaseURL, timezone string, auditLogRepo *repository.AuditLogRepository, feedbackFormRepo *repository.FeedbackFormRepository, batchRecordingRepo *repository.BatchRecordingRepository) *SessionController {
+func NewSessionController(repo *repository.SessionRepository, batchRepo *repository.BatchRepository, notificationRepo *repository.NotificationRepository, userRepo *repository.UserRepository, zoomSvc *service.ZoomService, emailSvc *service.EmailService, storageSvc *service.StorageService, publicBaseURL, timezone string, auditLogRepo *repository.AuditLogRepository, feedbackFormRepo *repository.FeedbackFormRepository, batchRecordingRepo *repository.BatchRecordingRepository) *SessionController {
 	return &SessionController{
 		sessionRepo:        repo,
 		batchRepo:          batchRepo,
@@ -38,12 +39,36 @@ func NewSessionController(repo *repository.SessionRepository, batchRepo *reposit
 		userRepo:           userRepo,
 		zoomSvc:            zoomSvc,
 		emailSvc:           emailSvc,
+		storageSvc:         storageSvc,
 		publicBaseURL:      publicBaseURL,
 		timezone:           timezone,
 		auditLogRepo:       auditLogRepo,
 		feedbackFormRepo:   feedbackFormRepo,
 		batchRecordingRepo: batchRecordingRepo,
 	}
+}
+
+// recordingURLTTL bounds how long a signed recording URL stays valid once
+// handed to a client. Long enough to watch a full class recording start to
+// finish without the link expiring mid-playback; short enough that a URL
+// copied out of the browser's Network tab (or shared outside the app) stops
+// working well before it could be reused later.
+const recordingURLTTL = 6 * time.Hour
+
+// presignRecording exchanges a stored recording URL for a fresh, short-lived
+// signed one. Returns "" (and logs) on failure so a signing hiccup degrades
+// to "recording temporarily unavailable" rather than 500ing the whole
+// response.
+func (ctrl *SessionController) presignRecording(ctx context.Context, storedURL string) string {
+	if storedURL == "" {
+		return ""
+	}
+	signed, err := ctrl.storageSvc.PresignRecordingURL(ctx, storedURL, recordingURLTTL)
+	if err != nil {
+		log.Printf("presign recording url: %v", err)
+		return ""
+	}
+	return signed
 }
 
 // GetFeedbackStatus godoc
@@ -103,17 +128,24 @@ func sanitizeForRole(s *models.Session, role string) *models.Session {
 // stripRecordingIfUnpaid removes RecordingURL for students unless they've been
 // marked fees_paid for the session's batch. Live-class access (ZoomJoinURL) is
 // never touched here — only recordings are fee-gated. Staff roles always see it.
+// Whatever URL survives the fee check is then swapped for a short-lived signed
+// one via presignRecording, so what actually reaches the client is never the
+// permanent public R2 link.
 func (ctrl *SessionController) stripRecordingIfUnpaid(ctx context.Context, s *models.Session, role, userID string) *models.Session {
-	if s == nil || s.RecordingURL == "" || role != string(models.RoleStudent) {
+	if s == nil || s.RecordingURL == "" {
 		return s
 	}
-	paid, err := ctrl.batchRepo.IsFeesPaid(ctx, s.BatchID, userID)
-	if err != nil {
-		log.Printf("check fees paid for session %s: %v", s.ShortID, err)
+	if role == string(models.RoleStudent) {
+		paid, err := ctrl.batchRepo.IsFeesPaid(ctx, s.BatchID, userID)
+		if err != nil {
+			log.Printf("check fees paid for session %s: %v", s.ShortID, err)
+		}
+		if err != nil || !paid {
+			s.RecordingURL = ""
+			return s
+		}
 	}
-	if err != nil || !paid {
-		s.RecordingURL = ""
-	}
+	s.RecordingURL = ctrl.presignRecording(ctx, s.RecordingURL)
 	return s
 }
 
@@ -460,7 +492,7 @@ func (ctrl *SessionController) GetBatchRecordings(c *gin.Context) {
 			Source:         "session",
 			Name:           s.Name,
 			SessionDate:    s.SessionDate,
-			RecordingURL:   s.RecordingURL,
+			RecordingURL:   ctrl.presignRecording(c.Request.Context(), s.RecordingURL),
 		})
 	}
 
@@ -478,7 +510,7 @@ func (ctrl *SessionController) GetBatchRecordings(c *gin.Context) {
 			Source:           "upload",
 			Name:             u.Title,
 			SessionDate:      u.CreatedAt.Format("2006-01-02"),
-			RecordingURL:     u.URL,
+			RecordingURL:     ctrl.presignRecording(c.Request.Context(), u.URL),
 		})
 	}
 
