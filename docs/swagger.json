@@ -2646,6 +2646,29 @@
                 }
             }
         },
+        "/auth/logout": {
+            "post": {
+                "description": "Clears the httpOnly video-streaming session cookie set at login. The Bearer token itself is stateless and just discarded client-side as before — this only covers the cookie, which client-side JS can't clear on its own.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Logout",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/auth/register": {
             "post": {
                 "description": "Register a new user. A unique user ID is generated automatically and returned in the response.",
@@ -12761,6 +12784,94 @@
                     },
                     "404": {
                         "description": "Session not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/stream/batch-recordings/{short_id}": {
+            "get": {
+                "description": "Same as GET /stream/sessions/{short_id}, but for a video uploaded directly to a batch (or backfilled via the importbatchrecordings tool) rather than tied to a Zoom session.",
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Stream an uploaded/migrated batch recording",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Recording short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    },
+                    "206": {
+                        "description": "Partial Content"
+                    },
+                    "403": {
+                        "description": "Fees not paid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Recording not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/stream/sessions/{short_id}": {
+            "get": {
+                "description": "Proxies a session-linked recording's bytes from storage. This is what a \u003cvideo\u003e element's src should point at — never a direct or presigned storage URL — since a plain \u003cvideo\u003e tag can't send an Authorization header, this route authenticates via the httpOnly session cookie set at login (or a Bearer token, for non-browser callers) instead. Forwards Range requests so seeking/scrubbing works. Applies the same fees_paid gate as GET /sessions/{short_id}.",
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Stream a session recording",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Session short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    },
+                    "206": {
+                        "description": "Partial Content"
+                    },
+                    "403": {
+                        "description": "Fees not paid",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Recording not found",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {

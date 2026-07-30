@@ -7029,6 +7029,23 @@ paths:
       summary: Login (step 2 of 2) — verify OTP, get JWT
       tags:
       - auth
+  /auth/logout:
+    post:
+      description: Clears the httpOnly video-streaming session cookie set at login.
+        The Bearer token itself is stateless and just discarded client-side as before
+        — this only covers the cookie, which client-side JS can't clear on its own.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Logout
+      tags:
+      - auth
   /auth/register:
     post:
       consumes:
@@ -13760,6 +13777,71 @@ paths:
               type: string
             type: object
       summary: Resolve a session share link
+      tags:
+      - sessions
+  /stream/batch-recordings/{short_id}:
+    get:
+      description: Same as GET /stream/sessions/{short_id}, but for a video uploaded
+        directly to a batch (or backfilled via the importbatchrecordings tool) rather
+        than tied to a Zoom session.
+      parameters:
+      - description: Recording short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+        "206":
+          description: Partial Content
+        "403":
+          description: Fees not paid
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Recording not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Stream an uploaded/migrated batch recording
+      tags:
+      - sessions
+  /stream/sessions/{short_id}:
+    get:
+      description: Proxies a session-linked recording's bytes from storage. This is
+        what a <video> element's src should point at — never a direct or presigned
+        storage URL — since a plain <video> tag can't send an Authorization header,
+        this route authenticates via the httpOnly session cookie set at login (or
+        a Bearer token, for non-browser callers) instead. Forwards Range requests
+        so seeking/scrubbing works. Applies the same fees_paid gate as GET /sessions/{short_id}.
+      parameters:
+      - description: Session short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+        "206":
+          description: Partial Content
+        "403":
+          description: Fees not paid
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Recording not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Stream a session recording
       tags:
       - sessions
   /students/statuses:
