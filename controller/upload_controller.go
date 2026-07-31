@@ -286,6 +286,40 @@ func (ctrl *UploadController) UploadProjectFile(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"url": url})
 }
 
+// UploadResumeFile godoc
+//
+//	@Summary		Upload resume
+//	@Description	Upload a student's resume. Returns the public URL to pass as resume_url when updating the profile via PATCH /profile/{id}. Max size 5 MB. Allowed types: PDF, DOC, DOCX.
+//	@Tags			upload
+//	@Accept			multipart/form-data
+//	@Produce		json
+//	@Param			file	formData	file	true	"Resume file"
+//	@Success		200		{object}	map[string]string	"url: public URL of the uploaded resume"
+//	@Failure		400		{object}	map[string]string	"Validation error"
+//	@Failure		500		{object}	map[string]string	"Upload failed"
+//	@Security		BearerAuth
+//	@Router			/upload/resume [post]
+func (ctrl *UploadController) UploadResumeFile(c *gin.Context) {
+	fh, err := c.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "field 'file' is required (multipart/form-data)"})
+		return
+	}
+
+	url, err := ctrl.storage.UploadResumeFile(fh)
+	if err != nil {
+		status := http.StatusInternalServerError
+		msg := err.Error()
+		if len(msg) >= 4 && (msg[:4] == "file" || msg[:4] == "unsu" || msg[:4] == "cann") {
+			status = http.StatusBadRequest
+		}
+		c.JSON(status, gin.H{"error": msg})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"url": url})
+}
+
 // UploadMaterial godoc
 //
 //	@Summary		Upload a material file

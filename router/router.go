@@ -32,6 +32,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	blogRepo := repository.NewBlogRepository(pool)
 	bannerRepo := repository.NewBannerRepository(pool)
 	codingQuestionRepo := repository.NewCodingQuestionRepository(pool)
+	codingQuestionDraftRepo := repository.NewCodingQuestionDraftRepository(pool)
 	submissionRepo := repository.NewSubmissionRepository(pool)
 	feedbackFormRepo := repository.NewFeedbackFormRepository(pool)
 	moduleRepo := repository.NewModuleRepository(pool)
@@ -52,6 +53,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	activityRepo := repository.NewActivityRepository(pool)
 	certificateRepo := repository.NewCertificateRepository(pool)
 	auditLogRepo := repository.NewAuditLogRepository(pool)
+	helpSupportRepo := repository.NewHelpSupportRepository(pool)
 	profileRepo := repository.NewProfileRepository(pool)
 	passwordResetRepo := repository.NewPasswordResetRepository(pool)
 	loginOtpRepo := repository.NewLoginOTPRepository(pool)
@@ -83,6 +85,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	announcementCtrl := controller.NewAnnouncementController(announcementRepo, notificationRepo)
 	uploadCtrl := controller.NewUploadController(storageSvc)
 	codingQuestionCtrl := controller.NewCodingQuestionController(codingQuestionRepo, notificationRepo)
+	codingQuestionDraftCtrl := controller.NewCodingQuestionDraftController(codingQuestionDraftRepo, codingQuestionRepo)
 	submissionCtrl := controller.NewSubmissionController(submissionRepo)
 	feedbackFormCtrl := controller.NewFeedbackFormController(feedbackFormRepo, notificationRepo)
 	moduleCtrl := controller.NewModuleController(moduleRepo)
@@ -106,6 +109,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	certificateCtrl := controller.NewCertificateController(certificateRepo, batchRepo, auditLogRepo)
 	engagementCtrl := controller.NewEngagementController(activityRepo, batchRepo, attendanceRepo, scoreRepo, userRepo)
 	auditLogCtrl := controller.NewAuditLogController(auditLogRepo, batchRepo)
+	helpSupportCtrl := controller.NewHelpSupportController(helpSupportRepo)
 	profileCtrl := controller.NewProfileController(profileRepo, userRepo)
 	dashboardCtrl := controller.NewDashboardController(batchRepo, enrollmentRepo, sessionRepo, attendanceRepo, certificateRepo)
 	analyticsCtrl := controller.NewAnalyticsController(analyticsRepo, batchRepo)
@@ -427,6 +431,12 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				cq.GET("/:short_id", codingQuestionCtrl.GetByShortID)
 				cq.PATCH("/:short_id", staffOrAbove, codingQuestionCtrl.Update)
 				cq.DELETE("/:short_id", staffOrAbove, codingQuestionCtrl.Delete)
+
+				// Autosave — any authenticated caller may save/read their
+				// own draft, scoped by their own user_id from the JWT, never
+				// user-supplied, so there's no cross-user access to guard.
+				cq.PUT("/:short_id/draft", codingQuestionDraftCtrl.SaveDraft)
+				cq.GET("/:short_id/draft", codingQuestionDraftCtrl.GetDrafts)
 			}
 
 			// Submissions
@@ -689,6 +699,26 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				notifications.DELETE("/:short_id", adminOrAbove, notificationCtrl.Delete)
 			}
 
+			// Help & Support — FAQs (admin-managed, published ones visible to
+			// everyone) and student-submitted support tickets (college-scoped
+			// for college_admin/college_staff on the list, same as everywhere
+			// else — enforced inside GetAllTicketsAdmin).
+			faqs := protected.Group("/faqs")
+			{
+				faqs.GET("", helpSupportCtrl.GetFAQs)
+				faqs.GET("/admin", staffOrAbove, helpSupportCtrl.GetFAQsAdmin)
+				faqs.POST("", staffOrAbove, helpSupportCtrl.CreateFAQ)
+				faqs.PATCH("/:short_id", staffOrAbove, helpSupportCtrl.UpdateFAQ)
+				faqs.DELETE("/:short_id", staffOrAbove, helpSupportCtrl.DeleteFAQ)
+			}
+			supportTickets := protected.Group("/support-tickets")
+			{
+				supportTickets.POST("", helpSupportCtrl.CreateTicket)
+				supportTickets.GET("/me", helpSupportCtrl.GetMyTickets)
+				supportTickets.GET("", collegeReadOrAbove, helpSupportCtrl.GetAllTicketsAdmin)
+				supportTickets.PATCH("/:short_id/status", collegeReadOrAbove, helpSupportCtrl.UpdateTicketStatus)
+			}
+
 			// Upload
 			protected.POST("/upload/image", uploadCtrl.UploadEventImage)
 			protected.POST("/upload/blog-image", uploadCtrl.UploadBlogImage)
@@ -699,6 +729,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			protected.POST("/upload/assignment-file", uploadCtrl.UploadAssignmentFile)
 			protected.POST("/upload/resource-file", uploadCtrl.UploadResourceFile)
 			protected.POST("/upload/project-file", uploadCtrl.UploadProjectFile)
+			protected.POST("/upload/resume", uploadCtrl.UploadResumeFile)
 		}
 	}
 

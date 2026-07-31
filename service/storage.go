@@ -62,6 +62,15 @@ var allowedMaterialMIME = map[string]struct {
 
 const maxUploadSize = 10 << 20    // 10 MB
 const maxMaterialSize = 500 << 20 // 500 MB
+const maxResumeSize = 5 << 20     // 5 MB — resumes are short documents, not course material
+
+// allowedResumeMIME is deliberately narrower than allowedMaterialMIME — a
+// resume is PDF or Word, never a video/audio/archive/image.
+var allowedResumeMIME = map[string]string{
+	"application/pdf":            ".pdf",
+	"application/msword":         ".doc",
+	"application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+}
 
 // StorageService uploads files to Cloudflare R2. All files live in one
 // bucket, under "events/" and "materials/" prefixes that mirror the two
@@ -304,6 +313,43 @@ func (s *StorageService) UploadBannerImage(fh *multipart.FileHeader) (string, er
 // UploadAssessmentThumbnail validates and uploads an assessment thumbnail. Returns its public URL.
 func (s *StorageService) UploadAssessmentThumbnail(fh *multipart.FileHeader) (string, error) {
 	return s.uploadImage(fh, "assessments/thumbnails")
+}
+
+// UploadResumeFile validates fh as a PDF/DOC/DOCX (max 5 MB) and uploads it
+// under "resumes/". Returns its public URL.
+func (s *StorageService) UploadResumeFile(fh *multipart.FileHeader) (string, error) {
+	if fh.Size > maxResumeSize {
+		return "", fmt.Errorf("file too large: maximum size is 5 MB")
+	}
+
+	f, err := fh.Open()
+	if err != nil {
+		return "", fmt.Errorf("cannot open file: %w", err)
+	}
+	buf := make([]byte, 512)
+	if _, err := f.Read(buf); err != nil {
+		f.Close()
+		return "", fmt.Errorf("cannot read file: %w", err)
+	}
+	f.Close()
+	mimeType := strings.TrimSpace(strings.Split(http.DetectContentType(buf), ";")[0])
+
+	ext, ok := allowedResumeMIME[mimeType]
+	if !ok {
+		origExt := strings.ToLower(filepath.Ext(fh.Filename))
+		for mime, e := range allowedResumeMIME {
+			if e == origExt {
+				ext, mimeType, ok = e, mime, true
+				break
+			}
+		}
+	}
+	if !ok {
+		return "", fmt.Errorf("unsupported file type — only PDF, DOC, and DOCX resumes are accepted")
+	}
+
+	key := fmt.Sprintf("resumes/%s%s", randomHex(), ext)
+	return s.put(fh, key, mimeType)
 }
 
 // UploadMaterial validates and uploads a generic material file, filed under
