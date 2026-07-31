@@ -2,6 +2,8 @@ package controller
 
 import (
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/umangagarwal/vedx-backend/models"
@@ -15,6 +17,28 @@ type ProfileController struct {
 
 func NewProfileController(profileRepo *repository.ProfileRepository, userRepo *repository.UserRepository) *ProfileController {
 	return &ProfileController{profileRepo: profileRepo, userRepo: userRepo}
+}
+
+// normalizeProfileURL validates a social-link field and, for a bare domain
+// like "github.com/user" (no scheme), prepends "https://" — otherwise the
+// value gets stored and later rendered as an <a href> exactly as typed,
+// which the browser resolves as a path relative to the current site instead
+// of an external link. Empty string passes through unchanged (clearing the
+// field is valid). Returns an error message if the result isn't a URL with
+// an http/https scheme and a host.
+func normalizeProfileURL(raw string) (string, string) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", ""
+	}
+	if !strings.Contains(trimmed, "://") {
+		trimmed = "https://" + trimmed
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return "", "must be a valid http(s) URL"
+	}
+	return trimmed, ""
 }
 
 // GetDetails godoc
@@ -65,6 +89,23 @@ func (ctrl *ProfileController) UpdateDetails(c *gin.Context) {
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
+	}
+
+	if input.GithubURL != nil {
+		normalized, errMsg := normalizeProfileURL(*input.GithubURL)
+		if errMsg != "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "github_url " + errMsg})
+			return
+		}
+		input.GithubURL = &normalized
+	}
+	if input.LinkedInURL != nil {
+		normalized, errMsg := normalizeProfileURL(*input.LinkedInURL)
+		if errMsg != "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "linkedin_url " + errMsg})
+			return
+		}
+		input.LinkedInURL = &normalized
 	}
 
 	if input.Phone != nil {

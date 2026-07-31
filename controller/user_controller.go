@@ -60,7 +60,7 @@ type CreateStaffUserRequest struct {
 	FirstName string `json:"first_name" binding:"required" example:"Jane"`
 	LastName  string `json:"last_name"  binding:"required" example:"Doe"`
 	Email     string `json:"email"      binding:"required,email" example:"jane@example.com"`
-	Phone     string `json:"phone"      example:"+919876543210"`
+	Phone     string `json:"phone"      binding:"required,e164" example:"+919876543210"`
 	Role      string `json:"role"       binding:"required,oneof=mentor employee team_lead college_admin college_staff" enums:"mentor,employee,team_lead,college_admin,college_staff" example:"employee"`
 	// CollegeShortID is REQUIRED when role is college_admin/college_staff
 	// (only super_admin may create those roles, and every College Admin must
@@ -186,7 +186,7 @@ type CreateStudentRequest struct {
 	FirstName   string `json:"first_name"    binding:"required" example:"Jane"`
 	LastName    string `json:"last_name"     binding:"required" example:"Doe"`
 	Email       string `json:"email"         binding:"required,email" example:"jane@example.com"`
-	Phone       string `json:"phone"         example:"+919876543210"`
+	Phone       string `json:"phone"         binding:"required,e164" example:"+919876543210"`
 	DateOfBirth string `json:"date_of_birth" example:"1998-05-20"`
 	// CollegeShortID is only honored for super_admin callers (picks which
 	// college this student belongs to; omit for the Internal EdTech

@@ -14,6 +14,7 @@ type ProfileDetails struct {
 	Skills      []string  `json:"skills"`
 	LinkedInURL string    `json:"linkedin_url"`
 	GithubURL   string    `json:"github_url"`
+	ResumeURL   string    `json:"resume_url"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
@@ -27,4 +28,5 @@ type UpdateProfileDetailsInput struct {
 	Skills      *[]string `json:"skills"`
 	LinkedInURL *string   `json:"linkedin_url"`
 	GithubURL   *string   `json:"github_url"`
+	ResumeURL   *string   `json:"resume_url"`
 }
