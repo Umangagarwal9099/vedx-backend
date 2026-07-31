@@ -610,7 +610,13 @@ func (ctrl *SessionController) streamRecording(c *gin.Context, storedURL string)
 		c.Header("Content-Range", stream.ContentRange)
 		status = http.StatusPartialContent
 	}
-	c.DataFromReader(status, stream.ContentLength, stream.ContentType, stream.Body, nil)
+	// -1 (not stream.ContentLength) so Gin omits Content-Length and net/http
+	// falls back to chunked transfer — recordings run to hundreds of MB, and
+	// Cloud Run's frontend kills the connection ("Response size was too
+	// large", then a broken pipe) when a fixed Content-Length that large is
+	// declared up front. Chunked streaming of the same bytes isn't subject to
+	// that cutoff. Total size is still conveyed via Content-Range above.
+	c.DataFromReader(status, -1, stream.ContentType, stream.Body, nil)
 }
 
 // GetSession godoc
