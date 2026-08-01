@@ -332,25 +332,24 @@ func (ctrl *AuthController) Register(c *gin.Context) {
 	})
 }
 
-// ── Change password (logged in, requires old password) ───────────────────────
+// ── Change password (logged in) ───────────────────────────────────────────────
 
-// ChangePasswordRequest carries the old and new password for an authenticated user.
+// ChangePasswordRequest carries the new password for an authenticated user.
+// Deliberately does not require the current password — see ChangePassword.
 type ChangePasswordRequest struct {
-	OldPassword string `json:"old_password" binding:"required"         example:"secret123"`
 	NewPassword string `json:"new_password" binding:"required,min=8"   example:"NewSecret@123"`
 }
 
 // ChangePassword godoc
 //
 //	@Summary		Change password
-//	@Description	Change the logged-in user's password. Requires the current password.
+//	@Description	Change the logged-in user's password. Does not require the current password — the caller's valid JWT is treated as sufficient authentication.
 //	@Tags			auth
 //	@Accept			json
 //	@Produce		json
-//	@Param			body	body		ChangePasswordRequest	true	"Old and new password"
+//	@Param			body	body		ChangePasswordRequest	true	"New password"
 //	@Success		200		{object}	map[string]string	"Password changed"
 //	@Failure		400		{object}	map[string]string	"Validation error"
-//	@Failure		401		{object}	map[string]string	"Incorrect current password"
 //	@Failure		500		{object}	map[string]string	"Internal server error"
 //	@Security		BearerAuth
 //	@Router			/auth/change-password [post]
@@ -362,17 +361,6 @@ func (ctrl *AuthController) ChangePassword(c *gin.Context) {
 	}
 
 	userID := c.GetString("user_id")
-
-	currentHash, err := ctrl.userRepo.FindPasswordHashByID(c.Request.Context(), userID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
-		return
-	}
-
-	if err := bcrypt.CompareHashAndPassword([]byte(currentHash), []byte(req.OldPassword)); err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "current password is incorrect"})
-		return
-	}
 
 	newHash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
 	if err != nil {
