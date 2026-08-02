@@ -35,12 +35,8 @@ definitions:
         example: NewSecret@123
         minLength: 8
         type: string
-      old_password:
-        example: secret123
-        type: string
     required:
     - new_password
-    - old_password
     type: object
   controller.ChangeRoleRequest:
     properties:
@@ -91,6 +87,7 @@ definitions:
     - email
     - first_name
     - last_name
+    - phone
     - role
     type: object
   controller.CreateStaffUserResponse:
@@ -133,6 +130,7 @@ definitions:
     - email
     - first_name
     - last_name
+    - phone
     type: object
   controller.CreateSubscriptionInput:
     properties:
@@ -297,6 +295,11 @@ definitions:
     required:
     - email
     - otp
+    type: object
+  controller.updateBatchRecordingOrderInput:
+    properties:
+      order_index:
+        type: integer
     type: object
   models.AddBatchStudentsInput:
     properties:
@@ -1835,6 +1838,22 @@ definitions:
     - start_time
     - status
     type: object
+  models.CreateFAQInput:
+    properties:
+      answer:
+        type: string
+      category:
+        type: string
+      is_published:
+        type: boolean
+      order_index:
+        type: integer
+      question:
+        type: string
+    required:
+    - answer
+    - question
+    type: object
   models.CreateFeedbackFormInput:
     properties:
       form_type:
@@ -2350,6 +2369,25 @@ definitions:
     - question_short_id
     - status
     type: object
+  models.CreateSupportTicketInput:
+    properties:
+      email:
+        type: string
+      message:
+        type: string
+      name:
+        type: string
+      phone:
+        type: string
+      subject:
+        type: string
+    required:
+    - email
+    - message
+    - name
+    - phone
+    - subject
+    type: object
   models.CreateTeamInput:
     properties:
       name:
@@ -2565,6 +2603,27 @@ definitions:
           ViolationCount is computed at read time from exam_attempt_violations —
           not stored redundantly on the attempt row.
         type: integer
+    type: object
+  models.FAQ:
+    properties:
+      answer:
+        type: string
+      category:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      is_published:
+        type: boolean
+      order_index:
+        type: integer
+      question:
+        type: string
+      short_id:
+        type: string
+      updated_at:
+        type: string
     type: object
   models.FeedbackForm:
     properties:
@@ -3210,6 +3269,8 @@ definitions:
         type: string
       phone:
         type: string
+      resume_url:
+        type: string
       skills:
         items:
           type: string
@@ -3716,6 +3777,15 @@ definitions:
     - RolePlatformAdmin
     - RoleCollegeAdmin
     - RoleCollegeStaff
+  models.SaveDraftInput:
+    properties:
+      code:
+        type: string
+      language:
+        type: string
+    required:
+    - language
+    type: object
   models.SectionMaterial:
     properties:
       allow_access_on:
@@ -4296,6 +4366,46 @@ definitions:
     - answers
     - session_short_id
     type: object
+  models.SupportTicket:
+    properties:
+      created_at:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      message:
+        type: string
+      name:
+        type: string
+      phone:
+        type: string
+      resolved_at:
+        type: string
+      short_id:
+        type: string
+      status:
+        $ref: '#/definitions/models.SupportTicketStatus'
+      student_name:
+        description: joined in for admin list views
+        type: string
+      subject:
+        type: string
+      updated_at:
+        type: string
+      user_id:
+        type: string
+    type: object
+  models.SupportTicketStatus:
+    enum:
+    - open
+    - in_progress
+    - resolved
+    type: string
+    x-enum-varnames:
+    - SupportTicketOpen
+    - SupportTicketInProgress
+    - SupportTicketResolved
   models.TopicCount:
     properties:
       count:
@@ -4766,6 +4876,19 @@ definitions:
         example: published
         type: string
     type: object
+  models.UpdateFAQInput:
+    properties:
+      answer:
+        type: string
+      category:
+        type: string
+      is_published:
+        type: boolean
+      order_index:
+        type: integer
+      question:
+        type: string
+    type: object
   models.UpdateFeaturesInput:
     type: object
   models.UpdateFeedbackFormInput:
@@ -4959,6 +5082,8 @@ definitions:
       location:
         type: string
       phone:
+        type: string
+      resume_url:
         type: string
       skills:
         items:
@@ -5203,6 +5328,18 @@ definitions:
         - archived
         example: enrolled
         type: string
+    required:
+    - status
+    type: object
+  models.UpdateSupportTicketStatusInput:
+    properties:
+      status:
+        allOf:
+        - $ref: '#/definitions/models.SupportTicketStatus'
+        enum:
+        - open
+        - in_progress
+        - resolved
     required:
     - status
     type: object
@@ -6873,9 +7010,10 @@ paths:
     post:
       consumes:
       - application/json
-      description: Change the logged-in user's password. Requires the current password.
+      description: Change the logged-in user's password. Does not require the current
+        password — the caller's valid JWT is treated as sufficient authentication.
       parameters:
-      - description: Old and new password
+      - description: New password
         in: body
         name: body
         required: true
@@ -6892,12 +7030,6 @@ paths:
             type: object
         "400":
           description: Validation error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "401":
-          description: Incorrect current password
           schema:
             additionalProperties:
               type: string
@@ -7860,6 +7992,52 @@ paths:
       summary: List a batch's recordings
       tags:
       - sessions
+  /batches/{short_id}/recordings/{recording_short_id}/order:
+    patch:
+      consumes:
+      - application/json
+      description: Sets where an uploaded video (not a live-session recording) sorts
+        among the other uploads in its batch — lower order_index sorts first. Call
+        once per recording with its new position (0, 1, 2, ...) to reorder the whole
+        list. Only affects uploads; session recordings always sort before uploads
+        regardless of this value.
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Recording short ID
+        in: path
+        name: recording_short_id
+        required: true
+        type: string
+      - description: New order index
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/controller.updateBatchRecordingOrderInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Recording not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Reorder an uploaded batch recording
+      tags:
+      - sessions
   /batches/{short_id}/score-weights:
     patch:
       consumes:
@@ -8746,6 +8924,89 @@ paths:
       security:
       - BearerAuth: []
       summary: Update coding question
+      tags:
+      - coding-questions
+  /coding-questions/{short_id}/draft:
+    get:
+      description: 'Returns every language draft the caller has saved for this question,
+        keyed by language — e.g. {"python": "...", "java": "..."}. Missing keys mean
+        no draft was ever saved for that language.'
+      parameters:
+      - description: Question short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Question not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get my saved drafts for a question
+      tags:
+      - coding-questions
+    put:
+      consumes:
+      - application/json
+      description: Upserts the caller's latest code for this question+language. Meant
+        to be called on a debounce timer while typing — cheap to call repeatedly,
+        and safe to call with empty code (a cleared editor is a valid state).
+      parameters:
+      - description: Question short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Draft
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.SaveDraftInput'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Question not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Autosave in-progress code
       tags:
       - coding-questions
   /coding-questions/admin:
@@ -9924,6 +10185,132 @@ paths:
       summary: Update event
       tags:
       - events
+  /faqs:
+    get:
+      description: Returns every published FAQ, in display order — the Help & Support
+        page for any authenticated user.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.FAQ'
+            type: array
+      summary: List published FAQs
+      tags:
+      - help-support
+    post:
+      consumes:
+      - application/json
+      description: Add a new Help & Support FAQ entry. Restricted to staff.
+      parameters:
+      - description: FAQ
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateFAQInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.FAQ'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create FAQ
+      tags:
+      - help-support
+  /faqs/{short_id}:
+    delete:
+      description: Permanently deletes an FAQ. Restricted to staff.
+      parameters:
+      - description: FAQ short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: FAQ not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete FAQ
+      tags:
+      - help-support
+    patch:
+      consumes:
+      - application/json
+      description: Partially update an FAQ. All fields optional. Restricted to staff.
+      parameters:
+      - description: FAQ short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateFAQInput'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: FAQ not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update FAQ
+      tags:
+      - help-support
+  /faqs/admin:
+    get:
+      description: Returns every FAQ including unpublished drafts — for the admin
+        management page.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.FAQ'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: List all FAQs (admin)
+      tags:
+      - help-support
   /feedback-forms:
     get:
       description: Returns all non-deleted feedback forms ordered newest first.
@@ -14120,6 +14507,117 @@ paths:
       summary: List submissions for a specific user (admin/mentor)
       tags:
       - submissions
+  /support-tickets:
+    get:
+      description: Returns every support ticket, newest first — college_admin/college_staff
+        see only their own college's; super_admin/team_lead/mentor see everything.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.SupportTicket'
+            type: array
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List support requests (admin)
+      tags:
+      - help-support
+    post:
+      consumes:
+      - application/json
+      description: Creates a Help & Support ticket for the logged-in user. Visible
+        to the admin panel afterward.
+      parameters:
+      - description: Support request
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateSupportTicketInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.SupportTicket'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Submit a support request
+      tags:
+      - help-support
+  /support-tickets/{short_id}/status:
+    patch:
+      consumes:
+      - application/json
+      description: Moves a ticket between open / in_progress / resolved. Restricted
+        to staff.
+      parameters:
+      - description: Ticket short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: New status
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateSupportTicketStatusInput'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Ticket not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update support request status
+      tags:
+      - help-support
+  /support-tickets/me:
+    get:
+      description: Returns the logged-in user's own support tickets, newest first.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.SupportTicket'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: My support requests
+      tags:
+      - help-support
   /targets/employee/{user_id}:
     patch:
       consumes:
@@ -14582,6 +15080,45 @@ paths:
       security:
       - BearerAuth: []
       summary: Upload resource file
+      tags:
+      - upload
+  /upload/resume:
+    post:
+      consumes:
+      - multipart/form-data
+      description: 'Upload a student''s resume. Returns the public URL to pass as
+        resume_url when updating the profile via PATCH /profile/{id}. Max size 5 MB.
+        Allowed types: PDF, DOC, DOCX.'
+      parameters:
+      - description: Resume file
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'url: public URL of the uploaded resume'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Upload failed
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Upload resume
       tags:
       - upload
   /users:

@@ -2418,7 +2418,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Change the logged-in user's password. Requires the current password.",
+                "description": "Change the logged-in user's password. Does not require the current password — the caller's valid JWT is treated as sufficient authentication.",
                 "consumes": [
                     "application/json"
                 ],
@@ -2431,7 +2431,7 @@ const docTemplate = `{
                 "summary": "Change password",
                 "parameters": [
                     {
-                        "description": "Old and new password",
+                        "description": "New password",
                         "name": "body",
                         "in": "body",
                         "required": true,
@@ -2452,15 +2452,6 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Validation error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "401": {
-                        "description": "Incorrect current password",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -4006,6 +3997,71 @@ const docTemplate = `{
                 }
             }
         },
+        "/batches/{short_id}/recordings/{recording_short_id}/order": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Sets where an uploaded video (not a live-session recording) sorts among the other uploads in its batch — lower order_index sorts first. Call once per recording with its new position (0, 1, 2, ...) to reorder the whole list. Only affects uploads; session recordings always sort before uploads regardless of this value.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Reorder an uploaded batch recording",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Batch short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Recording short ID",
+                        "name": "recording_short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "New order index",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/controller.updateBatchRecordingOrderInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Recording not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/batches/{short_id}/score-weights": {
             "patch": {
                 "security": [
@@ -5234,6 +5290,129 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/models.CodingQuestion"
                         }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Question not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/coding-questions/{short_id}/draft": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns every language draft the caller has saved for this question, keyed by language — e.g. {\"python\": \"...\", \"java\": \"...\"}. Missing keys mean no draft was ever saved for that language.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "coding-questions"
+                ],
+                "summary": "Get my saved drafts for a question",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Question short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Question not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Upserts the caller's latest code for this question+language. Meant to be called on a debounce timer while typing — cheap to call repeatedly, and safe to call with empty code (a cleared editor is a valid state).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "coding-questions"
+                ],
+                "summary": "Autosave in-progress code",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Question short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Draft",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.SaveDraftInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
                     },
                     "400": {
                         "description": "Validation error",
@@ -6998,6 +7177,202 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/faqs": {
+            "get": {
+                "description": "Returns every published FAQ, in display order — the Help \u0026 Support page for any authenticated user.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "help-support"
+                ],
+                "summary": "List published FAQs",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.FAQ"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Add a new Help \u0026 Support FAQ entry. Restricted to staff.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "help-support"
+                ],
+                "summary": "Create FAQ",
+                "parameters": [
+                    {
+                        "description": "FAQ",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateFAQInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.FAQ"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/faqs/admin": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns every FAQ including unpublished drafts — for the admin management page.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "help-support"
+                ],
+                "summary": "List all FAQs (admin)",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.FAQ"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/faqs/{short_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Permanently deletes an FAQ. Restricted to staff.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "help-support"
+                ],
+                "summary": "Delete FAQ",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "FAQ short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "FAQ not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Partially update an FAQ. All fields optional. Restricted to staff.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "help-support"
+                ],
+                "summary": "Update FAQ",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "FAQ short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to update",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateFAQInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "FAQ not found",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -13301,6 +13676,178 @@ const docTemplate = `{
                 }
             }
         },
+        "/support-tickets": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns every support ticket, newest first — college_admin/college_staff see only their own college's; super_admin/team_lead/mentor see everything.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "help-support"
+                ],
+                "summary": "List support requests (admin)",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.SupportTicket"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Creates a Help \u0026 Support ticket for the logged-in user. Visible to the admin panel afterward.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "help-support"
+                ],
+                "summary": "Submit a support request",
+                "parameters": [
+                    {
+                        "description": "Support request",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateSupportTicketInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.SupportTicket"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/support-tickets/me": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the logged-in user's own support tickets, newest first.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "help-support"
+                ],
+                "summary": "My support requests",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.SupportTicket"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/support-tickets/{short_id}/status": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Moves a ticket between open / in_progress / resolved. Restricted to staff.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "help-support"
+                ],
+                "summary": "Update support request status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Ticket short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "New status",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateSupportTicketStatusInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Ticket not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/targets/employee/me": {
             "get": {
                 "security": [
@@ -13967,6 +14514,64 @@ const docTemplate = `{
                 "responses": {
                     "200": {
                         "description": "url: public URL of the uploaded file",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Upload failed",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/upload/resume": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Upload a student's resume. Returns the public URL to pass as resume_url when updating the profile via PATCH /profile/{id}. Max size 5 MB. Allowed types: PDF, DOC, DOCX.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "upload"
+                ],
+                "summary": "Upload resume",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "Resume file",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "url: public URL of the uploaded resume",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -15651,18 +16256,13 @@ const docTemplate = `{
         "controller.ChangePasswordRequest": {
             "type": "object",
             "required": [
-                "new_password",
-                "old_password"
+                "new_password"
             ],
             "properties": {
                 "new_password": {
                     "type": "string",
                     "minLength": 8,
                     "example": "NewSecret@123"
-                },
-                "old_password": {
-                    "type": "string",
-                    "example": "secret123"
                 }
             }
         },
@@ -15690,6 +16290,7 @@ const docTemplate = `{
                 "email",
                 "first_name",
                 "last_name",
+                "phone",
                 "role"
             ],
             "properties": {
@@ -15746,7 +16347,8 @@ const docTemplate = `{
             "required": [
                 "email",
                 "first_name",
-                "last_name"
+                "last_name",
+                "phone"
             ],
             "properties": {
                 "college_short_id": {
@@ -16002,6 +16604,14 @@ const docTemplate = `{
                 "otp": {
                     "type": "string",
                     "example": "042913"
+                }
+            }
+        },
+        "controller.updateBatchRecordingOrderInput": {
+            "type": "object",
+            "properties": {
+                "order_index": {
+                    "type": "integer"
                 }
             }
         },
@@ -18198,6 +18808,30 @@ const docTemplate = `{
                 }
             }
         },
+        "models.CreateFAQInput": {
+            "type": "object",
+            "required": [
+                "answer",
+                "question"
+            ],
+            "properties": {
+                "answer": {
+                    "type": "string"
+                },
+                "category": {
+                    "type": "string"
+                },
+                "is_published": {
+                    "type": "boolean"
+                },
+                "order_index": {
+                    "type": "integer"
+                },
+                "question": {
+                    "type": "string"
+                }
+            }
+        },
         "models.CreateFeedbackFormInput": {
             "type": "object",
             "required": [
@@ -18884,6 +19518,33 @@ const docTemplate = `{
                 }
             }
         },
+        "models.CreateSupportTicketInput": {
+            "type": "object",
+            "required": [
+                "email",
+                "message",
+                "name",
+                "phone",
+                "subject"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                },
+                "subject": {
+                    "type": "string"
+                }
+            }
+        },
         "models.CreateTeamInput": {
             "type": "object",
             "required": [
@@ -19198,6 +19859,38 @@ const docTemplate = `{
                 "violation_count": {
                     "description": "ViolationCount is computed at read time from exam_attempt_violations —\nnot stored redundantly on the attempt row.",
                     "type": "integer"
+                }
+            }
+        },
+        "models.FAQ": {
+            "type": "object",
+            "properties": {
+                "answer": {
+                    "type": "string"
+                },
+                "category": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_published": {
+                    "type": "boolean"
+                },
+                "order_index": {
+                    "type": "integer"
+                },
+                "question": {
+                    "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
                 }
             }
         },
@@ -20148,6 +20841,9 @@ const docTemplate = `{
                 "phone": {
                     "type": "string"
                 },
+                "resume_url": {
+                    "type": "string"
+                },
                 "skills": {
                     "type": "array",
                     "items": {
@@ -20882,6 +21578,20 @@ const docTemplate = `{
                 "RoleCollegeAdmin",
                 "RoleCollegeStaff"
             ]
+        },
+        "models.SaveDraftInput": {
+            "type": "object",
+            "required": [
+                "language"
+            ],
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "language": {
+                    "type": "string"
+                }
+            }
         },
         "models.SectionMaterial": {
             "type": "object",
@@ -21733,6 +22443,64 @@ const docTemplate = `{
                 }
             }
         },
+        "models.SupportTicket": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                },
+                "resolved_at": {
+                    "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/models.SupportTicketStatus"
+                },
+                "student_name": {
+                    "description": "joined in for admin list views",
+                    "type": "string"
+                },
+                "subject": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.SupportTicketStatus": {
+            "type": "string",
+            "enum": [
+                "open",
+                "in_progress",
+                "resolved"
+            ],
+            "x-enum-varnames": [
+                "SupportTicketOpen",
+                "SupportTicketInProgress",
+                "SupportTicketResolved"
+            ]
+        },
         "models.TopicCount": {
             "type": "object",
             "properties": {
@@ -22387,6 +23155,26 @@ const docTemplate = `{
                 }
             }
         },
+        "models.UpdateFAQInput": {
+            "type": "object",
+            "properties": {
+                "answer": {
+                    "type": "string"
+                },
+                "category": {
+                    "type": "string"
+                },
+                "is_published": {
+                    "type": "boolean"
+                },
+                "order_index": {
+                    "type": "integer"
+                },
+                "question": {
+                    "type": "string"
+                }
+            }
+        },
         "models.UpdateFeaturesInput": {
             "type": "object"
         },
@@ -22659,6 +23447,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "phone": {
+                    "type": "string"
+                },
+                "resume_url": {
                     "type": "string"
                 },
                 "skills": {
@@ -22998,6 +23789,26 @@ const docTemplate = `{
                         "archived"
                     ],
                     "example": "enrolled"
+                }
+            }
+        },
+        "models.UpdateSupportTicketStatusInput": {
+            "type": "object",
+            "required": [
+                "status"
+            ],
+            "properties": {
+                "status": {
+                    "enum": [
+                        "open",
+                        "in_progress",
+                        "resolved"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.SupportTicketStatus"
+                        }
+                    ]
                 }
             }
         },
