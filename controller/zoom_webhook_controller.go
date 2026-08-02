@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/umangagarwal/vedx-backend/repository"
@@ -17,10 +18,11 @@ type ZoomWebhookController struct {
 	zoomSvc     *service.ZoomService
 	storageSvc  *service.StorageService
 	sessionRepo *repository.SessionRepository
+	timezone    string
 }
 
-func NewZoomWebhookController(zoomSvc *service.ZoomService, storageSvc *service.StorageService, sessionRepo *repository.SessionRepository) *ZoomWebhookController {
-	return &ZoomWebhookController{zoomSvc: zoomSvc, storageSvc: storageSvc, sessionRepo: sessionRepo}
+func NewZoomWebhookController(zoomSvc *service.ZoomService, storageSvc *service.StorageService, sessionRepo *repository.SessionRepository, timezone string) *ZoomWebhookController {
+	return &ZoomWebhookController{zoomSvc: zoomSvc, storageSvc: storageSvc, sessionRepo: sessionRepo, timezone: timezone}
 }
 
 type zoomWebhookEnvelope struct {
@@ -50,6 +52,7 @@ type zoomRecordingFile struct {
 type zoomRecordingCompletedPayload struct {
 	Object struct {
 		ID             int64               `json:"id"`
+		StartTime      string              `json:"start_time"`
 		RecordingFiles []zoomRecordingFile `json:"recording_files"`
 	} `json:"object"`
 }
@@ -135,11 +138,30 @@ func (ctrl *ZoomWebhookController) HandleWebhook(c *gin.Context) {
 			// and re-upload.
 			meetingID := payload.Object.ID
 			downloadToken := envelope.DownloadToken
-			go ctrl.processRecording(meetingID, *file, downloadToken)
+			go ctrl.processRecording(meetingID, *file, downloadToken, payload.Object.StartTime)
 		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "received"})
+}
+
+// formatRecordingTimestamp converts Zoom's UTC start_time into the app's
+// configured timezone for display, replacing Zoom's own fixed-size "add a
+// timestamp to the recording" feature with one we control the size of.
+// Returns "" (skipping the overlay) if start_time is missing or unparseable.
+func (ctrl *ZoomWebhookController) formatRecordingTimestamp(startTime string) string {
+	if startTime == "" {
+		return ""
+	}
+	t, err := time.Parse(time.RFC3339, startTime)
+	if err != nil {
+		return ""
+	}
+	loc, err := time.LoadLocation(ctrl.timezone)
+	if err != nil {
+		loc = time.UTC
+	}
+	return t.In(loc).Format("2 Jan 2006, 3:04 PM")
 }
 
 // processRecording downloads a completed Zoom cloud recording, burns a
@@ -149,7 +171,7 @@ func (ctrl *ZoomWebhookController) HandleWebhook(c *gin.Context) {
 // watermark feature because that only renders inside Zoom's own web player —
 // once we re-host the raw file and play it back in our own frontend player,
 // Zoom's overlay never applies.
-func (ctrl *ZoomWebhookController) processRecording(meetingID int64, file zoomRecordingFile, downloadToken string) {
+func (ctrl *ZoomWebhookController) processRecording(meetingID int64, file zoomRecordingFile, downloadToken string, startTime string) {
 	body, contentType, err := ctrl.zoomSvc.DownloadRecording(file.DownloadURL, downloadToken)
 	if err != nil {
 		log.Printf("zoom webhook: download recording for meeting %d: %v", meetingID, err)
@@ -157,7 +179,7 @@ func (ctrl *ZoomWebhookController) processRecording(meetingID int64, file zoomRe
 	}
 	defer body.Close()
 
-	watermarked, err := service.WatermarkRecording(context.Background(), body, service.DefaultWatermarkText)
+	watermarked, err := service.WatermarkRecording(context.Background(), body, service.DefaultWatermarkText, ctrl.formatRecordingTimestamp(startTime))
 	if err != nil {
 		log.Printf("zoom webhook: watermark recording for meeting %d: %v", meetingID, err)
 		return

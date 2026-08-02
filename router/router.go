@@ -97,7 +97,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	communityPostCtrl := controller.NewCommunityPostController(communityPostRepo, communityRepo)
 	notificationCtrl := controller.NewNotificationController(notificationRepo)
 	sessionCtrl := controller.NewSessionController(sessionRepo, batchRepo, notificationRepo, userRepo, zoomSvc, emailSvc, storageSvc, cfg.App.PublicURL, cfg.App.Timezone, auditLogRepo, feedbackFormRepo, batchRecordingRepo)
-	zoomWebhookCtrl := controller.NewZoomWebhookController(zoomSvc, storageSvc, sessionRepo)
+	zoomWebhookCtrl := controller.NewZoomWebhookController(zoomSvc, storageSvc, sessionRepo, cfg.App.Timezone)
 	assignmentCtrl := controller.NewAssignmentController(assignmentRepo, batchRepo, notificationRepo, auditLogRepo)
 	resourceCtrl := controller.NewResourceController(resourceRepo, batchRepo, auditLogRepo)
 	projectCtrl := controller.NewProjectController(projectRepo, batchRepo, notificationRepo, auditLogRepo)
@@ -333,6 +333,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				// Sessions — scoped to this batch
 				batches.GET("/:short_id/sessions", sessionCtrl.GetByBatch)
 				batches.GET("/:short_id/recordings", sessionCtrl.GetBatchRecordings)
+				batches.PATCH("/:short_id/recordings/:recording_short_id/order", staffOrAbove, sessionCtrl.UpdateBatchRecordingOrder)
 
 				// Attendance rollup — every enrolled student's present/absent/late/
 				// excused counts and percentage across the batch's held sessions.

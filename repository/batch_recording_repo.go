@@ -24,7 +24,7 @@ func NewBatchRecordingRepository(pool *pgxpool.Pool) *BatchRecordingRepository {
 const batchRecordingBaseSelect = `
 	SELECT r.id, r.short_id, r.batch_id, b.short_id, b.batch_number,
 	       r.title, r.url, COALESCE(r.file_size, 0), COALESCE(r.content_type, ''),
-	       r.uploaded_by, CONCAT(u.first_name, ' ', u.last_name),
+	       r.uploaded_by, CONCAT(u.first_name, ' ', u.last_name), r.order_index,
 	       r.created_at, r.updated_at
 	FROM batch_recordings r
 	JOIN batches b ON r.batch_id    = b.id AND b.deleted_at IS NULL
@@ -35,7 +35,7 @@ func scanBatchRecording(row pgx.Row) (models.BatchRecording, error) {
 	err := row.Scan(
 		&r.ID, &r.ShortID, &r.BatchID, &r.BatchShortID, &r.BatchNumber,
 		&r.Title, &r.URL, &r.FileSize, &r.ContentType,
-		&r.UploadedBy, &r.UploadedByName,
+		&r.UploadedBy, &r.UploadedByName, &r.OrderIndex,
 		&r.CreatedAt, &r.UpdatedAt,
 	)
 	return r, err
@@ -94,9 +94,9 @@ func (r *BatchRecordingRepository) FindByShortID(ctx context.Context, shortID st
 }
 
 // FindByBatchShortID returns every non-deleted uploaded recording for a
-// batch, newest first.
+// batch, in the manually-assigned display order (see UpdateOrderIndex).
 func (r *BatchRecordingRepository) FindByBatchShortID(ctx context.Context, batchShortID string) ([]models.BatchRecording, error) {
-	q := fmt.Sprintf(`%s WHERE b.short_id = $1 AND r.deleted_at IS NULL ORDER BY r.created_at DESC`, batchRecordingBaseSelect)
+	q := fmt.Sprintf(`%s WHERE b.short_id = $1 AND r.deleted_at IS NULL ORDER BY r.order_index ASC, r.created_at ASC`, batchRecordingBaseSelect)
 	rows, err := r.pool.Query(ctx, q, batchShortID)
 	if err != nil {
 		return nil, err
@@ -112,5 +112,23 @@ func (r *BatchRecordingRepository) FindByBatchShortID(ctx context.Context, batch
 		out = append(out, rec)
 	}
 	return out, rows.Err()
+}
+
+// UpdateOrderIndex changes where shortID's recording sorts among the other
+// uploads in its batch (lower sorts first). It doesn't renumber siblings —
+// callers wanting a full reorder call this once per recording with its new
+// position (0, 1, 2, ...), same pattern as project milestones' order_index.
+func (r *BatchRecordingRepository) UpdateOrderIndex(ctx context.Context, shortID string, orderIndex int) error {
+	tag, err := r.pool.Exec(ctx,
+		`UPDATE batch_recordings SET order_index = $1, updated_at = now() WHERE short_id = $2 AND deleted_at IS NULL`,
+		orderIndex, shortID,
+	)
+	if err != nil {
+		return fmt.Errorf("update batch recording order: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
 }
 

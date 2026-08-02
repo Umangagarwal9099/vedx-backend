@@ -19,6 +19,7 @@ type BatchRecording struct {
 	ContentType    string    `json:"content_type,omitempty"`
 	UploadedBy     string    `json:"uploaded_by"`
 	UploadedByName string    `json:"uploaded_by_name"`
+	OrderIndex     int       `json:"order_index"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
 }

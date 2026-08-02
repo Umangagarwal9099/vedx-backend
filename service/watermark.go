@@ -15,7 +15,7 @@ import (
 // shared by every viewer — so it deters casual re-distribution but can't
 // trace a leak back to a specific person the way a per-viewer overlay
 // rendered in the frontend player could.
-const DefaultWatermarkText = "VedX • Unauthorized distribution prohibited"
+const DefaultWatermarkText = "VedXlence"
 
 // ffmpegBinary and watermarkFont are overridable via env vars because the
 // production image places a static ffmpeg build and a bundled font at fixed
@@ -39,7 +39,11 @@ func envOrDefault(key, fallback string) string {
 // staged on local disk under os.TempDir() for the duration of the call —
 // callers should expect roughly 2x the recording's size in free disk space
 // while this runs.
-func WatermarkRecording(ctx context.Context, src io.Reader, text string) (io.ReadCloser, error) {
+//
+// timestamp, if non-empty, is burned in as a small label in the opposite
+// corner from the brand watermark — used in place of Zoom's own "add a
+// timestamp to the recording" feature, whose size isn't configurable.
+func WatermarkRecording(ctx context.Context, src io.Reader, text, timestamp string) (io.ReadCloser, error) {
 	srcFile, err := os.CreateTemp("", "zoomrec-src-*.mp4")
 	if err != nil {
 		return nil, fmt.Errorf("stage recording for watermarking: %w", err)
@@ -62,7 +66,7 @@ func WatermarkRecording(ctx context.Context, src io.Reader, text string) (io.Rea
 	dstPath := dstFile.Name()
 	dstFile.Close()
 
-	if err := burnWatermark(ctx, srcPath, dstPath, text); err != nil {
+	if err := burnWatermark(ctx, srcPath, dstPath, text, timestamp); err != nil {
 		os.Remove(dstPath)
 		return nil, err
 	}
@@ -75,20 +79,27 @@ func WatermarkRecording(ctx context.Context, src io.Reader, text string) (io.Rea
 	return &tempFileReadCloser{File: out, path: dstPath}, nil
 }
 
-// burnWatermark shells out to ffmpeg to overlay text in the bottom-right
-// corner of every frame. Only the video stream is re-encoded (libx264,
-// veryfast preset — a full re-encode is unavoidable to alter pixels, but
-// there's no reason to spend extra CPU tuning quality for a lecture
-// recording); audio is stream-copied untouched.
-func burnWatermark(ctx context.Context, srcPath, dstPath, text string) error {
+// burnWatermark shells out to ffmpeg to overlay the brand watermark in the
+// bottom-right corner and, if provided, a small timestamp label in the
+// top-left corner of every frame. Only the video stream is re-encoded
+// (libx264, veryfast preset — a full re-encode is unavoidable to alter
+// pixels, but there's no reason to spend extra CPU tuning quality for a
+// lecture recording); audio is stream-copied untouched.
+func burnWatermark(ctx context.Context, srcPath, dstPath, text, timestamp string) error {
 	if watermarkFont == "" {
 		return fmt.Errorf("watermark: WATERMARK_FONT_PATH not set — drawtext has no fontconfig to fall back on in this runtime")
 	}
 
 	drawtext := fmt.Sprintf(
-		"drawtext=fontfile=%s:text='%s':fontcolor=white@0.6:fontsize=22:x=w-tw-24:y=h-th-24:box=1:boxcolor=black@0.35:boxborderw=6",
+		"drawtext=fontfile=%s:text='%s':fontcolor=white@0.6:fontsize=16:x=w-tw-20:y=h-th-20:box=1:boxcolor=black@0.35:boxborderw=5",
 		escapeDrawtextValue(watermarkFont), escapeDrawtextValue(text),
 	)
+	if timestamp != "" {
+		drawtext += fmt.Sprintf(
+			",drawtext=fontfile=%s:text='%s':fontcolor=white@0.6:fontsize=12:x=20:y=20:box=1:boxcolor=black@0.35:boxborderw=4",
+			escapeDrawtextValue(watermarkFont), escapeDrawtextValue(timestamp),
+		)
+	}
 
 	cmd := exec.CommandContext(ctx, ffmpegBinary,
 		"-y",

@@ -526,6 +526,52 @@ func (ctrl *SessionController) GetBatchRecordings(c *gin.Context) {
 	c.JSON(http.StatusOK, models.BatchRecordingsResponse{FeesPaid: true, Recordings: recordings})
 }
 
+type updateBatchRecordingOrderInput struct {
+	OrderIndex int `json:"order_index"`
+}
+
+// UpdateBatchRecordingOrder godoc
+//
+//	@Summary		Reorder an uploaded batch recording
+//	@Description	Sets where an uploaded video (not a live-session recording) sorts among the other uploads in its batch — lower order_index sorts first. Call once per recording with its new position (0, 1, 2, ...) to reorder the whole list. Only affects uploads; session recordings always sort before uploads regardless of this value.
+//	@Tags			sessions
+//	@Accept			json
+//	@Produce		json
+//	@Param			short_id			path	string							true	"Batch short ID"
+//	@Param			recording_short_id	path	string							true	"Recording short ID"
+//	@Param			body				body	updateBatchRecordingOrderInput	true	"New order index"
+//	@Success		200	{object}	map[string]string
+//	@Failure		404	{object}	map[string]string	"Recording not found"
+//	@Security		BearerAuth
+//	@Router			/batches/{short_id}/recordings/{recording_short_id}/order [patch]
+func (ctrl *SessionController) UpdateBatchRecordingOrder(c *gin.Context) {
+	batchShortID := c.Param("short_id")
+	recordingShortID := c.Param("recording_short_id")
+
+	if !checkBatchAccess(c, ctrl.batchRepo, batchShortID) {
+		return
+	}
+
+	var input updateBatchRecordingOrderInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	rec, err := ctrl.batchRecordingRepo.FindByShortID(c.Request.Context(), recordingShortID)
+	if err != nil || rec == nil || rec.BatchShortID != batchShortID {
+		c.JSON(http.StatusNotFound, gin.H{"error": "recording not found"})
+		return
+	}
+
+	if err := ctrl.batchRecordingRepo.UpdateOrderIndex(c.Request.Context(), recordingShortID, input.OrderIndex); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not update order"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "updated"})
+}
+
 // StreamSessionRecording godoc
 //
 //	@Summary		Stream a session recording
