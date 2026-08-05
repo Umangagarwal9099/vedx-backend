@@ -41,6 +41,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	communityPostRepo := repository.NewCommunityPostRepository(pool)
 	collegeRepo := repository.NewCollegeRepository(pool)
 	notificationRepo := repository.NewNotificationRepository(pool)
+	devicePushTokenRepo := repository.NewDevicePushTokenRepository(pool)
 	sessionRepo := repository.NewSessionRepository(pool)
 	assignmentRepo := repository.NewAssignmentRepository(pool)
 	resourceRepo := repository.NewResourceRepository(pool)
@@ -96,6 +97,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	collegeCtrl := controller.NewCollegeController(collegeRepo, auditLogRepo)
 	communityPostCtrl := controller.NewCommunityPostController(communityPostRepo, communityRepo)
 	notificationCtrl := controller.NewNotificationController(notificationRepo)
+	devicePushTokenCtrl := controller.NewDevicePushTokenController(devicePushTokenRepo)
 	sessionCtrl := controller.NewSessionController(sessionRepo, batchRepo, notificationRepo, userRepo, zoomSvc, emailSvc, storageSvc, cfg.App.PublicURL, cfg.App.Timezone, auditLogRepo, feedbackFormRepo, batchRecordingRepo)
 	zoomWebhookCtrl := controller.NewZoomWebhookController(zoomSvc, storageSvc, sessionRepo, cfg.App.Timezone)
 	assignmentCtrl := controller.NewAssignmentController(assignmentRepo, batchRepo, notificationRepo, auditLogRepo)
@@ -698,6 +700,10 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				notifications.PATCH("/:short_id", adminOrAbove, notificationCtrl.Update)
 				notifications.PATCH("/:short_id/read", notificationCtrl.MarkRead)
 				notifications.DELETE("/:short_id", adminOrAbove, notificationCtrl.Delete)
+				// Mobile app device registration — any authenticated user may
+				// register/unregister their own device's push token.
+				notifications.POST("/push-token", devicePushTokenCtrl.RegisterToken)
+				notifications.DELETE("/push-token", devicePushTokenCtrl.UnregisterToken)
 			}
 
 			// Help & Support — FAQs (admin-managed, published ones visible to

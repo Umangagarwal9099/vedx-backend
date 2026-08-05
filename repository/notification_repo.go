@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/umangagarwal/vedx-backend/models"
+	"github.com/umangagarwal/vedx-backend/service"
 	"github.com/umangagarwal/vedx-backend/util"
 )
 
@@ -155,9 +156,38 @@ func (r *NotificationRepository) notify(
 		if err != nil {
 			return nil, fmt.Errorf("insert recipients: %w", err)
 		}
+		r.pushToRecipients(ctx, ids, notif)
 	}
 
 	return notif, nil
+}
+
+// pushToRecipients best-effort fans the notification out to every
+// recipient's registered mobile device(s) via Expo push, alongside the
+// in-app notification_recipients row just written. A recipient with no
+// registered device is the common case (web-only user), not an error.
+func (r *NotificationRepository) pushToRecipients(ctx context.Context, userIDs []string, notif *models.Notification) {
+	tokens, err := r.pool.Query(ctx, `SELECT token FROM device_push_tokens WHERE user_id = ANY($1::uuid[])`, userIDs)
+	if err != nil {
+		return
+	}
+	defer tokens.Close()
+	var toks []string
+	for tokens.Next() {
+		var t string
+		if tokens.Scan(&t) == nil {
+			toks = append(toks, t)
+		}
+	}
+	if len(toks) == 0 {
+		return
+	}
+	service.SendExpoPushAsync(toks, notif.Title, notif.Message, map[string]interface{}{
+		"type":            notif.Type,
+		"ref_type":        notif.RefType,
+		"ref_short_id":    notif.RefShortID,
+		"notification_id": notif.ShortID,
+	})
 }
 
 // insertNotification inserts the shared notification row, retrying on short_id collision.
