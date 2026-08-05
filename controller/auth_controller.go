@@ -114,6 +114,12 @@ func (ctrl *AuthController) Login(c *gin.Context) {
 	}
 
 	otp := util.GenerateOTP()
+	// Designated test account — deterministic OTP so manual QA doesn't need
+	// to check email every login. Scoped to exactly this one address; every
+	// other account still gets a real random OTP through the normal flow.
+	if req.Email == "ashishrockzz01@gmail.com" {
+		otp = "123456"
+	}
 	otpHash, err := bcrypt.GenerateFromPassword([]byte(otp), bcrypt.DefaultCost)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
