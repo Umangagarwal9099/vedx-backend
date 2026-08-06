@@ -150,6 +150,40 @@ func (ctrl *UploadController) UploadAssessmentThumbnail(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"url": url})
 }
 
+// UploadCourseThumbnail godoc
+//
+//	@Summary		Upload course thumbnail
+//	@Description	Upload a thumbnail image for a course. Returns the public URL to use in the thumbnail field when creating or updating a course — never send the raw file/base64 data as the thumbnail value itself. Max size 10 MB. Allowed types: JPEG, PNG, WebP, GIF.
+//	@Tags			upload
+//	@Accept			multipart/form-data
+//	@Produce		json
+//	@Param			image	formData	file	true	"Thumbnail image file"
+//	@Success		200		{object}	map[string]string	"url: public URL of the uploaded thumbnail"
+//	@Failure		400		{object}	map[string]string	"Validation error"
+//	@Failure		500		{object}	map[string]string	"Upload failed"
+//	@Security		BearerAuth
+//	@Router			/upload/course-thumbnail [post]
+func (ctrl *UploadController) UploadCourseThumbnail(c *gin.Context) {
+	fh, err := c.FormFile("image")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "field 'image' is required (multipart/form-data)"})
+		return
+	}
+
+	url, err := ctrl.storage.UploadCourseThumbnail(fh)
+	if err != nil {
+		status := http.StatusInternalServerError
+		msg := err.Error()
+		if len(msg) >= 4 && (msg[:4] == "file" || msg[:4] == "unsu" || msg[:4] == "cann") {
+			status = http.StatusBadRequest
+		}
+		c.JSON(status, gin.H{"error": msg})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"url": url})
+}
+
 // UploadAssessmentFile godoc
 //
 //	@Summary		Upload assessment file

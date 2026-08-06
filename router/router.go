@@ -732,6 +732,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			protected.POST("/upload/banner-image", uploadCtrl.UploadBannerImage)
 			protected.POST("/upload/material", uploadCtrl.UploadMaterial)
 			protected.POST("/upload/assessment-thumbnail", uploadCtrl.UploadAssessmentThumbnail)
+			protected.POST("/upload/course-thumbnail", uploadCtrl.UploadCourseThumbnail)
 			protected.POST("/upload/assessment-file", uploadCtrl.UploadAssessmentFile)
 			protected.POST("/upload/assignment-file", uploadCtrl.UploadAssignmentFile)
 			protected.POST("/upload/resource-file", uploadCtrl.UploadResourceFile)

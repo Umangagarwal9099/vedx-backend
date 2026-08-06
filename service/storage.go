@@ -315,6 +315,15 @@ func (s *StorageService) UploadAssessmentThumbnail(fh *multipart.FileHeader) (st
 	return s.uploadImage(fh, "assessments/thumbnails")
 }
 
+// UploadCourseThumbnail validates and uploads a course thumbnail. Returns its
+// public URL — callers must store this URL in the course's thumbnail field,
+// never the raw file/base64 data itself (a raw data: URI there previously
+// bloated every course row to megabytes and made GET /courses catastrophically
+// slow, since every listing call embeds every course's thumbnail inline).
+func (s *StorageService) UploadCourseThumbnail(fh *multipart.FileHeader) (string, error) {
+	return s.uploadImage(fh, "courses/thumbnails")
+}
+
 // UploadResumeFile validates fh as a PDF/DOC/DOCX (max 5 MB) and uploads it
 // under "resumes/". Returns its public URL.
 func (s *StorageService) UploadResumeFile(fh *multipart.FileHeader) (string, error) {
