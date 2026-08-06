@@ -16859,6 +16859,35 @@ paths:
       summary: Today's work report suggestions
       tags:
       - work-reports
+  /work-reports/team:
+    get:
+      description: Returns every employee's submitted work report for a given date
+        (?date=YYYY-MM-DD, defaults to today). Restricted to super_admin/team_lead.
+      parameters:
+      - description: Date (YYYY-MM-DD), defaults to today
+        in: query
+        name: date
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.WorkReport'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Team work reports for a date
+      tags:
+      - work-reports
   /zoom/webhook:
     post:
       consumes:

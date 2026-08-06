@@ -102,3 +102,27 @@ func (ctrl *WorkReportController) GetMine(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, reports)
 }
+
+// GetTeam godoc
+//
+//	@Summary		Team work reports for a date
+//	@Description	Returns every employee's submitted work report for a given date (?date=YYYY-MM-DD, defaults to today). Restricted to super_admin/team_lead.
+//	@Tags			work-reports
+//	@Produce		json
+//	@Param			date	query	string	false	"Date (YYYY-MM-DD), defaults to today"
+//	@Success		200		{array}	models.WorkReport
+//	@Failure		500		{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/work-reports/team [get]
+func (ctrl *WorkReportController) GetTeam(c *gin.Context) {
+	date := c.Query("date")
+	reports, err := ctrl.reportRepo.FindAllForDate(c.Request.Context(), date)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch team work reports"})
+		return
+	}
+	if reports == nil {
+		reports = []models.WorkReport{}
+	}
+	c.JSON(http.StatusOK, reports)
+}

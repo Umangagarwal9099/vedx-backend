@@ -98,3 +98,24 @@ func (r *WorkReportRepository) FindAllForEmployee(ctx context.Context, employeeI
 	}
 	return out, rows.Err()
 }
+
+// FindAllForDate returns every employee's work report for a given date
+// (defaults to today if date is empty) — admin's team roster view.
+func (r *WorkReportRepository) FindAllForDate(ctx context.Context, date string) ([]models.WorkReport, error) {
+	q := fmt.Sprintf("%s WHERE w.report_date = COALESCE(NULLIF($1,'')::DATE, CURRENT_DATE) ORDER BY u.first_name, u.last_name", workReportBaseSelect)
+	rows, err := r.pool.Query(ctx, q, date)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.WorkReport
+	for rows.Next() {
+		w, err := scanWorkReport(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, w)
+	}
+	return out, rows.Err()
+}

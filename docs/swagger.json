@@ -16891,6 +16891,51 @@
                 }
             }
         },
+        "/work-reports/team": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns every employee's submitted work report for a given date (?date=YYYY-MM-DD, defaults to today). Restricted to super_admin/team_lead.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "work-reports"
+                ],
+                "summary": "Team work reports for a date",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Date (YYYY-MM-DD), defaults to today",
+                        "name": "date",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.WorkReport"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/zoom/webhook": {
             "post": {
                 "description": "Receives Zoom Event Subscription callbacks. Answers Zoom's endpoint.url_validation handshake and verifies the x-zm-signature on all other events before processing them. Not intended to be called directly — configure this URL in the Zoom Marketplace app's Event Subscriptions.",

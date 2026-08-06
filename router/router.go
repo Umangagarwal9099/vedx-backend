@@ -309,6 +309,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				workReports.GET("/suggestions", leadOrAbove, workReportCtrl.GetSuggestions)
 				workReports.POST("", leadOrAbove, workReportCtrl.Submit)
 				workReports.GET("/me", leadOrAbove, workReportCtrl.GetMine)
+				workReports.GET("/team", adminOrAbove, workReportCtrl.GetTeam)
 			}
 
 			// Courses — super_admin/team_lead manage any course; college_admin/
