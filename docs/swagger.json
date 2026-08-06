@@ -2148,7 +2148,10 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Self-service check-in for the calling employee/team_lead — creates today's attendance row if it doesn't exist yet.",
+                "description": "Self-service check-in for the calling employee/team_lead, verified against a registered office location's GPS radius plus a selfie. Creates today's attendance row if it doesn't exist yet.",
+                "consumes": [
+                    "application/json"
+                ],
                 "produces": [
                     "application/json"
                 ],
@@ -2156,11 +2159,40 @@
                     "attendance"
                 ],
                 "summary": "Check in for today",
+                "parameters": [
+                    {
+                        "description": "Captured location + selfie",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CheckInInput"
+                        }
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/models.EmployeeAttendance"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error, or no office location configured",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Outside every office location's radius",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "500": {
@@ -2182,7 +2214,10 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Self-service check-out for the calling employee/team_lead — requires a check-in already recorded today.",
+                "description": "Self-service check-out for the calling employee/team_lead, verified against a registered office location's GPS radius plus a selfie. Requires a check-in already recorded today.",
+                "consumes": [
+                    "application/json"
+                ],
                 "produces": [
                     "application/json"
                 ],
@@ -2190,6 +2225,17 @@
                     "attendance"
                 ],
                 "summary": "Check out for today",
+                "parameters": [
+                    {
+                        "description": "Captured location + selfie",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CheckOutInput"
+                        }
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -2198,7 +2244,16 @@
                         }
                     },
                     "400": {
-                        "description": "No check-in found for today",
+                        "description": "No check-in found for today, validation error, or no office location configured",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Outside every office location's radius",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -10130,6 +10185,94 @@
                 }
             }
         },
+        "/notifications/push-token": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Registers (or re-registers) this device's Expo push token against the logged-in user, so they receive push notifications from the mobile app.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "Register a mobile push token",
+                "parameters": [
+                    {
+                        "description": "Push token",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.RegisterPushTokenInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Removes a device's push token (e.g. on logout) so it stops receiving pushes.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "Unregister a mobile push token",
+                "parameters": [
+                    {
+                        "description": "Push token",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UnregisterPushTokenInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/notifications/{short_id}": {
             "delete": {
                 "security": [
@@ -10290,6 +10433,281 @@
                     },
                     "404": {
                         "description": "Notification not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/office-locations": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns every office location, active or not. Restricted to super_admin/team_lead.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "office-locations"
+                ],
+                "summary": "List office locations",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.OfficeLocation"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Registers a physical office location that employee check-in/out is geofenced against. Restricted to super_admin/team_lead.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "office-locations"
+                ],
+                "summary": "Create an office location",
+                "parameters": [
+                    {
+                        "description": "Office location details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.CreateOfficeLocationInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.OfficeLocation"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/office-locations/resolve-link": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Follows a pasted Google Maps URL (short share link or full URL) and extracts the latitude/longitude it encodes, plus a place name when derivable. Restricted to super_admin/team_lead.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "office-locations"
+                ],
+                "summary": "Resolve a Google Maps link to coordinates",
+                "parameters": [
+                    {
+                        "description": "Google Maps URL",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.ResolveMapsLinkInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.ResolvedMapsLocation"
+                        }
+                    },
+                    "400": {
+                        "description": "Not a Google Maps link, or validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "No coordinates found in that link",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "502": {
+                        "description": "Could not reach Google Maps",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/office-locations/{short_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Permanently removes an office location. Restricted to super_admin/team_lead.",
+                "tags": [
+                    "office-locations"
+                ],
+                "summary": "Delete an office location",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Office location short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Office location not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Applies a partial update to an office location. Restricted to super_admin/team_lead.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "office-locations"
+                ],
+                "summary": "Update an office location",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Office location short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to update",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateOfficeLocationInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.OfficeLocation"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Office location not found",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -14192,6 +14610,64 @@
                 }
             }
         },
+        "/upload/attendance-selfie": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Upload a check-in/check-out selfie. Returns the public URL to pass as selfie_url when checking in or out. Max size 10 MB. Allowed types: JPEG, PNG, WebP, GIF.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "upload"
+                ],
+                "summary": "Upload attendance selfie",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "Selfie image file",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "url: public URL of the uploaded selfie",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Upload failed",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/upload/banner-image": {
             "post": {
                 "security": [
@@ -14308,6 +14784,64 @@
                 }
             }
         },
+        "/upload/course-thumbnail": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Upload a thumbnail image for a course. Returns the public URL to use in the thumbnail field when creating or updating a course — never send the raw file/base64 data as the thumbnail value itself. Max size 10 MB. Allowed types: JPEG, PNG, WebP, GIF.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "upload"
+                ],
+                "summary": "Upload course thumbnail",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "Thumbnail image file",
+                        "name": "image",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "url: public URL of the uploaded thumbnail",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Upload failed",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/upload/image": {
             "post": {
                 "security": [
@@ -14338,6 +14872,64 @@
                 "responses": {
                     "200": {
                         "description": "url: public URL of the uploaded image",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Upload failed",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/upload/leave-certificate": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Upload a supporting document (e.g. medical certificate) for a leave request. Returns the public URL to pass as certificate_url when applying for leave. Max size 5 MB. Allowed types: PDF, JPEG, PNG.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "upload"
+                ],
+                "summary": "Upload leave certificate",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "Certificate file",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "url: public URL of the uploaded certificate",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -16171,6 +16763,134 @@
                 }
             }
         },
+        "/work-reports": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Submits (or updates) the calling employee's work report for today. report_date is always the server's current date — re-submitting the same day updates the existing report.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "work-reports"
+                ],
+                "summary": "Submit today's work report",
+                "parameters": [
+                    {
+                        "description": "Report details",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.SubmitWorkReportInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.WorkReport"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/work-reports/me": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the calling employee's last 30 days of work reports, newest first.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "work-reports"
+                ],
+                "summary": "My work reports",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.WorkReport"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/work-reports/suggestions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns today's real activity counts (calls made, leads contacted, follow-ups done, admissions) as starting values for the daily work report — the employee can confirm or edit them before submitting.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "work-reports"
+                ],
+                "summary": "Today's work report suggestions",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.WorkReportSuggestions"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/zoom/webhook": {
             "post": {
                 "description": "Receives Zoom Event Subscription callbacks. Answers Zoom's endpoint.url_validation handshake and verifies the x-zm-signature on all other events before processing them. Not intended to be called directly — configure this URL in the Zoom Marketplace app's Event Subscriptions.",
@@ -17734,6 +18454,48 @@
                 }
             }
         },
+        "models.CheckInInput": {
+            "type": "object",
+            "required": [
+                "selfie_url"
+            ],
+            "properties": {
+                "latitude": {
+                    "type": "number",
+                    "maximum": 90,
+                    "minimum": -90
+                },
+                "longitude": {
+                    "type": "number",
+                    "maximum": 180,
+                    "minimum": -180
+                },
+                "selfie_url": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.CheckOutInput": {
+            "type": "object",
+            "required": [
+                "selfie_url"
+            ],
+            "properties": {
+                "latitude": {
+                    "type": "number",
+                    "maximum": 90,
+                    "minimum": -90
+                },
+                "longitude": {
+                    "type": "number",
+                    "maximum": 180,
+                    "minimum": -180
+                },
+                "selfie_url": {
+                    "type": "string"
+                }
+            }
+        },
         "models.CodingExample": {
             "type": "object",
             "properties": {
@@ -18992,9 +19754,22 @@
                 "to_date"
             ],
             "properties": {
+                "certificate_url": {
+                    "type": "string",
+                    "example": "https://cdn.example.com/leave-certificates/abc123.pdf"
+                },
                 "from_date": {
                     "type": "string",
                     "example": "2026-08-01"
+                },
+                "leave_category": {
+                    "type": "string",
+                    "enum": [
+                        "casual",
+                        "sick",
+                        "wfh"
+                    ],
+                    "example": "casual"
                 },
                 "leave_type": {
                     "type": "string",
@@ -19192,6 +19967,38 @@
                 "type": {
                     "type": "string",
                     "example": "general"
+                }
+            }
+        },
+        "models.CreateOfficeLocationInput": {
+            "type": "object",
+            "required": [
+                "name",
+                "radius_meters"
+            ],
+            "properties": {
+                "address": {
+                    "type": "string",
+                    "example": "123 Main St"
+                },
+                "latitude": {
+                    "type": "number",
+                    "maximum": 90,
+                    "minimum": -90
+                },
+                "longitude": {
+                    "type": "number",
+                    "maximum": 180,
+                    "minimum": -180
+                },
+                "name": {
+                    "type": "string",
+                    "example": "HQ"
+                },
+                "radius_meters": {
+                    "type": "integer",
+                    "minimum": 10,
+                    "example": 200
                 }
             }
         },
@@ -19628,7 +20435,25 @@
                 "check_in_at": {
                     "type": "string"
                 },
+                "check_in_lat": {
+                    "type": "number"
+                },
+                "check_in_lng": {
+                    "type": "number"
+                },
+                "check_in_selfie_url": {
+                    "type": "string"
+                },
                 "check_out_at": {
+                    "type": "string"
+                },
+                "check_out_lat": {
+                    "type": "number"
+                },
+                "check_out_lng": {
+                    "type": "number"
+                },
+                "check_out_selfie_url": {
                     "type": "string"
                 },
                 "created_at": {
@@ -20402,6 +21227,9 @@
                 "admin_note": {
                     "type": "string"
                 },
+                "certificate_url": {
+                    "type": "string"
+                },
                 "created_at": {
                     "type": "string"
                 },
@@ -20415,6 +21243,9 @@
                     "type": "string"
                 },
                 "id": {
+                    "type": "string"
+                },
+                "leave_category": {
                     "type": "string"
                 },
                 "leave_type": {
@@ -20722,8 +21553,14 @@
                 "achieved": {
                     "type": "integer"
                 },
+                "achieved_today": {
+                    "type": "integer"
+                },
                 "created_at": {
                     "type": "string"
+                },
+                "daily_target": {
+                    "type": "number"
                 },
                 "employee_id": {
                     "type": "string"
@@ -20814,6 +21651,41 @@
                     "type": "string"
                 },
                 "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.OfficeLocation": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_active": {
+                    "type": "boolean"
+                },
+                "latitude": {
+                    "type": "number"
+                },
+                "longitude": {
+                    "type": "number"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "radius_meters": {
+                    "type": "integer"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "updated_at": {
                     "type": "string"
                 }
             }
@@ -21467,6 +22339,52 @@
                     "type": "string"
                 },
                 "source": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.RegisterPushTokenInput": {
+            "type": "object",
+            "required": [
+                "token"
+            ],
+            "properties": {
+                "platform": {
+                    "type": "string",
+                    "enum": [
+                        "ios",
+                        "android",
+                        "web",
+                        "unknown"
+                    ]
+                },
+                "token": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.ResolveMapsLinkInput": {
+            "type": "object",
+            "required": [
+                "url"
+            ],
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "example": "https://maps.app.goo.gl/vCPqUuyE1VdT2CSx6"
+                }
+            }
+        },
+        "models.ResolvedMapsLocation": {
+            "type": "object",
+            "properties": {
+                "latitude": {
+                    "type": "number"
+                },
+                "longitude": {
+                    "type": "number"
+                },
+                "name": {
                     "type": "string"
                 }
             }
@@ -22441,6 +23359,35 @@
                 }
             }
         },
+        "models.SubmitWorkReportInput": {
+            "type": "object",
+            "properties": {
+                "admissions": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "example": 1
+                },
+                "calls_made": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "example": 12
+                },
+                "follow_ups_done": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "example": 5
+                },
+                "leads_contacted": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "example": 8
+                },
+                "summary": {
+                    "type": "string",
+                    "example": "Followed up with 5 warm leads, 1 admission closed."
+                }
+            }
+        },
         "models.SupportTicket": {
             "type": "object",
             "properties": {
@@ -22534,6 +23481,17 @@
                     "items": {
                         "type": "string"
                     }
+                }
+            }
+        },
+        "models.UnregisterPushTokenInput": {
+            "type": "object",
+            "required": [
+                "token"
+            ],
+            "properties": {
+                "token": {
+                    "type": "string"
                 }
             }
         },
@@ -23426,6 +24384,34 @@
                 }
             }
         },
+        "models.UpdateOfficeLocationInput": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "is_active": {
+                    "type": "boolean"
+                },
+                "latitude": {
+                    "type": "number",
+                    "maximum": 90,
+                    "minimum": -90
+                },
+                "longitude": {
+                    "type": "number",
+                    "maximum": 180,
+                    "minimum": -180
+                },
+                "name": {
+                    "type": "string"
+                },
+                "radius_meters": {
+                    "type": "integer",
+                    "minimum": 10
+                }
+            }
+        },
         "models.UpdateProfileDetailsInput": {
             "type": "object",
             "properties": {
@@ -23874,6 +24860,64 @@
                 },
                 "updated_at": {
                     "type": "string"
+                }
+            }
+        },
+        "models.WorkReport": {
+            "type": "object",
+            "properties": {
+                "admissions": {
+                    "type": "integer"
+                },
+                "calls_made": {
+                    "type": "integer"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "employee_id": {
+                    "type": "string"
+                },
+                "employee_name": {
+                    "type": "string"
+                },
+                "follow_ups_done": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "leads_contacted": {
+                    "type": "integer"
+                },
+                "report_date": {
+                    "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                },
+                "summary": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.WorkReportSuggestions": {
+            "type": "object",
+            "properties": {
+                "admissions": {
+                    "type": "integer"
+                },
+                "calls_made": {
+                    "type": "integer"
+                },
+                "follow_ups_done": {
+                    "type": "integer"
+                },
+                "leads_contacted": {
+                    "type": "integer"
                 }
             }
         }

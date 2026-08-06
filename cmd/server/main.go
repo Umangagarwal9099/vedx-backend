@@ -114,6 +114,13 @@ func main() {
 		repository.NewNotificationRepository(pool),
 	)
 
+	// Background: notify the assigned employee when a lead's follow-up comes due.
+	go scheduler.RunLeadFollowUpReminders(
+		reminderCtx,
+		repository.NewLeadRepository(pool),
+		repository.NewNotificationRepository(pool),
+	)
+
 	// Background: force-submit exam attempts whose deadline has passed —
 	// the server-side enforcement that makes auto_submit/duration actually
 	// end an exam, instead of relying on the student's browser to call submit.

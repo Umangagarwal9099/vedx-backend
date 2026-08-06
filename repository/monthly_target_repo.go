@@ -91,7 +91,23 @@ func (r *MonthlyTargetRepository) GetForEmployee(ctx context.Context, employeeID
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
-	return &m, err
+	if err != nil {
+		return nil, err
+	}
+
+	if wd := util.WorkingDaysInMonth(year, month); wd > 0 {
+		m.DailyTarget = float64(m.TargetConversions) / float64(wd)
+	}
+	if err := r.pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM leads
+		WHERE assigned_to = $1 AND status = 'converted' AND deleted_at IS NULL
+		  AND converted_at::DATE = CURRENT_DATE`,
+		employeeID,
+	).Scan(&m.AchievedToday); err != nil {
+		return nil, fmt.Errorf("count today's conversions: %w", err)
+	}
+
+	return &m, nil
 }
 
 // GetTeamSummary returns every employee/team_lead's target (+ achieved) for

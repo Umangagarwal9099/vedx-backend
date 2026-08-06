@@ -8,10 +8,12 @@ type LeaveRequest struct {
 	ShortID      string     `json:"short_id"`
 	EmployeeID   string     `json:"employee_id"`
 	EmployeeName string     `json:"employee_name,omitempty"`
-	FromDate     string     `json:"from_date"`
-	ToDate       string     `json:"to_date"`
-	LeaveType    string     `json:"leave_type"`
-	Reason       string     `json:"reason"`
+	FromDate       string     `json:"from_date"`
+	ToDate         string     `json:"to_date"`
+	LeaveType      string     `json:"leave_type"`
+	LeaveCategory  string     `json:"leave_category"`
+	CertificateURL string     `json:"certificate_url,omitempty"`
+	Reason         string     `json:"reason"`
 	Status       string     `json:"status"`
 	AdminNote    string     `json:"admin_note,omitempty"`
 	ReviewedBy   string     `json:"reviewed_by,omitempty"`
@@ -22,10 +24,12 @@ type LeaveRequest struct {
 
 // CreateLeaveRequestInput carries the fields for a new leave application.
 type CreateLeaveRequestInput struct {
-	FromDate  string `json:"from_date"  binding:"required" example:"2026-08-01"`
-	ToDate    string `json:"to_date"    binding:"required" example:"2026-08-02"`
-	LeaveType string `json:"leave_type" binding:"omitempty,oneof=full_day half_day" example:"full_day"`
-	Reason    string `json:"reason"     binding:"required" example:"Family function"`
+	FromDate       string `json:"from_date"       binding:"required" example:"2026-08-01"`
+	ToDate         string `json:"to_date"         binding:"required" example:"2026-08-02"`
+	LeaveType      string `json:"leave_type"      binding:"omitempty,oneof=full_day half_day" example:"full_day"`
+	LeaveCategory  string `json:"leave_category"  binding:"omitempty,oneof=casual sick wfh" example:"casual"`
+	CertificateURL string `json:"certificate_url" example:"https://cdn.example.com/leave-certificates/abc123.pdf"`
+	Reason         string `json:"reason"          binding:"required" example:"Family function"`
 }
 
 // ReviewLeaveRequestInput is the admin's approve/reject decision.

@@ -354,6 +354,74 @@ func (ctrl *UploadController) UploadResumeFile(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"url": url})
 }
 
+// UploadLeaveCertificate godoc
+//
+//	@Summary		Upload leave certificate
+//	@Description	Upload a supporting document (e.g. medical certificate) for a leave request. Returns the public URL to pass as certificate_url when applying for leave. Max size 5 MB. Allowed types: PDF, JPEG, PNG.
+//	@Tags			upload
+//	@Accept			multipart/form-data
+//	@Produce		json
+//	@Param			file	formData	file	true	"Certificate file"
+//	@Success		200		{object}	map[string]string	"url: public URL of the uploaded certificate"
+//	@Failure		400		{object}	map[string]string	"Validation error"
+//	@Failure		500		{object}	map[string]string	"Upload failed"
+//	@Security		BearerAuth
+//	@Router			/upload/leave-certificate [post]
+func (ctrl *UploadController) UploadLeaveCertificate(c *gin.Context) {
+	fh, err := c.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "field 'file' is required (multipart/form-data)"})
+		return
+	}
+
+	url, err := ctrl.storage.UploadLeaveCertificate(fh)
+	if err != nil {
+		status := http.StatusInternalServerError
+		msg := err.Error()
+		if len(msg) >= 4 && (msg[:4] == "file" || msg[:4] == "unsu" || msg[:4] == "cann") {
+			status = http.StatusBadRequest
+		}
+		c.JSON(status, gin.H{"error": msg})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"url": url})
+}
+
+// UploadAttendanceSelfie godoc
+//
+//	@Summary		Upload attendance selfie
+//	@Description	Upload a check-in/check-out selfie. Returns the public URL to pass as selfie_url when checking in or out. Max size 10 MB. Allowed types: JPEG, PNG, WebP, GIF.
+//	@Tags			upload
+//	@Accept			multipart/form-data
+//	@Produce		json
+//	@Param			file	formData	file	true	"Selfie image file"
+//	@Success		200		{object}	map[string]string	"url: public URL of the uploaded selfie"
+//	@Failure		400		{object}	map[string]string	"Validation error"
+//	@Failure		500		{object}	map[string]string	"Upload failed"
+//	@Security		BearerAuth
+//	@Router			/upload/attendance-selfie [post]
+func (ctrl *UploadController) UploadAttendanceSelfie(c *gin.Context) {
+	fh, err := c.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "field 'file' is required (multipart/form-data)"})
+		return
+	}
+
+	url, err := ctrl.storage.UploadAttendanceSelfie(fh)
+	if err != nil {
+		status := http.StatusInternalServerError
+		msg := err.Error()
+		if len(msg) >= 4 && (msg[:4] == "file" || msg[:4] == "unsu" || msg[:4] == "cann") {
+			status = http.StatusBadRequest
+		}
+		c.JSON(status, gin.H{"error": msg})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"url": url})
+}
+
 // UploadMaterial godoc
 //
 //	@Summary		Upload a material file

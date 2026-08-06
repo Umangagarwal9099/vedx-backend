@@ -23,7 +23,9 @@ func NewLeaveRequestRepository(pool *pgxpool.Pool) *LeaveRequestRepository {
 
 const leaveRequestBaseSelect = `
 	SELECT l.id, l.short_id, l.employee_id, CONCAT(u.first_name, ' ', u.last_name),
-	       l.from_date::TEXT, l.to_date::TEXT, l.leave_type::TEXT, l.reason, l.status::TEXT,
+	       l.from_date::TEXT, l.to_date::TEXT, l.leave_type::TEXT,
+	       l.leave_category::TEXT, COALESCE(l.certificate_url, ''),
+	       l.reason, l.status::TEXT,
 	       COALESCE(l.admin_note, ''), COALESCE(l.reviewed_by::TEXT, ''), l.reviewed_at,
 	       l.created_at, l.updated_at
 	FROM employee_leave_requests l
@@ -33,7 +35,9 @@ func scanLeaveRequest(row pgx.Row) (models.LeaveRequest, error) {
 	var l models.LeaveRequest
 	err := row.Scan(
 		&l.ID, &l.ShortID, &l.EmployeeID, &l.EmployeeName,
-		&l.FromDate, &l.ToDate, &l.LeaveType, &l.Reason, &l.Status,
+		&l.FromDate, &l.ToDate, &l.LeaveType,
+		&l.LeaveCategory, &l.CertificateURL,
+		&l.Reason, &l.Status,
 		&l.AdminNote, &l.ReviewedBy, &l.ReviewedAt,
 		&l.CreatedAt, &l.UpdatedAt,
 	)
@@ -64,6 +68,10 @@ func (r *LeaveRequestRepository) Apply(ctx context.Context, employeeID string, i
 	if leaveType == "" {
 		leaveType = "full_day"
 	}
+	leaveCategory := in.LeaveCategory
+	if leaveCategory == "" {
+		leaveCategory = "casual"
+	}
 
 	// See the comment on assessment_repo.go's Create for why this reads FROM
 	// ins rather than FROM employee_leave_requests.
@@ -74,12 +82,12 @@ func (r *LeaveRequestRepository) Apply(ctx context.Context, employeeID string, i
 
 		l, err := scanLeaveRequest(r.pool.QueryRow(ctx, fmt.Sprintf(`
 			WITH ins AS (
-				INSERT INTO employee_leave_requests (short_id, employee_id, from_date, to_date, leave_type, reason)
-				VALUES ($1, $2, $3::DATE, $4::DATE, $5::leave_type, $6)
+				INSERT INTO employee_leave_requests (short_id, employee_id, from_date, to_date, leave_type, leave_category, certificate_url, reason)
+				VALUES ($1, $2, $3::DATE, $4::DATE, $5::leave_type, $6::leave_category, NULLIF($7,''), $8)
 				RETURNING *
 			)
 			%s`, insSelect),
-			shortID, employeeID, in.FromDate, in.ToDate, leaveType, in.Reason,
+			shortID, employeeID, in.FromDate, in.ToDate, leaveType, leaveCategory, in.CertificateURL, in.Reason,
 		))
 		if err == nil {
 			return &l, nil

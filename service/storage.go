@@ -60,9 +60,10 @@ var allowedMaterialMIME = map[string]struct {
 	"application/octet-stream":     {".bin", "files"},
 }
 
-const maxUploadSize = 10 << 20    // 10 MB
-const maxMaterialSize = 500 << 20 // 500 MB
-const maxResumeSize = 5 << 20     // 5 MB — resumes are short documents, not course material
+const maxUploadSize = 10 << 20            // 10 MB
+const maxMaterialSize = 500 << 20         // 500 MB
+const maxResumeSize = 5 << 20             // 5 MB — resumes are short documents, not course material
+const maxLeaveCertificateSize = 5 << 20   // 5 MB — a certificate is a short document/photo, not course material
 
 // allowedResumeMIME is deliberately narrower than allowedMaterialMIME — a
 // resume is PDF or Word, never a video/audio/archive/image.
@@ -70,6 +71,14 @@ var allowedResumeMIME = map[string]string{
 	"application/pdf":            ".pdf",
 	"application/msword":         ".doc",
 	"application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+}
+
+// allowedLeaveCertificateMIME allows PDF alongside JPEG/PNG — a medical
+// certificate is as often a phone photo of a paper document as a scan.
+var allowedLeaveCertificateMIME = map[string]string{
+	"application/pdf": ".pdf",
+	"image/jpeg":      ".jpg",
+	"image/png":       ".png",
 }
 
 // StorageService uploads files to Cloudflare R2. All files live in one
@@ -324,6 +333,12 @@ func (s *StorageService) UploadCourseThumbnail(fh *multipart.FileHeader) (string
 	return s.uploadImage(fh, "courses/thumbnails")
 }
 
+// UploadAttendanceSelfie validates and uploads a check-in/check-out selfie.
+// Returns its public URL.
+func (s *StorageService) UploadAttendanceSelfie(fh *multipart.FileHeader) (string, error) {
+	return s.uploadImage(fh, "attendance/selfies")
+}
+
 // UploadResumeFile validates fh as a PDF/DOC/DOCX (max 5 MB) and uploads it
 // under "resumes/". Returns its public URL.
 func (s *StorageService) UploadResumeFile(fh *multipart.FileHeader) (string, error) {
@@ -358,6 +373,43 @@ func (s *StorageService) UploadResumeFile(fh *multipart.FileHeader) (string, err
 	}
 
 	key := fmt.Sprintf("resumes/%s%s", randomHex(), ext)
+	return s.put(fh, key, mimeType)
+}
+
+// UploadLeaveCertificate validates fh as a PDF/JPEG/PNG (max 5 MB) and
+// uploads it under "leave-certificates/". Returns its public URL.
+func (s *StorageService) UploadLeaveCertificate(fh *multipart.FileHeader) (string, error) {
+	if fh.Size > maxLeaveCertificateSize {
+		return "", fmt.Errorf("file too large: maximum size is 5 MB")
+	}
+
+	f, err := fh.Open()
+	if err != nil {
+		return "", fmt.Errorf("cannot open file: %w", err)
+	}
+	buf := make([]byte, 512)
+	if _, err := f.Read(buf); err != nil {
+		f.Close()
+		return "", fmt.Errorf("cannot read file: %w", err)
+	}
+	f.Close()
+	mimeType := strings.TrimSpace(strings.Split(http.DetectContentType(buf), ";")[0])
+
+	ext, ok := allowedLeaveCertificateMIME[mimeType]
+	if !ok {
+		origExt := strings.ToLower(filepath.Ext(fh.Filename))
+		for mime, e := range allowedLeaveCertificateMIME {
+			if e == origExt {
+				ext, mimeType, ok = e, mime, true
+				break
+			}
+		}
+	}
+	if !ok {
+		return "", fmt.Errorf("unsupported file type — only PDF, JPEG, and PNG certificates are accepted")
+	}
+
+	key := fmt.Sprintf("leave-certificates/%s%s", randomHex(), ext)
 	return s.put(fh, key, mimeType)
 }
 

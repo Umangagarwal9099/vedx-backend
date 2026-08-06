@@ -1066,6 +1066,36 @@ definitions:
       valid:
         type: boolean
     type: object
+  models.CheckInInput:
+    properties:
+      latitude:
+        maximum: 90
+        minimum: -90
+        type: number
+      longitude:
+        maximum: 180
+        minimum: -180
+        type: number
+      selfie_url:
+        type: string
+    required:
+    - selfie_url
+    type: object
+  models.CheckOutInput:
+    properties:
+      latitude:
+        maximum: 90
+        minimum: -90
+        type: number
+      longitude:
+        maximum: 180
+        minimum: -180
+        type: number
+      selfie_url:
+        type: string
+    required:
+    - selfie_url
+    type: object
   models.CodingExample:
     properties:
       explanation:
@@ -1978,8 +2008,18 @@ definitions:
     type: object
   models.CreateLeaveRequestInput:
     properties:
+      certificate_url:
+        example: https://cdn.example.com/leave-certificates/abc123.pdf
+        type: string
       from_date:
         example: "2026-08-01"
+        type: string
+      leave_category:
+        enum:
+        - casual
+        - sick
+        - wfh
+        example: casual
         type: string
       leave_type:
         enum:
@@ -2130,6 +2170,30 @@ definitions:
     - message
     - roles
     - title
+    type: object
+  models.CreateOfficeLocationInput:
+    properties:
+      address:
+        example: 123 Main St
+        type: string
+      latitude:
+        maximum: 90
+        minimum: -90
+        type: number
+      longitude:
+        maximum: 180
+        minimum: -180
+        type: number
+      name:
+        example: HQ
+        type: string
+      radius_meters:
+        example: 200
+        minimum: 10
+        type: integer
+    required:
+    - name
+    - radius_meters
     type: object
   models.CreateProjectInput:
     properties:
@@ -2444,7 +2508,19 @@ definitions:
     properties:
       check_in_at:
         type: string
+      check_in_lat:
+        type: number
+      check_in_lng:
+        type: number
+      check_in_selfie_url:
+        type: string
       check_out_at:
+        type: string
+      check_out_lat:
+        type: number
+      check_out_lng:
+        type: number
+      check_out_selfie_url:
         type: string
       created_at:
         type: string
@@ -2968,6 +3044,8 @@ definitions:
     properties:
       admin_note:
         type: string
+      certificate_url:
+        type: string
       created_at:
         type: string
       employee_id:
@@ -2977,6 +3055,8 @@ definitions:
       from_date:
         type: string
       id:
+        type: string
+      leave_category:
         type: string
       leave_type:
         type: string
@@ -3192,8 +3272,12 @@ definitions:
     properties:
       achieved:
         type: integer
+      achieved_today:
+        type: integer
       created_at:
         type: string
+      daily_target:
+        type: number
       employee_id:
         type: string
       employee_name:
@@ -3253,6 +3337,29 @@ definitions:
       title:
         type: string
       type:
+        type: string
+    type: object
+  models.OfficeLocation:
+    properties:
+      address:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      latitude:
+        type: number
+      longitude:
+        type: number
+      name:
+        type: string
+      radius_meters:
+        type: integer
+      short_id:
+        type: string
+      updated_at:
         type: string
     type: object
   models.ProfileDetails:
@@ -3699,6 +3806,37 @@ definitions:
       session_short_id:
         type: string
       source:
+        type: string
+    type: object
+  models.RegisterPushTokenInput:
+    properties:
+      platform:
+        enum:
+        - ios
+        - android
+        - web
+        - unknown
+        type: string
+      token:
+        type: string
+    required:
+    - token
+    type: object
+  models.ResolveMapsLinkInput:
+    properties:
+      url:
+        example: https://maps.app.goo.gl/vCPqUuyE1VdT2CSx6
+        type: string
+    required:
+    - url
+    type: object
+  models.ResolvedMapsLocation:
+    properties:
+      latitude:
+        type: number
+      longitude:
+        type: number
+      name:
         type: string
     type: object
   models.Resource:
@@ -4366,6 +4504,28 @@ definitions:
     - answers
     - session_short_id
     type: object
+  models.SubmitWorkReportInput:
+    properties:
+      admissions:
+        example: 1
+        minimum: 0
+        type: integer
+      calls_made:
+        example: 12
+        minimum: 0
+        type: integer
+      follow_ups_done:
+        example: 5
+        minimum: 0
+        type: integer
+      leads_contacted:
+        example: 8
+        minimum: 0
+        type: integer
+      summary:
+        example: Followed up with 5 warm leads, 1 admission closed.
+        type: string
+    type: object
   models.SupportTicket:
     properties:
       created_at:
@@ -4430,6 +4590,13 @@ definitions:
         type: array
     required:
     - lead_short_ids
+    type: object
+  models.UnregisterPushTokenInput:
+    properties:
+      token:
+        type: string
+    required:
+    - token
     type: object
   models.UpdateAnnouncementInput:
     properties:
@@ -5069,6 +5236,26 @@ definitions:
         example: Updated title
         type: string
     type: object
+  models.UpdateOfficeLocationInput:
+    properties:
+      address:
+        type: string
+      is_active:
+        type: boolean
+      latitude:
+        maximum: 90
+        minimum: -90
+        type: number
+      longitude:
+        maximum: 180
+        minimum: -180
+        type: number
+      name:
+        type: string
+      radius_meters:
+        minimum: 10
+        type: integer
+    type: object
   models.UpdateProfileDetailsInput:
     properties:
       bio:
@@ -5388,6 +5575,44 @@ definitions:
         $ref: '#/definitions/models.Role'
       updated_at:
         type: string
+    type: object
+  models.WorkReport:
+    properties:
+      admissions:
+        type: integer
+      calls_made:
+        type: integer
+      created_at:
+        type: string
+      employee_id:
+        type: string
+      employee_name:
+        type: string
+      follow_ups_done:
+        type: integer
+      id:
+        type: string
+      leads_contacted:
+        type: integer
+      report_date:
+        type: string
+      short_id:
+        type: string
+      summary:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.WorkReportSuggestions:
+    properties:
+      admissions:
+        type: integer
+      calls_made:
+        type: integer
+      follow_ups_done:
+        type: integer
+      leads_contacted:
+        type: integer
     type: object
 host: localhost:8080
 info:
@@ -6832,8 +7057,18 @@ paths:
       - assignments
   /attendance/employee/check-in:
     post:
-      description: Self-service check-in for the calling employee/team_lead — creates
-        today's attendance row if it doesn't exist yet.
+      consumes:
+      - application/json
+      description: Self-service check-in for the calling employee/team_lead, verified
+        against a registered office location's GPS radius plus a selfie. Creates today's
+        attendance row if it doesn't exist yet.
+      parameters:
+      - description: Captured location + selfie
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CheckInInput'
       produces:
       - application/json
       responses:
@@ -6841,6 +7076,18 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.EmployeeAttendance'
+        "400":
+          description: Validation error, or no office location configured
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Outside every office location's radius
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "500":
           description: Internal server error
           schema:
@@ -6854,8 +7101,18 @@ paths:
       - attendance
   /attendance/employee/check-out:
     post:
-      description: Self-service check-out for the calling employee/team_lead — requires
+      consumes:
+      - application/json
+      description: Self-service check-out for the calling employee/team_lead, verified
+        against a registered office location's GPS radius plus a selfie. Requires
         a check-in already recorded today.
+      parameters:
+      - description: Captured location + selfie
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CheckOutInput'
       produces:
       - application/json
       responses:
@@ -6864,7 +7121,14 @@ paths:
           schema:
             $ref: '#/definitions/models.EmployeeAttendance'
         "400":
-          description: No check-in found for today
+          description: No check-in found for today, validation error, or no office
+            location configured
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Outside every office location's radius
           schema:
             additionalProperties:
               type: string
@@ -12250,6 +12514,241 @@ paths:
       summary: Mark notification read/unread
       tags:
       - notifications
+  /notifications/push-token:
+    delete:
+      consumes:
+      - application/json
+      description: Removes a device's push token (e.g. on logout) so it stops receiving
+        pushes.
+      parameters:
+      - description: Push token
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UnregisterPushTokenInput'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Unregister a mobile push token
+      tags:
+      - notifications
+    post:
+      consumes:
+      - application/json
+      description: Registers (or re-registers) this device's Expo push token against
+        the logged-in user, so they receive push notifications from the mobile app.
+      parameters:
+      - description: Push token
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.RegisterPushTokenInput'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Register a mobile push token
+      tags:
+      - notifications
+  /office-locations:
+    get:
+      description: Returns every office location, active or not. Restricted to super_admin/team_lead.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.OfficeLocation'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List office locations
+      tags:
+      - office-locations
+    post:
+      consumes:
+      - application/json
+      description: Registers a physical office location that employee check-in/out
+        is geofenced against. Restricted to super_admin/team_lead.
+      parameters:
+      - description: Office location details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateOfficeLocationInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.OfficeLocation'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create an office location
+      tags:
+      - office-locations
+  /office-locations/{short_id}:
+    delete:
+      description: Permanently removes an office location. Restricted to super_admin/team_lead.
+      parameters:
+      - description: Office location short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Office location not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete an office location
+      tags:
+      - office-locations
+    patch:
+      consumes:
+      - application/json
+      description: Applies a partial update to an office location. Restricted to super_admin/team_lead.
+      parameters:
+      - description: Office location short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateOfficeLocationInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.OfficeLocation'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Office location not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update an office location
+      tags:
+      - office-locations
+  /office-locations/resolve-link:
+    post:
+      consumes:
+      - application/json
+      description: Follows a pasted Google Maps URL (short share link or full URL)
+        and extracts the latitude/longitude it encodes, plus a place name when derivable.
+        Restricted to super_admin/team_lead.
+      parameters:
+      - description: Google Maps URL
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.ResolveMapsLinkInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ResolvedMapsLocation'
+        "400":
+          description: Not a Google Maps link, or validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "422":
+          description: No coordinates found in that link
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "502":
+          description: Could not reach Google Maps
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Resolve a Google Maps link to coordinates
+      tags:
+      - office-locations
   /posts/{short_id}:
     delete:
       description: Deletes a post — the post's author, or staff (moderation).
@@ -14848,6 +15347,45 @@ paths:
       summary: Upload assignment submission file
       tags:
       - upload
+  /upload/attendance-selfie:
+    post:
+      consumes:
+      - multipart/form-data
+      description: 'Upload a check-in/check-out selfie. Returns the public URL to
+        pass as selfie_url when checking in or out. Max size 10 MB. Allowed types:
+        JPEG, PNG, WebP, GIF.'
+      parameters:
+      - description: Selfie image file
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'url: public URL of the uploaded selfie'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Upload failed
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Upload attendance selfie
+      tags:
+      - upload
   /upload/banner-image:
     post:
       consumes:
@@ -14926,6 +15464,46 @@ paths:
       summary: Upload blog featured image
       tags:
       - upload
+  /upload/course-thumbnail:
+    post:
+      consumes:
+      - multipart/form-data
+      description: 'Upload a thumbnail image for a course. Returns the public URL
+        to use in the thumbnail field when creating or updating a course — never send
+        the raw file/base64 data as the thumbnail value itself. Max size 10 MB. Allowed
+        types: JPEG, PNG, WebP, GIF.'
+      parameters:
+      - description: Thumbnail image file
+        in: formData
+        name: image
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'url: public URL of the uploaded thumbnail'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Upload failed
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Upload course thumbnail
+      tags:
+      - upload
   /upload/image:
     post:
       consumes:
@@ -14963,6 +15541,45 @@ paths:
       security:
       - BearerAuth: []
       summary: Upload event image
+      tags:
+      - upload
+  /upload/leave-certificate:
+    post:
+      consumes:
+      - multipart/form-data
+      description: 'Upload a supporting document (e.g. medical certificate) for a
+        leave request. Returns the public URL to pass as certificate_url when applying
+        for leave. Max size 5 MB. Allowed types: PDF, JPEG, PNG.'
+      parameters:
+      - description: Certificate file
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'url: public URL of the uploaded certificate'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Upload failed
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Upload leave certificate
       tags:
       - upload
   /upload/material:
@@ -16157,6 +16774,91 @@ paths:
       summary: Import students from Excel/CSV
       tags:
       - students
+  /work-reports:
+    post:
+      consumes:
+      - application/json
+      description: Submits (or updates) the calling employee's work report for today.
+        report_date is always the server's current date — re-submitting the same day
+        updates the existing report.
+      parameters:
+      - description: Report details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.SubmitWorkReportInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.WorkReport'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Submit today's work report
+      tags:
+      - work-reports
+  /work-reports/me:
+    get:
+      description: Returns the calling employee's last 30 days of work reports, newest
+        first.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.WorkReport'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: My work reports
+      tags:
+      - work-reports
+  /work-reports/suggestions:
+    get:
+      description: Returns today's real activity counts (calls made, leads contacted,
+        follow-ups done, admissions) as starting values for the daily work report
+        — the employee can confirm or edit them before submitting.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.WorkReportSuggestions'
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Today's work report suggestions
+      tags:
+      - work-reports
   /zoom/webhook:
     post:
       consumes:

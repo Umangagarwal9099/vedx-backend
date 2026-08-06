@@ -69,6 +69,8 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	leaveBalanceRepo := repository.NewLeaveBalanceRepository(pool)
 	monthlyTargetRepo := repository.NewMonthlyTargetRepository(pool)
 	leadCallLogRepo := repository.NewLeadCallLogRepository(pool)
+	workReportRepo := repository.NewWorkReportRepository(pool)
+	officeLocationRepo := repository.NewOfficeLocationRepository(pool)
 
 	// Services
 	storageSvc := service.NewStorageService(cfg.Storage)
@@ -116,9 +118,11 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	dashboardCtrl := controller.NewDashboardController(batchRepo, enrollmentRepo, sessionRepo, attendanceRepo, certificateRepo)
 	analyticsCtrl := controller.NewAnalyticsController(analyticsRepo, batchRepo)
 	leadCtrl := controller.NewLeadController(leadRepo, leadCallLogRepo, leadAssignmentHistoryRepo, notificationRepo, auditLogRepo, collegeRepo)
-	employeeAttendanceCtrl := controller.NewEmployeeAttendanceController(employeeAttendanceRepo)
+	employeeAttendanceCtrl := controller.NewEmployeeAttendanceController(employeeAttendanceRepo, officeLocationRepo)
 	leaveCtrl := controller.NewLeaveController(leaveRequestRepo, leaveBalanceRepo, userRepo, emailSvc)
 	monthlyTargetCtrl := controller.NewMonthlyTargetController(monthlyTargetRepo)
+	workReportCtrl := controller.NewWorkReportController(workReportRepo, leadRepo, leadCallLogRepo)
+	officeLocationCtrl := controller.NewOfficeLocationController(officeLocationRepo)
 
 	v1 := r.Group("/api/v1")
 	{
@@ -269,6 +273,17 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				employeeAttendance.GET("/team", adminOrAbove, employeeAttendanceCtrl.GetTeam)
 			}
 
+			// Office locations — registered physical offices that employee
+			// check-in/out is geofenced against.
+			officeLocations := protected.Group("/office-locations")
+			{
+				officeLocations.POST("", adminOrAbove, officeLocationCtrl.Create)
+				officeLocations.GET("", adminOrAbove, officeLocationCtrl.GetAll)
+				officeLocations.PATCH("/:short_id", adminOrAbove, officeLocationCtrl.Update)
+				officeLocations.DELETE("/:short_id", adminOrAbove, officeLocationCtrl.Delete)
+				officeLocations.POST("/resolve-link", adminOrAbove, officeLocationCtrl.ResolveLink)
+			}
+
 			// Employee leave requests — apply/view own, admin approves/rejects.
 			leaves := protected.Group("/leaves")
 			{
@@ -286,6 +301,14 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				targets.PATCH("/:user_id", adminOrAbove, monthlyTargetCtrl.Set)
 				targets.GET("/me", leadOrAbove, monthlyTargetCtrl.GetMine)
 				targets.GET("/team", adminOrAbove, monthlyTargetCtrl.GetTeam)
+			}
+
+			// Employee daily work reports.
+			workReports := protected.Group("/work-reports")
+			{
+				workReports.GET("/suggestions", leadOrAbove, workReportCtrl.GetSuggestions)
+				workReports.POST("", leadOrAbove, workReportCtrl.Submit)
+				workReports.GET("/me", leadOrAbove, workReportCtrl.GetMine)
 			}
 
 			// Courses — super_admin/team_lead manage any course; college_admin/
@@ -738,6 +761,8 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			protected.POST("/upload/resource-file", uploadCtrl.UploadResourceFile)
 			protected.POST("/upload/project-file", uploadCtrl.UploadProjectFile)
 			protected.POST("/upload/resume", uploadCtrl.UploadResumeFile)
+			protected.POST("/upload/leave-certificate", leadOrAbove, uploadCtrl.UploadLeaveCertificate)
+			protected.POST("/upload/attendance-selfie", leadOrAbove, uploadCtrl.UploadAttendanceSelfie)
 		}
 	}
 

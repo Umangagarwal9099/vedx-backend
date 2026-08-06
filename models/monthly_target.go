@@ -14,6 +14,8 @@ type MonthlyTarget struct {
 	Month             int       `json:"month"`
 	TargetConversions int       `json:"target_conversions"`
 	Achieved          int       `json:"achieved"`
+	DailyTarget       float64   `json:"daily_target"`
+	AchievedToday     int       `json:"achieved_today"`
 	CreatedAt         time.Time `json:"created_at"`
 	UpdatedAt         time.Time `json:"updated_at"`
 }

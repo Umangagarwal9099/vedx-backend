@@ -73,6 +73,21 @@ func (r *LeadCallLogRepository) Create(ctx context.Context, leadShortID, employe
 	return nil, fmt.Errorf("could not generate a unique short ID after 3 attempts")
 }
 
+// GetTodaySummary returns today's call-log activity counts for one
+// employee — powers the daily work report's prefilled suggestions.
+func (r *LeadCallLogRepository) GetTodaySummary(ctx context.Context, employeeID string) (callsMade, leadsContacted, followUpsDone int, err error) {
+	err = r.pool.QueryRow(ctx, `
+		SELECT
+			COUNT(*) AS calls_made,
+			COUNT(*) FILTER (WHERE outcome = 'connected') AS leads_contacted,
+			COUNT(*) FILTER (WHERE follow_up_set_at IS NOT NULL) AS follow_ups_done
+		FROM lead_call_logs
+		WHERE employee_id = $1 AND called_at::DATE = CURRENT_DATE`,
+		employeeID,
+	).Scan(&callsMade, &leadsContacted, &followUpsDone)
+	return callsMade, leadsContacted, followUpsDone, err
+}
+
 // FindAllForLead returns every call log for one lead, newest first.
 func (r *LeadCallLogRepository) FindAllForLead(ctx context.Context, leadShortID string) ([]models.LeadCallLog, error) {
 	q := fmt.Sprintf("%s WHERE l.short_id = $1 ORDER BY cl.called_at DESC", leadCallLogBaseSelect)

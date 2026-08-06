@@ -23,7 +23,10 @@ func NewEmployeeAttendanceRepository(pool *pgxpool.Pool) *EmployeeAttendanceRepo
 
 const employeeAttendanceBaseSelect = `
 	SELECT a.id, a.short_id, a.employee_id, CONCAT(u.first_name, ' ', u.last_name),
-	       a.date::TEXT, a.status::TEXT, a.check_in_at, a.check_out_at, COALESCE(a.notes, ''),
+	       a.date::TEXT, a.status::TEXT,
+	       a.check_in_at, a.check_in_lat, a.check_in_lng, COALESCE(a.check_in_selfie_url, ''),
+	       a.check_out_at, a.check_out_lat, a.check_out_lng, COALESCE(a.check_out_selfie_url, ''),
+	       COALESCE(a.notes, ''),
 	       a.created_at, a.updated_at
 	FROM employee_attendance a
 	JOIN users u ON a.employee_id = u.id AND u.deleted_at IS NULL`
@@ -32,15 +35,20 @@ func scanEmployeeAttendance(row pgx.Row) (models.EmployeeAttendance, error) {
 	var a models.EmployeeAttendance
 	err := row.Scan(
 		&a.ID, &a.ShortID, &a.EmployeeID, &a.EmployeeName,
-		&a.Date, &a.Status, &a.CheckInAt, &a.CheckOutAt, &a.Notes,
+		&a.Date, &a.Status,
+		&a.CheckInAt, &a.CheckInLat, &a.CheckInLng, &a.CheckInSelfieURL,
+		&a.CheckOutAt, &a.CheckOutLat, &a.CheckOutLng, &a.CheckOutSelfieURL,
+		&a.Notes,
 		&a.CreatedAt, &a.UpdatedAt,
 	)
 	return a, err
 }
 
 // CheckIn creates (or reuses) today's row for the employee and stamps
-// check_in_at, unless they've already checked in today.
-func (r *EmployeeAttendanceRepository) CheckIn(ctx context.Context, employeeID string) (*models.EmployeeAttendance, error) {
+// check_in_at + the captured location/selfie, unless they've already
+// checked in today (COALESCE guards every column so a second call is a
+// true no-op, not an overwrite).
+func (r *EmployeeAttendanceRepository) CheckIn(ctx context.Context, employeeID string, in models.CheckInInput) (*models.EmployeeAttendance, error) {
 	// See the comment on assessment_repo.go's Create for why this reads FROM
 	// ins rather than FROM employee_attendance.
 	insSelect := strings.Replace(employeeAttendanceBaseSelect, "FROM employee_attendance a", "FROM ins a", 1)
@@ -50,15 +58,18 @@ func (r *EmployeeAttendanceRepository) CheckIn(ctx context.Context, employeeID s
 
 		a, err := scanEmployeeAttendance(r.pool.QueryRow(ctx, fmt.Sprintf(`
 			WITH ins AS (
-				INSERT INTO employee_attendance (short_id, employee_id, date, status, check_in_at)
-				VALUES ($1, $2, CURRENT_DATE, 'present', NOW())
+				INSERT INTO employee_attendance (short_id, employee_id, date, status, check_in_at, check_in_lat, check_in_lng, check_in_selfie_url)
+				VALUES ($1, $2, CURRENT_DATE, 'present', NOW(), $3, $4, $5)
 				ON CONFLICT (employee_id, date) DO UPDATE SET
 					check_in_at = COALESCE(employee_attendance.check_in_at, EXCLUDED.check_in_at),
+					check_in_lat = COALESCE(employee_attendance.check_in_lat, EXCLUDED.check_in_lat),
+					check_in_lng = COALESCE(employee_attendance.check_in_lng, EXCLUDED.check_in_lng),
+					check_in_selfie_url = COALESCE(employee_attendance.check_in_selfie_url, EXCLUDED.check_in_selfie_url),
 					updated_at = NOW()
 				RETURNING *
 			)
 			%s`, insSelect),
-			shortID, employeeID,
+			shortID, employeeID, in.Latitude, in.Longitude, in.SelfieURL,
 		))
 		if err == nil {
 			return &a, nil
@@ -73,11 +84,14 @@ func (r *EmployeeAttendanceRepository) CheckIn(ctx context.Context, employeeID s
 	return nil, fmt.Errorf("could not generate a unique short ID after 3 attempts")
 }
 
-// CheckOut stamps check_out_at on today's row.
-func (r *EmployeeAttendanceRepository) CheckOut(ctx context.Context, employeeID string) (*models.EmployeeAttendance, error) {
+// CheckOut stamps check_out_at + the captured location/selfie on today's row.
+func (r *EmployeeAttendanceRepository) CheckOut(ctx context.Context, employeeID string, in models.CheckOutInput) (*models.EmployeeAttendance, error) {
 	result, err := r.pool.Exec(ctx, `
-		UPDATE employee_attendance SET check_out_at = NOW(), updated_at = NOW()
-		WHERE employee_id = $1 AND date = CURRENT_DATE`, employeeID,
+		UPDATE employee_attendance SET
+			check_out_at = NOW(), check_out_lat = $2, check_out_lng = $3, check_out_selfie_url = $4,
+			updated_at = NOW()
+		WHERE employee_id = $1 AND date = CURRENT_DATE`,
+		employeeID, in.Latitude, in.Longitude, in.SelfieURL,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("check out: %w", err)

@@ -255,6 +255,7 @@ func (r *LeadRepository) Update(ctx context.Context, shortID string, in models.U
 	}
 	if in.NextFollowUpAt != nil {
 		add("next_follow_up_at = $%d", *in.NextFollowUpAt)
+		setClauses = append(setClauses, "follow_up_reminder_sent = FALSE")
 	}
 	if in.Notes != nil {
 		add("notes = NULLIF($%d,'')", *in.Notes)
@@ -288,6 +289,7 @@ func (r *LeadRepository) RecordContact(ctx context.Context, shortID, status stri
 		UPDATE leads SET
 			status = $2::lead_status,
 			next_follow_up_at = $3,
+			follow_up_reminder_sent = FALSE,
 			last_contacted_at = NOW(),
 			%s,
 			updated_at = NOW()
@@ -401,6 +403,38 @@ func (r *LeadRepository) GetDashboard(ctx context.Context, employeeID string) (*
 	return &d, nil
 }
 
+// CountConvertedToday returns how many of an employee's leads converted
+// today — powers the daily work report's prefilled admissions suggestion.
+func (r *LeadRepository) CountConvertedToday(ctx context.Context, employeeID string) (int, error) {
+	var count int
+	err := r.pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM leads
+		WHERE assigned_to = $1 AND status = 'converted' AND deleted_at IS NULL
+		  AND converted_at::DATE = CURRENT_DATE`,
+		employeeID,
+	).Scan(&count)
+	return count, err
+}
+
+// FindDueForFollowUpReminder returns assigned, still-open leads whose
+// next_follow_up_at has arrived (or passed) and haven't been reminded about
+// yet — powers scheduler.RunLeadFollowUpReminders.
+func (r *LeadRepository) FindDueForFollowUpReminder(ctx context.Context) ([]models.Lead, error) {
+	q := fmt.Sprintf(`%s
+		WHERE l.deleted_at IS NULL AND l.follow_up_reminder_sent = FALSE
+		  AND l.next_follow_up_at <= NOW() AND l.assigned_to IS NOT NULL
+		  AND l.status NOT IN ('converted', 'lost', 'not_interested')
+		ORDER BY l.next_follow_up_at ASC`, leadBaseSelect)
+	return r.scanAll(ctx, q)
+}
+
+// MarkFollowUpReminderSent flags a lead so its follow-up reminder fires once
+// per due date (reset back to FALSE whenever next_follow_up_at changes).
+func (r *LeadRepository) MarkFollowUpReminderSent(ctx context.Context, id string) error {
+	_, err := r.pool.Exec(ctx, `UPDATE leads SET follow_up_reminder_sent = TRUE WHERE id = $1`, id)
+	return err
+}
+
 // assignLeadsTx assigns each lead in leadShortIDs to employeeID, recording an
 // assignment-history row per lead (action is "assign" or "reassign" — the
 // caller decides which, since both are the same underlying operation).
@@ -437,6 +471,7 @@ func (r *LeadRepository) assignLeadsTx(ctx context.Context, leadShortIDs []strin
 			setClauses = append(setClauses, fmt.Sprintf("next_follow_up_at = $%d", i))
 			args = append(args, *followUpAt)
 			i++
+			setClauses = append(setClauses, "follow_up_reminder_sent = FALSE")
 		}
 		if _, err := tx.Exec(ctx, fmt.Sprintf("UPDATE leads SET %s WHERE short_id = $1", strings.Join(setClauses, ", ")), args...); err != nil {
 			return assigned, fmt.Errorf("assign lead %s: %w", shortID, err)
