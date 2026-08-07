@@ -461,7 +461,7 @@ func (ctrl *StudentRegistrationController) BulkImportStudents(c *gin.Context) {
 		}
 
 		if ctrl.emailSvc != nil && ctrl.emailSvc.Configured() {
-			subject, html := service.StaffWelcomeEmail(row.FirstName, roleLabels[models.RoleStudent], row.Email, tempPassword, ctrl.publicURL)
+			subject, html := service.StaffWelcomeEmail(row.FirstName, roleLabels[models.RoleStudent], row.Email, tempPassword, util.LoginURLForRole(models.RoleStudent))
 			ctrl.emailSvc.SendAsync(row.Email, subject, html)
 		}
 

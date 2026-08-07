@@ -169,7 +169,7 @@ func (ctrl *UserController) CreateStaffUser(c *gin.Context) {
 
 	emailSent := false
 	if ctrl.emailSvc != nil && ctrl.emailSvc.Configured() {
-		subject, html := service.StaffWelcomeEmail(req.FirstName, roleLabels[role], req.Email, tempPassword, ctrl.publicURL)
+		subject, html := service.StaffWelcomeEmail(req.FirstName, roleLabels[role], req.Email, tempPassword, util.LoginURLForRole(role))
 		ctrl.emailSvc.SendAsync(req.Email, subject, html)
 		emailSent = true
 	}
@@ -273,7 +273,7 @@ func (ctrl *UserController) CreateStudent(c *gin.Context) {
 
 	emailSent := false
 	if ctrl.emailSvc != nil && ctrl.emailSvc.Configured() {
-		subject, html := service.StaffWelcomeEmail(req.FirstName, roleLabels[models.RoleStudent], req.Email, tempPassword, ctrl.publicURL)
+		subject, html := service.StaffWelcomeEmail(req.FirstName, roleLabels[models.RoleStudent], req.Email, tempPassword, util.LoginURLForRole(models.RoleStudent))
 		ctrl.emailSvc.SendAsync(req.Email, subject, html)
 		emailSent = true
 	}
@@ -814,7 +814,7 @@ func (ctrl *UserController) ResetPassword(c *gin.Context) {
 
 	emailSent := false
 	if ctrl.emailSvc != nil && ctrl.emailSvc.Configured() {
-		subject, html := service.AdminPasswordResetEmail(user.FirstName, user.Email, tempPassword, ctrl.publicURL)
+		subject, html := service.AdminPasswordResetEmail(user.FirstName, user.Email, tempPassword, util.LoginURLForRole(user.Role))
 		ctrl.emailSvc.SendAsync(user.Email, subject, html)
 		emailSent = true
 	}
