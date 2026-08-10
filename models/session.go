@@ -107,6 +107,25 @@ type SessionJoinInfo struct {
 	ZoomJoinURL     string `json:"zoom_join_url,omitempty"`
 }
 
+// SessionJoinGatewayInfo is the authenticated response for GET
+// /sessions/{short_id}/join — the "join gateway" page each frontend lands on
+// after login (reached via the link in confirmation/reminder emails). Unlike
+// SessionJoinInfo, JoinURL is resolved per-caller (host start URL for
+// mentor/team_lead/super_admin, join URL for everyone else) and is omitted
+// entirely once the session is completed/cancelled, so a rejoin attempt
+// after the scheduled window never gets handed a working link.
+type SessionJoinGatewayInfo struct {
+	Name        string `json:"name"`
+	SessionDate string `json:"session_date"`
+	StartTime   string `json:"start_time"`
+	EndTime     string `json:"end_time"`
+	MentorName  string `json:"mentor_name"`
+	Status      string `json:"status"`
+	Completed   bool   `json:"completed"`
+	Message     string `json:"message,omitempty"`
+	JoinURL     string `json:"join_url,omitempty"`
+}
+
 // RecordingListItem is one recording, as returned by the batch-recordings
 // endpoint. Source is "session" for a recording auto-attached to a live
 // Zoom session, or "upload" for a video an admin/mentor uploaded directly

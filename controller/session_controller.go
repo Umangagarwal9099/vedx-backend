@@ -25,12 +25,14 @@ type SessionController struct {
 	storageSvc         *service.StorageService
 	publicBaseURL      string
 	timezone           string
+	studentPortalURL   string
+	adminPortalURL     string
 	auditLogRepo       *repository.AuditLogRepository
 	feedbackFormRepo   *repository.FeedbackFormRepository
 	batchRecordingRepo *repository.BatchRecordingRepository
 }
 
-func NewSessionController(repo *repository.SessionRepository, batchRepo *repository.BatchRepository, notificationRepo *repository.NotificationRepository, userRepo *repository.UserRepository, zoomSvc *service.ZoomService, emailSvc *service.EmailService, storageSvc *service.StorageService, publicBaseURL, timezone string, auditLogRepo *repository.AuditLogRepository, feedbackFormRepo *repository.FeedbackFormRepository, batchRecordingRepo *repository.BatchRecordingRepository) *SessionController {
+func NewSessionController(repo *repository.SessionRepository, batchRepo *repository.BatchRepository, notificationRepo *repository.NotificationRepository, userRepo *repository.UserRepository, zoomSvc *service.ZoomService, emailSvc *service.EmailService, storageSvc *service.StorageService, publicBaseURL, timezone, studentPortalURL, adminPortalURL string, auditLogRepo *repository.AuditLogRepository, feedbackFormRepo *repository.FeedbackFormRepository, batchRecordingRepo *repository.BatchRecordingRepository) *SessionController {
 	return &SessionController{
 		sessionRepo:        repo,
 		batchRepo:          batchRepo,
@@ -41,12 +43,13 @@ func NewSessionController(repo *repository.SessionRepository, batchRepo *reposit
 		storageSvc:         storageSvc,
 		publicBaseURL:      publicBaseURL,
 		timezone:           timezone,
+		studentPortalURL:   studentPortalURL,
+		adminPortalURL:     adminPortalURL,
 		auditLogRepo:       auditLogRepo,
 		feedbackFormRepo:   feedbackFormRepo,
 		batchRecordingRepo: batchRecordingRepo,
 	}
 }
-
 
 // GetFeedbackStatus godoc
 //
@@ -90,6 +93,34 @@ func (ctrl *SessionController) withShareLink(s *models.Session) *models.Session 
 		s.ShareLink = base + "/sessions/join/" + s.ShareToken
 	}
 	return s
+}
+
+// studentJoinLink and mentorJoinLink build the link sent in session
+// confirmation/reminder emails to each audience. When the corresponding
+// portal URL is configured, this points at the login-gated "join gateway"
+// page (/join-session/{short_id}) in that recipient's own app — so clicking
+// it from a cold email requires signing in before the Zoom link is ever
+// resolved. Falls back to the raw Zoom/share link if the portal URL hasn't
+// been configured yet, so email sending doesn't silently break in the
+// meantime.
+func (ctrl *SessionController) studentJoinLink(session *models.Session) string {
+	if ctrl.studentPortalURL != "" {
+		return strings.TrimRight(ctrl.studentPortalURL, "/") + "/join-session/" + session.ShortID
+	}
+	if session.ZoomJoinURL != "" {
+		return session.ZoomJoinURL
+	}
+	return session.ShareLink
+}
+
+func (ctrl *SessionController) mentorJoinLink(session *models.Session) string {
+	if ctrl.adminPortalURL != "" {
+		return strings.TrimRight(ctrl.adminPortalURL, "/") + "/join-session/" + session.ShortID
+	}
+	if session.ZoomJoinURL != "" {
+		return session.ZoomJoinURL
+	}
+	return session.ShareLink
 }
 
 // sanitizeForRole strips fields the given role must never see. ZoomStartURL is a
@@ -326,22 +357,19 @@ func (ctrl *SessionController) Create(c *gin.Context) {
 	// silently skipped if Resend isn't configured — email is best-effort, not
 	// a blocker for session creation.
 	if input.SendConfirmationEmail && ctrl.emailSvc.Configured() {
-		joinLink := session.ZoomJoinURL
-		if joinLink == "" {
-			joinLink = session.ShareLink
-		}
-		subject, html := service.SessionConfirmationEmail(session.Name, session.BatchNumber, session.SessionDate, session.StartTime, joinLink)
+		studentSubject, studentHTML := service.SessionConfirmationEmail(session.Name, session.BatchNumber, session.SessionDate, session.StartTime, ctrl.studentJoinLink(session))
+		mentorSubject, mentorHTML := service.SessionConfirmationEmail(session.Name, session.BatchNumber, session.SessionDate, session.StartTime, ctrl.mentorJoinLink(session))
 
 		for _, s := range students {
 			if s.Email == "" {
 				continue
 			}
-			ctrl.emailSvc.SendAsync(s.Email, subject, html)
+			ctrl.emailSvc.SendAsync(s.Email, studentSubject, studentHTML)
 		}
 		if mentor, err := ctrl.userRepo.FindByID(c.Request.Context(), session.MentorID); err != nil {
 			log.Printf("fetch mentor for confirmation email: %v", err)
 		} else if mentor != nil && mentor.Email != "" {
-			ctrl.emailSvc.SendAsync(mentor.Email, subject, html)
+			ctrl.emailSvc.SendAsync(mentor.Email, mentorSubject, mentorHTML)
 		}
 	}
 
@@ -860,4 +888,65 @@ func (ctrl *SessionController) JoinByToken(c *gin.Context) {
 		MeetingPlatform: session.MeetingPlatform,
 		ZoomJoinURL:     session.ZoomJoinURL,
 	})
+}
+
+// JoinSession godoc
+//
+//	@Summary		Resolve a session's join link for the current caller
+//	@Description	Authenticated "join gateway" lookup by short ID — the page a user lands on after logging in via the link in a session confirmation/reminder email. Returns a role-appropriate join URL (Zoom host start URL for mentor/team_lead/super_admin, join URL for everyone else), or completed:true with no URL once the session is past its scheduled end time.
+//	@Tags			sessions
+//	@Produce		json
+//	@Param			short_id	path		string	true	"Session short ID"
+//	@Success		200			{object}	models.SessionJoinGatewayInfo
+//	@Failure		404			{object}	map[string]string	"Not found"
+//	@Failure		500			{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/sessions/{short_id}/join [get]
+func (ctrl *SessionController) JoinSession(c *gin.Context) {
+	shortID := c.Param("short_id")
+
+	session, err := ctrl.sessionRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch session"})
+		return
+	}
+	if session == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+		return
+	}
+	if !checkBatchAccess(c, ctrl.batchRepo, session.BatchShortID) {
+		return
+	}
+
+	ctrl.withStatus(session)
+
+	info := models.SessionJoinGatewayInfo{
+		Name:        session.Name,
+		SessionDate: session.SessionDate,
+		StartTime:   session.StartTime,
+		EndTime:     session.EndTime,
+		MentorName:  session.MentorName,
+		Status:      session.Status,
+	}
+
+	switch session.Status {
+	case "completed":
+		info.Completed = true
+		info.Message = "This session has completed."
+	case "cancelled":
+		info.Completed = true
+		info.Message = "This session was cancelled."
+	default:
+		role := c.GetString("role")
+		if role == string(models.RoleMentor) || role == string(models.RoleTeamLead) || role == string(models.RoleSuperAdmin) {
+			info.JoinURL = session.ZoomStartURL
+			if info.JoinURL == "" {
+				info.JoinURL = session.ZoomJoinURL
+			}
+		} else {
+			info.JoinURL = session.ZoomJoinURL
+		}
+	}
+
+	c.JSON(http.StatusOK, info)
 }
