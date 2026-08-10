@@ -356,16 +356,46 @@ func (r *SessionRepository) Update(ctx context.Context, shortID string, in model
 	return nil
 }
 
+// HasRecording reports whether the session matching zoomMeetingID already has
+// a recording attached — checked before downloading/watermarking/uploading a
+// newly-arrived recording.completed file, so a rejoin recording that's
+// destined to be discarded by UpdateRecordingURL's guard doesn't first burn
+// bandwidth and CPU on a multi-hundred-MB download and ffmpeg re-encode.
+// False (not an error) if no session has this meeting ID.
+func (r *SessionRepository) HasRecording(ctx context.Context, zoomMeetingID int64) (bool, error) {
+	var hasRecording bool
+	err := r.pool.QueryRow(ctx,
+		`SELECT recording_url IS NOT NULL FROM sessions WHERE zoom_meeting_id = $1`,
+		zoomMeetingID,
+	).Scan(&hasRecording)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return false, nil
+		}
+		return false, err
+	}
+	return hasRecording, nil
+}
+
 // UpdateRecordingURL stores the Zoom recording link on the session matching
-// zoomMeetingID, called from the recording.completed webhook. A no-op (not
-// an error) if no session has that meeting ID — e.g. a Zoom meeting created
-// outside this app, or the session was later deleted.
-func (r *SessionRepository) UpdateRecordingURL(ctx context.Context, zoomMeetingID int64, recordingURL string) error {
-	_, err := r.pool.Exec(ctx,
-		`UPDATE sessions SET recording_url = $1, updated_at = NOW() WHERE zoom_meeting_id = $2`,
+// zoomMeetingID, called from the recording.completed webhook. Only writes if
+// the session doesn't already have a recording — Zoom fires a fresh
+// recording.completed event every time the host rejoins the same meeting
+// room (e.g. briefly after class ends), and without this guard each rejoin
+// would silently overwrite the real class recording with whatever trivial
+// clip comes after it. Returns whether the write actually happened (false
+// either because no session has this meeting ID, or because one already has
+// a recording attached) so the caller can log a skip instead of it vanishing
+// silently.
+func (r *SessionRepository) UpdateRecordingURL(ctx context.Context, zoomMeetingID int64, recordingURL string) (bool, error) {
+	tag, err := r.pool.Exec(ctx,
+		`UPDATE sessions SET recording_url = $1, updated_at = NOW() WHERE zoom_meeting_id = $2 AND recording_url IS NULL`,
 		recordingURL, zoomMeetingID,
 	)
-	return err
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
 // Delete soft-deletes a session.

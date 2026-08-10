@@ -248,6 +248,56 @@ func (z *ZoomService) VerifyWebhookSignature(signatureHeader, timestamp string, 
 	return subtle.ConstantTimeCompare([]byte(signatureHeader), []byte(expected)) == 1
 }
 
+// ZoomRecordingFile is one file within a recorded meeting instance.
+type ZoomRecordingFile struct {
+	ID             string `json:"id"`
+	FileType       string `json:"file_type"`
+	FileSize       int64  `json:"file_size"`
+	DownloadURL    string `json:"download_url"`
+	RecordingType  string `json:"recording_type"`
+	RecordingStart string `json:"recording_start"`
+}
+
+// ZoomRecordingInstance is one recorded occurrence of a meeting — a host
+// rejoining the same meeting ID after class ends produces a separate
+// instance here, with its own uuid and start_time, not a merge into the
+// original.
+type ZoomRecordingInstance struct {
+	UUID           string              `json:"uuid"`
+	ID             int64               `json:"id"`
+	Topic          string              `json:"topic"`
+	StartTime      string              `json:"start_time"`
+	RecordingFiles []ZoomRecordingFile `json:"recording_files"`
+}
+
+type zoomUserRecordingsResponse struct {
+	Meetings []ZoomRecordingInstance `json:"meetings"`
+}
+
+// ListUserRecordings lists every recorded meeting instance for the account's
+// Zoom user within [from, to] (inclusive, YYYY-MM-DD). Used for manual
+// recovery when a meeting ID has multiple recorded instances (e.g. a host
+// rejoin) and the webhook-driven pipeline attached the wrong one — this
+// endpoint returns every instance with its own start_time, unlike
+// GET /meetings/{id}/recordings which only reflects the latest instance.
+func (z *ZoomService) ListUserRecordings(from, to time.Time) ([]ZoomRecordingInstance, error) {
+	url := fmt.Sprintf("%s/users/me/recordings?from=%s&to=%s&page_size=300",
+		zoomAPIBase, from.Format("2006-01-02"), to.Format("2006-01-02"))
+	var resp zoomUserRecordingsResponse
+	if err := z.do(http.MethodGet, url, nil, &resp); err != nil {
+		return nil, fmt.Errorf("list zoom recordings: %w", err)
+	}
+	return resp.Meetings, nil
+}
+
+// AccessToken returns a valid Server-to-Server OAuth bearer token, for
+// callers (e.g. a manual recovery script) that need to authenticate a
+// recording download outside the normal webhook flow, where Zoom instead
+// supplies a short-lived per-event download_token in the payload.
+func (z *ZoomService) AccessToken() (string, error) {
+	return z.getAccessToken()
+}
+
 // DownloadRecording streams a completed cloud recording's file straight from
 // Zoom. downloadToken comes from the recording.completed webhook body and
 // authorizes access to that meeting's recording files without a separate

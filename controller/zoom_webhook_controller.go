@@ -172,6 +172,14 @@ func (ctrl *ZoomWebhookController) formatRecordingTimestamp(startTime string) st
 // once we re-host the raw file and play it back in our own frontend player,
 // Zoom's overlay never applies.
 func (ctrl *ZoomWebhookController) processRecording(meetingID int64, file zoomRecordingFile, downloadToken string, startTime string) {
+	if already, err := ctrl.sessionRepo.HasRecording(context.Background(), meetingID); err != nil {
+		log.Printf("zoom webhook: check existing recording for meeting %d: %v", meetingID, err)
+		return
+	} else if already {
+		log.Printf("zoom webhook: meeting %d already has a recording attached, ignoring additional recording.completed event (file %s)", meetingID, file.ID)
+		return
+	}
+
 	body, contentType, err := ctrl.zoomSvc.DownloadRecording(file.DownloadURL, downloadToken)
 	if err != nil {
 		log.Printf("zoom webhook: download recording for meeting %d: %v", meetingID, err)
@@ -193,7 +201,12 @@ func (ctrl *ZoomWebhookController) processRecording(meetingID int64, file zoomRe
 		return
 	}
 
-	if err := ctrl.sessionRepo.UpdateRecordingURL(context.Background(), meetingID, url); err != nil {
+	wrote, err := ctrl.sessionRepo.UpdateRecordingURL(context.Background(), meetingID, url)
+	if err != nil {
 		log.Printf("zoom webhook: store recording url for meeting %d: %v", meetingID, err)
+	} else if !wrote {
+		// Lost a race against another recording.completed event processed
+		// between the HasRecording check above and this write.
+		log.Printf("zoom webhook: meeting %d gained a recording while this one was processing, discarding file %s", meetingID, file.ID)
 	}
 }
