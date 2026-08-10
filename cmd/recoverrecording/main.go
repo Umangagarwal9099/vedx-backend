@@ -56,17 +56,22 @@ func main() {
 	for i := range instances {
 		inst := &instances[i]
 		fmt.Printf("  id=%d uuid=%s topic=%q start_time=%s files=%d\n", inst.ID, inst.UUID, inst.Topic, inst.StartTime, len(inst.RecordingFiles))
-		if inst.ID == targetMeetingID && target == nil {
-			// First match in the window; Zoom returns instances in
-			// chronological order so this is the Aug 6 occurrence, not the
-			// Aug 7 rejoin (which falls outside [Aug 5, Aug 7) since `to` is
-			// exclusive-by-construction here — verified against the printed
-			// start_time below before proceeding).
+		if inst.ID != targetMeetingID {
+			continue
+		}
+		// Zoom does not guarantee chronological order here — observed
+		// returning the Aug 7 rejoin before the Aug 6 instance in practice —
+		// so match explicitly by date instead of taking the first hit.
+		startTime, err := time.Parse(time.RFC3339, inst.StartTime)
+		if err != nil {
+			continue
+		}
+		if startTime.Format("2006-01-02") == targetDateISO {
 			target = inst
 		}
 	}
 	if target == nil {
-		log.Fatalf("no recorded instance found for meeting %d in range %s..%s", targetMeetingID, day.AddDate(0, 0, -1).Format("2006-01-02"), day.AddDate(0, 0, 1).Format("2006-01-02"))
+		log.Fatalf("no recorded instance found for meeting %d on %s (range checked: %s..%s)", targetMeetingID, targetDateISO, day.AddDate(0, 0, -1).Format("2006-01-02"), day.AddDate(0, 0, 1).Format("2006-01-02"))
 	}
 	fmt.Printf("\nSelected instance: uuid=%s start_time=%s\n", target.UUID, target.StartTime)
 
