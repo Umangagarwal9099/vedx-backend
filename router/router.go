@@ -360,6 +360,8 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				batches.GET("/:short_id/sessions", sessionCtrl.GetByBatch)
 				batches.GET("/:short_id/recordings", sessionCtrl.GetBatchRecordings)
 				batches.PATCH("/:short_id/recordings/:recording_short_id/order", staffOrAbove, sessionCtrl.UpdateBatchRecordingOrder)
+				batches.POST("/:short_id/recordings/presign", staffOrAbove, sessionCtrl.PresignBatchRecordingUpload)
+				batches.POST("/:short_id/recordings/complete", staffOrAbove, sessionCtrl.CompleteBatchRecordingUpload)
 
 				// Attendance rollup — every enrolled student's present/absent/late/
 				// excused counts and percentage across the batch's held sessions.

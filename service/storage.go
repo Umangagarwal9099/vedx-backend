@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -65,6 +66,27 @@ const maxMaterialSize = 500 << 20         // 500 MB
 const maxResumeSize = 5 << 20             // 5 MB — resumes are short documents, not course material
 const maxLeaveCertificateSize = 5 << 20   // 5 MB — a certificate is a short document/photo, not course material
 
+// maxRecordingUploadSize is R2's (and S3's) hard limit for a single PUT —
+// above this an object requires a multipart upload instead, which presigned
+// batch recording uploads don't support yet.
+const maxRecordingUploadSize = 5 << 30 // 5 GB
+
+// presignedUploadExpiry is how long a presigned batch-recording upload URL
+// stays valid — generous enough to cover a slow multi-GB upload over a weak
+// connection without the link expiring mid-transfer.
+const presignedUploadExpiry = 4 * time.Hour
+
+// allowedRecordingMIME maps MIME type → file extension for videos uploaded
+// directly to a batch (POST /batches/{short_id}/recordings/presign). Mirrors
+// videoExtMIME in cmd/importbatchrecordings, which does the same match in
+// reverse for objects that bypassed this endpoint entirely.
+var allowedRecordingMIME = map[string]string{
+	"video/mp4":       ".mp4",
+	"video/quicktime": ".mov",
+	"video/x-msvideo": ".avi",
+	"video/webm":      ".webm",
+}
+
 // allowedResumeMIME is deliberately narrower than allowedMaterialMIME — a
 // resume is PDF or Word, never a video/audio/archive/image.
 var allowedResumeMIME = map[string]string{
@@ -89,6 +111,7 @@ type StorageService struct {
 	cfg      config.StorageConfig
 	client   *s3.Client
 	uploader *manager.Uploader
+	presign  *s3.PresignClient
 }
 
 func NewStorageService(cfg config.StorageConfig) *StorageService {
@@ -97,7 +120,63 @@ func NewStorageService(cfg config.StorageConfig) *StorageService {
 		BaseEndpoint: aws.String(fmt.Sprintf("https://%s.r2.cloudflarestorage.com", cfg.AccountID)),
 		Credentials:  credentials.NewStaticCredentialsProvider(cfg.AccessKeyID, cfg.SecretAccessKey, ""),
 	})
-	return &StorageService{cfg: cfg, client: client, uploader: manager.NewUploader(client)}
+	return &StorageService{cfg: cfg, client: client, uploader: manager.NewUploader(client), presign: s3.NewPresignClient(client)}
+}
+
+// PresignRecordingUpload returns a presigned PUT URL an admin's browser can
+// upload a batch recording video directly to R2 with — the file's bytes
+// never pass through this server, so there's no request-size or timeout
+// limit from our own stack, only R2's own 5 GB single-PUT ceiling.
+// filename is used only to fall back to extension-sniffing when contentType
+// isn't one of the allowed video MIME types outright (some browsers report
+// generic types for less common video containers).
+func (s *StorageService) PresignRecordingUpload(ctx context.Context, batchShortID, filename, contentType string, fileSize int64) (uploadURL, key string, err error) {
+	ext, ok := allowedRecordingMIME[contentType]
+	if !ok {
+		origExt := strings.ToLower(filepath.Ext(filename))
+		for mime, e := range allowedRecordingMIME {
+			if e == origExt {
+				ext, contentType, ok = e, mime, true
+				break
+			}
+		}
+	}
+	if !ok {
+		return "", "", fmt.Errorf("unsupported file type — only MP4, MOV, AVI, and WebM recordings are accepted")
+	}
+	if fileSize <= 0 || fileSize > maxRecordingUploadSize {
+		return "", "", fmt.Errorf("file size must be between 1 byte and 5 GB")
+	}
+
+	key = fmt.Sprintf("recordings/batch/%s/%s%s", batchShortID, randomHex(), ext)
+
+	req, err := s.presign.PresignPutObject(ctx, &s3.PutObjectInput{
+		Bucket:      aws.String(s.cfg.Bucket),
+		Key:         aws.String(key),
+		ContentType: aws.String(contentType),
+	}, s3.WithPresignExpires(presignedUploadExpiry))
+	if err != nil {
+		return "", "", fmt.Errorf("presign recording upload: %w", err)
+	}
+	return req.URL, key, nil
+}
+
+// HeadRecordingObject returns the actual size and content type of an
+// object already sitting in R2 — used to confirm a presigned upload really
+// landed before trusting it enough to write a database row, rather than
+// taking the browser's word for it.
+func (s *StorageService) HeadRecordingObject(ctx context.Context, key string) (size int64, contentType string, err error) {
+	out, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(s.cfg.Bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return 0, "", fmt.Errorf("head recording object: %w", err)
+	}
+	if out.ContentLength != nil {
+		size = *out.ContentLength
+	}
+	return size, aws.ToString(out.ContentType), nil
 }
 
 // UploadRecording streams a session recording into "recordings/<key>".

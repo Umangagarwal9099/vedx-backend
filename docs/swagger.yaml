@@ -296,6 +296,29 @@ definitions:
     - email
     - otp
     type: object
+  controller.completeBatchRecordingInput:
+    properties:
+      key:
+        type: string
+      title:
+        type: string
+    required:
+    - key
+    - title
+    type: object
+  controller.presignBatchRecordingInput:
+    properties:
+      content_type:
+        type: string
+      file_size:
+        type: integer
+      filename:
+        type: string
+    required:
+    - content_type
+    - file_size
+    - filename
+    type: object
   controller.updateBatchRecordingOrderInput:
     properties:
       order_index:
@@ -944,6 +967,37 @@ definitions:
       attendance_rate:
         type: number
       week_start:
+        type: string
+    type: object
+  models.BatchRecording:
+    properties:
+      batch_id:
+        type: string
+      batch_number:
+        type: string
+      batch_short_id:
+        type: string
+      content_type:
+        type: string
+      created_at:
+        type: string
+      file_size:
+        type: integer
+      id:
+        type: string
+      order_index:
+        type: integer
+      short_id:
+        type: string
+      title:
+        type: string
+      updated_at:
+        type: string
+      uploaded_by:
+        type: string
+      uploaded_by_name:
+        type: string
+      url:
         type: string
     type: object
   models.BatchRecordingsResponse:
@@ -4118,6 +4172,27 @@ definitions:
         type: string
       total:
         type: integer
+    type: object
+  models.SessionJoinGatewayInfo:
+    properties:
+      completed:
+        type: boolean
+      end_time:
+        type: string
+      join_url:
+        type: string
+      mentor_name:
+        type: string
+      message:
+        type: string
+      name:
+        type: string
+      session_date:
+        type: string
+      start_time:
+        type: string
+      status:
+        type: string
     type: object
   models.SessionJoinInfo:
     properties:
@@ -8300,6 +8375,96 @@ paths:
       security:
       - BearerAuth: []
       summary: Reorder an uploaded batch recording
+      tags:
+      - sessions
+  /batches/{short_id}/recordings/complete:
+    post:
+      consumes:
+      - application/json
+      description: Call after the browser's PUT to the presigned URL from POST /batches/{short_id}/recordings/presign
+        succeeds. Verifies the object actually landed in R2 (HeadObject, so a failed/aborted
+        upload can't be registered) and creates the batch_recordings row students
+        see immediately.
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Uploaded object key and display title
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/controller.completeBatchRecordingInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.BatchRecording'
+        "400":
+          description: Upload did not complete
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Batch not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Register a presigned-uploaded batch recording
+      tags:
+      - sessions
+  /batches/{short_id}/recordings/presign:
+    post:
+      consumes:
+      - application/json
+      description: Returns a short-lived R2 URL the caller's browser should PUT the
+        video file to directly — the bytes never pass through this server. After the
+        PUT succeeds, call POST /batches/{short_id}/recordings/complete with the returned
+        key to register the video against this batch.
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: File to upload
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/controller.presignBatchRecordingInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Unsupported file type or size
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Batch not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a presigned URL to upload a batch recording
       tags:
       - sessions
   /batches/{short_id}/score-weights:
@@ -14630,6 +14795,43 @@ paths:
       security:
       - BearerAuth: []
       summary: Check feedback submission status for a session
+      tags:
+      - sessions
+  /sessions/{short_id}/join:
+    get:
+      description: Authenticated "join gateway" lookup by short ID — the page a user
+        lands on after logging in via the link in a session confirmation/reminder
+        email. Returns a role-appropriate join URL (Zoom host start URL for mentor/team_lead/super_admin,
+        join URL for everyone else), or completed:true with no URL once the session
+        is past its scheduled end time.
+      parameters:
+      - description: Session short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.SessionJoinGatewayInfo'
+        "404":
+          description: Not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Resolve a session's join link for the current caller
       tags:
       - sessions
   /sessions/by-token/{token}:

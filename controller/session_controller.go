@@ -600,6 +600,114 @@ func (ctrl *SessionController) UpdateBatchRecordingOrder(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "updated"})
 }
 
+type presignBatchRecordingInput struct {
+	Filename    string `json:"filename" binding:"required"`
+	ContentType string `json:"content_type" binding:"required"`
+	FileSize    int64  `json:"file_size" binding:"required"`
+}
+
+// PresignBatchRecordingUpload godoc
+//
+//	@Summary		Get a presigned URL to upload a batch recording
+//	@Description	Returns a short-lived R2 URL the caller's browser should PUT the video file to directly — the bytes never pass through this server. After the PUT succeeds, call POST /batches/{short_id}/recordings/complete with the returned key to register the video against this batch.
+//	@Tags			sessions
+//	@Accept			json
+//	@Produce		json
+//	@Param			short_id	path	string							true	"Batch short ID"
+//	@Param			body		body	presignBatchRecordingInput		true	"File to upload"
+//	@Success		200	{object}	map[string]string
+//	@Failure		400	{object}	map[string]string	"Unsupported file type or size"
+//	@Failure		404	{object}	map[string]string	"Batch not found"
+//	@Security		BearerAuth
+//	@Router			/batches/{short_id}/recordings/presign [post]
+func (ctrl *SessionController) PresignBatchRecordingUpload(c *gin.Context) {
+	batchShortID := c.Param("short_id")
+	if !checkBatchAccess(c, ctrl.batchRepo, batchShortID) {
+		return
+	}
+
+	batch, err := ctrl.batchRepo.FindByShortID(c.Request.Context(), batchShortID)
+	if err != nil || batch == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "batch not found"})
+		return
+	}
+
+	var input presignBatchRecordingInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	uploadURL, key, err := ctrl.storageSvc.PresignRecordingUpload(c.Request.Context(), batchShortID, input.Filename, input.ContentType, input.FileSize)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"upload_url": uploadURL, "key": key})
+}
+
+type completeBatchRecordingInput struct {
+	Key   string `json:"key" binding:"required"`
+	Title string `json:"title" binding:"required"`
+}
+
+// CompleteBatchRecordingUpload godoc
+//
+//	@Summary		Register a presigned-uploaded batch recording
+//	@Description	Call after the browser's PUT to the presigned URL from POST /batches/{short_id}/recordings/presign succeeds. Verifies the object actually landed in R2 (HeadObject, so a failed/aborted upload can't be registered) and creates the batch_recordings row students see immediately.
+//	@Tags			sessions
+//	@Accept			json
+//	@Produce		json
+//	@Param			short_id	path	string							true	"Batch short ID"
+//	@Param			body		body	completeBatchRecordingInput	true	"Uploaded object key and display title"
+//	@Success		201	{object}	models.BatchRecording
+//	@Failure		400	{object}	map[string]string	"Upload did not complete"
+//	@Failure		404	{object}	map[string]string	"Batch not found"
+//	@Security		BearerAuth
+//	@Router			/batches/{short_id}/recordings/complete [post]
+func (ctrl *SessionController) CompleteBatchRecordingUpload(c *gin.Context) {
+	batchShortID := c.Param("short_id")
+	if !checkBatchAccess(c, ctrl.batchRepo, batchShortID) {
+		return
+	}
+
+	batch, err := ctrl.batchRepo.FindByShortID(c.Request.Context(), batchShortID)
+	if err != nil || batch == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "batch not found"})
+		return
+	}
+
+	var input completeBatchRecordingInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Every key this endpoint should ever see comes from our own presign
+	// call above, which always scopes it under this batch's prefix — reject
+	// anything else rather than trusting a client-supplied key blindly.
+	if !strings.HasPrefix(input.Key, fmt.Sprintf("recordings/batch/%s/", batchShortID)) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "key does not belong to this batch"})
+		return
+	}
+
+	size, contentType, err := ctrl.storageSvc.HeadRecordingObject(c.Request.Context(), input.Key)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "upload did not complete — the file was not found in storage"})
+		return
+	}
+
+	uploaderID := c.GetString("user_id")
+	rec, err := ctrl.batchRecordingRepo.Create(c.Request.Context(), batchShortID, input.Title, ctrl.storageSvc.PublicURLForKey(input.Key), size, contentType, uploaderID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not save recording"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, rec)
+}
+
 // StreamSessionRecording godoc
 //
 //	@Summary		Stream a session recording
