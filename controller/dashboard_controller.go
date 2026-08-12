@@ -97,6 +97,7 @@ func (ctrl *DashboardController) GetStats(c *gin.Context) {
 			ds := models.DashboardSession{
 				ShortID: s.ShortID, Name: s.Name, StartTime: s.StartTime, EndTime: s.EndTime,
 				BatchNumber: s.BatchNumber, MentorName: s.MentorName,
+				ZoomJoinURL: s.ZoomJoinURL, ZoomStartURL: s.ZoomStartURL,
 			}
 			if records, err := ctrl.attendanceRepo.GetForSession(ctx, s.ID); err == nil {
 				ds.TotalCount = len(records)

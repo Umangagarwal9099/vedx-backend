@@ -26,6 +26,13 @@ type DashboardSession struct {
 	MentorName   string `json:"mentor_name"`
 	PresentCount int    `json:"present_count"`
 	TotalCount   int    `json:"total_count"`
+	// ZoomJoinURL/ZoomStartURL back the dashboard's "Join" button — never
+	// stripped here the way student-facing endpoints strip ZoomStartURL,
+	// since this endpoint is college-staff-only (see collegeReadOrAbove on
+	// GET /dashboard/stats). Omitted (both empty) for offline sessions or
+	// ones whose Zoom meeting hasn't been created.
+	ZoomJoinURL  string `json:"zoom_join_url,omitempty"`
+	ZoomStartURL string `json:"zoom_start_url,omitempty"`
 }
 
 // EnrollmentTrendPoint is one day's new-enrollment count.
