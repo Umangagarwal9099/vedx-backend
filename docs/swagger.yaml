@@ -2538,6 +2538,16 @@ definitions:
         type: string
       total_count:
         type: integer
+      zoom_join_url:
+        description: |-
+          ZoomJoinURL/ZoomStartURL back the dashboard's "Join" button — never
+          stripped here the way student-facing endpoints strip ZoomStartURL,
+          since this endpoint is college-staff-only (see collegeReadOrAbove on
+          GET /dashboard/stats). Omitted (both empty) for offline sessions or
+          ones whose Zoom meeting hasn't been created.
+        type: string
+      zoom_start_url:
+        type: string
     type: object
   models.DashboardStats:
     properties:
@@ -4172,27 +4182,6 @@ definitions:
         type: string
       total:
         type: integer
-    type: object
-  models.SessionJoinGatewayInfo:
-    properties:
-      completed:
-        type: boolean
-      end_time:
-        type: string
-      join_url:
-        type: string
-      mentor_name:
-        type: string
-      message:
-        type: string
-      name:
-        type: string
-      session_date:
-        type: string
-      start_time:
-        type: string
-      status:
-        type: string
     type: object
   models.SessionJoinInfo:
     properties:
@@ -14795,43 +14784,6 @@ paths:
       security:
       - BearerAuth: []
       summary: Check feedback submission status for a session
-      tags:
-      - sessions
-  /sessions/{short_id}/join:
-    get:
-      description: Authenticated "join gateway" lookup by short ID — the page a user
-        lands on after logging in via the link in a session confirmation/reminder
-        email. Returns a role-appropriate join URL (Zoom host start URL for mentor/team_lead/super_admin,
-        join URL for everyone else), or completed:true with no URL once the session
-        is past its scheduled end time.
-      parameters:
-      - description: Session short ID
-        in: path
-        name: short_id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/models.SessionJoinGatewayInfo'
-        "404":
-          description: Not found
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: Internal server error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      security:
-      - BearerAuth: []
-      summary: Resolve a session's join link for the current caller
       tags:
       - sessions
   /sessions/by-token/{token}:

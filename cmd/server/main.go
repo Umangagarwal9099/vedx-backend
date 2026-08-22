@@ -85,8 +85,6 @@ func main() {
 		repository.NewUserRepository(pool),
 		emailSvc,
 		cfg.App.Timezone,
-		cfg.App.StudentPortalURL,
-		cfg.App.AdminPortalURL,
 	)
 
 	// Background: remind students and the batch manager the day before a batch starts.

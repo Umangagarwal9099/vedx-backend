@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"strings"
 	"time"
 
 	"github.com/umangagarwal/vedx-backend/models"
@@ -27,7 +26,7 @@ func RunSessionReminders(
 	notificationRepo *repository.NotificationRepository,
 	userRepo *repository.UserRepository,
 	emailSvc *service.EmailService,
-	timezone, studentPortalURL, adminPortalURL string,
+	timezone string,
 ) {
 	loc, err := time.LoadLocation(timezone)
 	if err != nil {
@@ -43,7 +42,7 @@ func RunSessionReminders(
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			processDueReminders(ctx, sessionRepo, batchRepo, notificationRepo, userRepo, emailSvc, loc, studentPortalURL, adminPortalURL)
+			processDueReminders(ctx, sessionRepo, batchRepo, notificationRepo, userRepo, emailSvc, loc)
 		}
 	}
 }
@@ -56,7 +55,6 @@ func processDueReminders(
 	userRepo *repository.UserRepository,
 	emailSvc *service.EmailService,
 	loc *time.Location,
-	studentPortalURL, adminPortalURL string,
 ) {
 	const layout = "2006-01-02 15:04:05"
 	now := time.Now().In(loc)
@@ -103,21 +101,22 @@ func processDueReminders(
 		}
 
 		if emailSvc.Configured() {
-			studentLink := sessionJoinLink(studentPortalURL, session)
-			mentorLink := sessionJoinLink(adminPortalURL, session)
-			studentSubject, studentHTML := service.SessionReminderEmail(session.Name, session.BatchNumber, studentLink)
-			mentorSubject, mentorHTML := service.SessionReminderEmail(session.Name, session.BatchNumber, mentorLink)
+			joinLink := session.ZoomJoinURL
+			if joinLink == "" && session.ShareToken != "" {
+				joinLink = "/sessions/join/" + session.ShareToken
+			}
+			subject, html := service.SessionReminderEmail(session.Name, session.BatchNumber, joinLink)
 
 			for _, s := range students {
 				if s.Email == "" {
 					continue
 				}
-				emailSvc.SendAsync(s.Email, studentSubject, studentHTML)
+				emailSvc.SendAsync(s.Email, subject, html)
 			}
 			if mentor, err := userRepo.FindByID(ctx, session.MentorID); err != nil {
 				log.Printf("scheduler: fetch mentor for reminder email: %v", err)
 			} else if mentor != nil && mentor.Email != "" {
-				emailSvc.SendAsync(mentor.Email, mentorSubject, mentorHTML)
+				emailSvc.SendAsync(mentor.Email, subject, html)
 			}
 		}
 
@@ -125,22 +124,4 @@ func processDueReminders(
 			log.Printf("scheduler: mark reminder sent for session %s: %v", session.ShortID, err)
 		}
 	}
-}
-
-// sessionJoinLink mirrors SessionController.studentJoinLink/mentorJoinLink:
-// when portalURL is configured it points at the login-gated join-gateway
-// page in that app, otherwise it falls back to the raw Zoom link (or the
-// share-token path, for online modes without Zoom) so reminder emails still
-// carry a working link before the portal URLs are set.
-func sessionJoinLink(portalURL string, session models.Session) string {
-	if portalURL != "" {
-		return strings.TrimRight(portalURL, "/") + "/join-session/" + session.ShortID
-	}
-	if session.ZoomJoinURL != "" {
-		return session.ZoomJoinURL
-	}
-	if session.ShareToken != "" {
-		return "/sessions/join/" + session.ShareToken
-	}
-	return ""
 }

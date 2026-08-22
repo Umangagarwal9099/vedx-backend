@@ -13720,58 +13720,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/sessions/{short_id}/join": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Authenticated \"join gateway\" lookup by short ID — the page a user lands on after logging in via the link in a session confirmation/reminder email. Returns a role-appropriate join URL (Zoom host start URL for mentor/team_lead/super_admin, join URL for everyone else), or completed:true with no URL once the session is past its scheduled end time.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "sessions"
-                ],
-                "summary": "Resolve a session's join link for the current caller",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Session short ID",
-                        "name": "short_id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/models.SessionJoinGatewayInfo"
-                        }
-                    },
-                    "404": {
-                        "description": "Not found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
         "/stream/batch-recordings/{short_id}": {
             "get": {
                 "description": "Same as GET /stream/sessions/{short_id}, but for a video uploaded directly to a batch (or backfilled via the importbatchrecordings tool) rather than tied to a Zoom session.",
@@ -20708,6 +20656,13 @@ const docTemplate = `{
                 },
                 "total_count": {
                     "type": "integer"
+                },
+                "zoom_join_url": {
+                    "description": "ZoomJoinURL/ZoomStartURL back the dashboard's \"Join\" button — never\nstripped here the way student-facing endpoints strip ZoomStartURL,\nsince this endpoint is college-staff-only (see collegeReadOrAbove on\nGET /dashboard/stats). Omitted (both empty) for offline sessions or\nones whose Zoom meeting hasn't been created.",
+                    "type": "string"
+                },
+                "zoom_start_url": {
+                    "type": "string"
                 }
             }
         },
@@ -23102,38 +23057,6 @@ const docTemplate = `{
                 },
                 "total": {
                     "type": "integer"
-                }
-            }
-        },
-        "models.SessionJoinGatewayInfo": {
-            "type": "object",
-            "properties": {
-                "completed": {
-                    "type": "boolean"
-                },
-                "end_time": {
-                    "type": "string"
-                },
-                "join_url": {
-                    "type": "string"
-                },
-                "mentor_name": {
-                    "type": "string"
-                },
-                "message": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "session_date": {
-                    "type": "string"
-                },
-                "start_time": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
                 }
             }
         },

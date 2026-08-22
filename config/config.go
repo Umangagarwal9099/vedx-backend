@@ -71,12 +71,6 @@ type AppConfig struct {
 	Port      string
 	PublicURL string
 	Timezone  string
-	// StudentPortalURL/AdminPortalURL are the base URLs of the two frontend
-	// apps — used to build the login-gated "join session" link sent in
-	// session confirmation/reminder emails, so recipients land on our own
-	// login page before ever seeing the Zoom link.
-	StudentPortalURL string
-	AdminPortalURL   string
 	// AllowedOrigins are the exact frontend origins allowed to make
 	// credentialed (cookie-carrying) requests — needed for the httpOnly
 	// session cookie that authenticates video-recording streaming, since
@@ -154,13 +148,11 @@ func Load() (*Config, error) {
 
 	cfg := &Config{
 		App: AppConfig{
-			Env:              get("APP_ENV", "development"),
-			Port:             get("PORT", get("APP_PORT", "8080")), // PORT is set automatically by Render
-			PublicURL:        appPublicURL,                         // base URL used to build session share links, e.g. https://app.example.com
-			Timezone:         get("APP_TIMEZONE", "Asia/Kolkata"),  // used when scheduling Zoom meetings
-			StudentPortalURL: get("STUDENT_PORTAL_URL", ""),
-			AdminPortalURL:   get("ADMIN_PORTAL_URL", ""),
-			AllowedOrigins:   allowedOrigins,
+			Env:            get("APP_ENV", "development"),
+			Port:           get("PORT", get("APP_PORT", "8080")), // PORT is set automatically by Render
+			PublicURL:      appPublicURL,                         // base URL used to build session share links, e.g. https://app.example.com
+			Timezone:       get("APP_TIMEZONE", "Asia/Kolkata"),  // used when scheduling Zoom meetings
+			AllowedOrigins: allowedOrigins,
 		},
 		Database: DatabaseConfig{
 			Host:     require("DB_HOST"),
