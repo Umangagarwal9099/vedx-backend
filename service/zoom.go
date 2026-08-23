@@ -147,6 +147,19 @@ type zoomMeetingSettings struct {
 	Watermark      bool   `json:"watermark"`      // overlays each viewer's name/email translucently over shared screen content, live — Zoom's own anti-leak deterrent, rendered by the Zoom client itself
 }
 
+// zoomTopic truncates a session name to fit Zoom's 200-character topic
+// limit — Zoom rejects the entire create/update request with a 400 if this
+// is exceeded, which is exactly what silently broke long-named sessions
+// (e.g. a 242-character name) before this existed.
+func zoomTopic(name string) string {
+	const maxLen = 200
+	r := []rune(name)
+	if len(r) <= maxLen {
+		return name
+	}
+	return string(r[:maxLen-1]) + "…"
+}
+
 type zoomMeetingRequest struct {
 	Topic     string              `json:"topic"`
 	Type      int                 `json:"type"`
@@ -167,7 +180,7 @@ type zoomMeetingRequest struct {
 // triggers Zoom's recording.completed webhook and populates recording_url.
 func (z *ZoomService) CreateMeeting(topic string, start time.Time, durationMin int, timezone string) (*ZoomMeeting, error) {
 	req := zoomMeetingRequest{
-		Topic:     topic,
+		Topic:     zoomTopic(topic),
 		Type:      2, // scheduled meeting
 		StartTime: start.Format("2006-01-02T15:04:05"),
 		Duration:  durationMin,
@@ -190,7 +203,7 @@ func (z *ZoomService) CreateMeeting(topic string, start time.Time, durationMin i
 // UpdateMeeting reschedules an existing Zoom meeting.
 func (z *ZoomService) UpdateMeeting(meetingID int64, topic string, start time.Time, durationMin int, timezone string) error {
 	req := zoomMeetingRequest{
-		Topic:     topic,
+		Topic:     zoomTopic(topic),
 		Type:      2,
 		StartTime: start.Format("2006-01-02T15:04:05"),
 		Duration:  durationMin,

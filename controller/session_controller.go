@@ -82,11 +82,14 @@ func (ctrl *SessionController) GetFeedbackStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"has_form": true, "submitted": submitted})
 }
 
-// withShareLink fills in ShareLink from ShareToken for API responses.
+// withShareLink fills in ShareLink — the join gateway page students land on
+// from an email/notification link. Keyed by ShortID, not ShareToken: the
+// gateway page (/join-session/[shortId]) resolves it via the public
+// GET /sessions/:short_id/join endpoint.
 func (ctrl *SessionController) withShareLink(s *models.Session) *models.Session {
-	if s != nil && s.ShareToken != "" {
+	if s != nil && s.ShortID != "" {
 		base := strings.TrimRight(ctrl.publicBaseURL, "/")
-		s.ShareLink = base + "/sessions/join/" + s.ShareToken
+		s.ShareLink = base + "/join-session/" + s.ShortID
 	}
 	return s
 }
@@ -258,22 +261,27 @@ func (ctrl *SessionController) Create(c *gin.Context) {
 	// Create the Zoom meeting (if applicable) before persisting, so the join/start
 	// URLs can be stored on the session row in the same insert. If Zoom isn't
 	// configured yet, or the call fails, the session is still created without a
-	// Zoom link rather than failing the whole request.
+	// Zoom link rather than failing the whole request — but the caller is told
+	// via zoomWarning so it isn't a silent gap only visible in server logs.
 	var zoom *models.ZoomMeetingInfo
+	var zoomWarning string
 	if input.Mode == "online" && input.MeetingPlatform == "zoom" {
 		if ctrl.zoomSvc.Configured() {
 			start, err := ctrl.sessionStartTime(input.SessionDate, input.StartTime)
 			if err != nil {
 				log.Printf("parse session start time for zoom: %v", err)
+				zoomWarning = "Session created, but the Zoom meeting couldn't be scheduled (invalid date/time). Edit this session to retry."
 			} else if meeting, err := ctrl.zoomSvc.CreateMeeting(
 				input.Name, start, sessionDurationMinutes(input.StartTime, input.EndTime), ctrl.timezone,
 			); err != nil {
 				log.Printf("create zoom meeting: %v", err)
+				zoomWarning = "Session created, but the Zoom meeting could not be created. Edit this session to retry."
 			} else {
 				zoom = &models.ZoomMeetingInfo{ID: meeting.ID, JoinURL: meeting.JoinURL, StartURL: meeting.StartURL}
 			}
 		} else {
 			log.Printf("zoom not configured, skipping meeting creation for session %q", input.Name)
+			zoomWarning = "Session created, but Zoom isn't configured on this server — no join link was generated."
 		}
 	}
 
@@ -283,6 +291,7 @@ func (ctrl *SessionController) Create(c *gin.Context) {
 		return
 	}
 	session = ctrl.withShareLink(session)
+	session.ZoomWarning = zoomWarning
 
 	title := "New session: " + session.Name
 	message := fmt.Sprintf("A new session %q has been scheduled for batch %s.", session.Name, session.BatchNumber)
@@ -865,6 +874,7 @@ func (ctrl *SessionController) Update(c *gin.Context) {
 	// Keep the Zoom meeting in sync when name/date/time changed on a session that
 	// already has one. Best-effort — DB is the source of truth, so a Zoom-side
 	// failure here is logged but doesn't fail the request.
+	var zoomWarning string
 	if session.ZoomMeetingID != nil && (input.Name != nil || input.SessionDate != nil || input.StartTime != nil || input.EndTime != nil) {
 		if start, err := ctrl.sessionStartTime(session.SessionDate, session.StartTime); err != nil {
 			log.Printf("parse session start time for zoom update: %v", err)
@@ -872,6 +882,30 @@ func (ctrl *SessionController) Update(c *gin.Context) {
 			*session.ZoomMeetingID, session.Name, start, sessionDurationMinutes(session.StartTime, session.EndTime), ctrl.timezone,
 		); err != nil {
 			log.Printf("update zoom meeting: %v", err)
+		}
+	} else if session.ZoomMeetingID == nil && session.Mode == "online" && session.MeetingPlatform == "zoom" {
+		// This session was created without a Zoom meeting (e.g. Zoom's API was
+		// down at the time) — editing it is the only way an admin can retry,
+		// since there's no dedicated "regenerate link" action today.
+		if !ctrl.zoomSvc.Configured() {
+			zoomWarning = "Zoom still isn't configured on this server — no join link was generated."
+		} else if start, err := ctrl.sessionStartTime(session.SessionDate, session.StartTime); err != nil {
+			log.Printf("parse session start time for zoom retry: %v", err)
+			zoomWarning = "Could not create a Zoom meeting (invalid date/time)."
+		} else if meeting, err := ctrl.zoomSvc.CreateMeeting(
+			session.Name, start, sessionDurationMinutes(session.StartTime, session.EndTime), ctrl.timezone,
+		); err != nil {
+			log.Printf("retry create zoom meeting on update: %v", err)
+			zoomWarning = "Still couldn't create a Zoom meeting for this session. Try editing it again shortly."
+		} else if err := ctrl.sessionRepo.SetZoomMeeting(c.Request.Context(), shortID, models.ZoomMeetingInfo{
+			ID: meeting.ID, JoinURL: meeting.JoinURL, StartURL: meeting.StartURL,
+		}); err != nil {
+			log.Printf("persist retried zoom meeting: %v", err)
+			zoomWarning = "Zoom meeting was created but couldn't be saved. Try editing this session again."
+		} else {
+			session.ZoomMeetingID = &meeting.ID
+			session.ZoomJoinURL = meeting.JoinURL
+			session.ZoomStartURL = meeting.StartURL
 		}
 	}
 
@@ -881,6 +915,7 @@ func (ctrl *SessionController) Update(c *gin.Context) {
 		BatchShortID: session.BatchShortID,
 	})
 
+	session.ZoomWarning = zoomWarning
 	c.JSON(http.StatusOK, sanitizeForRole(ctrl.withStatus(ctrl.withShareLink(session)), c.GetString("role")))
 }
 
@@ -957,7 +992,43 @@ func (ctrl *SessionController) JoinByToken(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, models.SessionJoinInfo{
+	c.JSON(http.StatusOK, ctrl.buildJoinInfo(session))
+}
+
+// JoinByShortID godoc
+//
+//	@Summary		Resolve a session's join gateway by short ID
+//	@Description	Public, unauthenticated lookup of a session's join status — the page a student lands on when clicking a session link from an email. Never returns the Zoom host start URL.
+//	@Tags			sessions
+//	@Produce		json
+//	@Param			short_id	path		string	true	"Session short ID"
+//	@Success		200			{object}	models.SessionJoinInfo
+//	@Failure		404			{object}	map[string]string	"Not found"
+//	@Failure		500			{object}	map[string]string	"Internal server error"
+//	@Router			/sessions/{short_id}/join [get]
+func (ctrl *SessionController) JoinByShortID(c *gin.Context) {
+	shortID := c.Param("short_id")
+
+	session, err := ctrl.sessionRepo.FindByShortID(c.Request.Context(), shortID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch session"})
+		return
+	}
+	if session == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, ctrl.buildJoinInfo(session))
+}
+
+// buildJoinInfo computes the public join gateway view of a session — its
+// status, whether it's already completed/cancelled, and the join URL to
+// show (withheld once the session is over, since Zoom rooms close anyway).
+func (ctrl *SessionController) buildJoinInfo(session *models.Session) models.SessionJoinInfo {
+	ctrl.withStatus(session)
+
+	info := models.SessionJoinInfo{
 		Name:            session.Name,
 		SessionDate:     session.SessionDate,
 		StartTime:       session.StartTime,
@@ -966,5 +1037,19 @@ func (ctrl *SessionController) JoinByToken(c *gin.Context) {
 		Mode:            session.Mode,
 		MeetingPlatform: session.MeetingPlatform,
 		ZoomJoinURL:     session.ZoomJoinURL,
-	})
+		Status:          session.Status,
+	}
+
+	switch session.Status {
+	case "completed":
+		info.Completed = true
+		info.Message = "This session has completed."
+	case "cancelled":
+		info.Completed = true
+		info.Message = "This session was cancelled."
+	default:
+		info.JoinURL = session.ZoomJoinURL
+	}
+
+	return info
 }

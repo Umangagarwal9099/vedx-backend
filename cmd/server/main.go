@@ -32,10 +32,10 @@ import (
 
 //	@schemes	http https
 
-//	@securityDefinitions.apikey	BearerAuth
-//	@in							header
-//	@name						Authorization
-//	@description				Format: `Bearer <token>`
+// @securityDefinitions.apikey	BearerAuth
+// @in							header
+// @name						Authorization
+// @description				Format: `Bearer <token>`
 func main() {
 	// Load .env for local development — silently ignored in production
 	// where env vars are injected by the platform (Render, Railway, etc.)
@@ -85,6 +85,7 @@ func main() {
 		repository.NewUserRepository(pool),
 		emailSvc,
 		cfg.App.Timezone,
+		cfg.App.PublicURL,
 	)
 
 	// Background: remind students and the batch manager the day before a batch starts.

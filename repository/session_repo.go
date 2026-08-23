@@ -398,6 +398,17 @@ func (r *SessionRepository) UpdateRecordingURL(ctx context.Context, zoomMeetingI
 	return tag.RowsAffected() > 0, nil
 }
 
+// SetZoomMeeting attaches a newly-created Zoom meeting to a session that
+// didn't get one at creation time (e.g. Zoom's API was briefly unavailable).
+// Called from the Update handler's create-on-retry path.
+func (r *SessionRepository) SetZoomMeeting(ctx context.Context, shortID string, zoom models.ZoomMeetingInfo) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE sessions SET zoom_meeting_id = $1, zoom_join_url = $2, zoom_start_url = $3, updated_at = NOW() WHERE short_id = $4`,
+		zoom.ID, zoom.JoinURL, zoom.StartURL, shortID,
+	)
+	return err
+}
+
 // Delete soft-deletes a session.
 func (r *SessionRepository) Delete(ctx context.Context, shortID string) error {
 	result, err := r.pool.Exec(ctx,

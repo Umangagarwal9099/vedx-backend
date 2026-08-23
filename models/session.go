@@ -38,11 +38,15 @@ type Session struct {
 	// cancelled. The frontend should render its Join/Watch Recording button
 	// off this field instead of recomputing it from local wall-clock time,
 	// so all clients agree regardless of the viewer's own timezone.
-	Status    string     `json:"status"`
-	CreatedBy string     `json:"created_by"`
-	CreatedAt time.Time  `json:"created_at"`
-	UpdatedAt time.Time  `json:"updated_at"`
-	DeletedAt *time.Time `json:"deleted_at,omitempty"`
+	Status string `json:"status"`
+	// ZoomWarning is set only in the response to a Create/Update call where a
+	// Zoom meeting was expected but couldn't be created — never persisted or
+	// read back, purely a one-shot signal to the admin/mentor who made the call.
+	ZoomWarning string     `json:"zoom_warning,omitempty"`
+	CreatedBy   string     `json:"created_by"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+	DeletedAt   *time.Time `json:"deleted_at,omitempty"`
 }
 
 // CreateSessionInput carries the fields required to schedule a new session.
@@ -95,7 +99,7 @@ type ZoomMeetingInfo struct {
 }
 
 // SessionJoinInfo is the public, unauthenticated view of a session resolved
-// by share token. It deliberately omits ZoomStartURL (a host token).
+// by share token or short ID. It deliberately omits ZoomStartURL (a host token).
 type SessionJoinInfo struct {
 	Name            string `json:"name"`
 	SessionDate     string `json:"session_date"`
@@ -105,6 +109,10 @@ type SessionJoinInfo struct {
 	Mode            string `json:"mode"`
 	MeetingPlatform string `json:"meeting_platform,omitempty"`
 	ZoomJoinURL     string `json:"zoom_join_url,omitempty"`
+	Status          string `json:"status,omitempty"`
+	Completed       bool   `json:"completed"`
+	Message         string `json:"message,omitempty"`
+	JoinURL         string `json:"join_url,omitempty"`
 }
 
 // RecordingListItem is one recording, as returned by the batch-recordings

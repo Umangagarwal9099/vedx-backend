@@ -154,6 +154,10 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 		// Public session join-link resolution — the token itself is the credential
 		// (like a magic link), so this stays outside the JWT-protected group.
 		v1.GET("/sessions/by-token/:token", sessionCtrl.JoinByToken)
+		// Same public join gateway, keyed by short_id — this is what the
+		// student app's /join-session/[shortId] page actually calls, and
+		// what session emails link to (see withShareLink).
+		v1.GET("/sessions/:short_id/join", sessionCtrl.JoinByShortID)
 		v1.GET("/certificates/verify/:certificate_number", certificateCtrl.VerifyCertificate)
 
 		// Zoom calls this directly (no JWT) — authenticity is instead verified via

@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/umangagarwal/vedx-backend/models"
@@ -27,6 +28,7 @@ func RunSessionReminders(
 	userRepo *repository.UserRepository,
 	emailSvc *service.EmailService,
 	timezone string,
+	publicBaseURL string,
 ) {
 	loc, err := time.LoadLocation(timezone)
 	if err != nil {
@@ -42,7 +44,7 @@ func RunSessionReminders(
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			processDueReminders(ctx, sessionRepo, batchRepo, notificationRepo, userRepo, emailSvc, loc)
+			processDueReminders(ctx, sessionRepo, batchRepo, notificationRepo, userRepo, emailSvc, loc, publicBaseURL)
 		}
 	}
 }
@@ -55,6 +57,7 @@ func processDueReminders(
 	userRepo *repository.UserRepository,
 	emailSvc *service.EmailService,
 	loc *time.Location,
+	publicBaseURL string,
 ) {
 	const layout = "2006-01-02 15:04:05"
 	now := time.Now().In(loc)
@@ -73,8 +76,8 @@ func processDueReminders(
 		// Prefer the direct Zoom join link so clicking it joins the meeting immediately.
 		if session.ZoomJoinURL != "" {
 			message = fmt.Sprintf("%s Join: %s", message, session.ZoomJoinURL)
-		} else if session.ShareToken != "" {
-			message = fmt.Sprintf("%s Join: /sessions/join/%s", message, session.ShareToken)
+		} else {
+			message = fmt.Sprintf("%s Join: %s", message, shareLink(publicBaseURL, session.ShortID))
 		}
 
 		students, err := batchRepo.GetStudents(ctx, session.BatchShortID)
@@ -102,8 +105,8 @@ func processDueReminders(
 
 		if emailSvc.Configured() {
 			joinLink := session.ZoomJoinURL
-			if joinLink == "" && session.ShareToken != "" {
-				joinLink = "/sessions/join/" + session.ShareToken
+			if joinLink == "" {
+				joinLink = shareLink(publicBaseURL, session.ShortID)
 			}
 			subject, html := service.SessionReminderEmail(session.Name, session.BatchNumber, joinLink)
 
@@ -124,4 +127,11 @@ func processDueReminders(
 			log.Printf("scheduler: mark reminder sent for session %s: %v", session.ShortID, err)
 		}
 	}
+}
+
+// shareLink builds an absolute join-gateway URL from the configured public
+// base URL. Mirrors SessionController.withShareLink — without a base URL
+// prepended, the link is a bare path that email clients can't resolve.
+func shareLink(publicBaseURL, shortID string) string {
+	return strings.TrimRight(publicBaseURL, "/") + "/join-session/" + shortID
 }
