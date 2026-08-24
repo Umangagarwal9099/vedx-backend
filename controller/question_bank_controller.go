@@ -3,6 +3,7 @@ package controller
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
@@ -12,10 +13,12 @@ import (
 
 type QuestionBankController struct {
 	questionBankRepo *repository.QuestionBankRepository
+	subjectRepo      *repository.QuestionBankSubjectRepository
+	auditLogRepo     *repository.AuditLogRepository
 }
 
-func NewQuestionBankController(repo *repository.QuestionBankRepository) *QuestionBankController {
-	return &QuestionBankController{questionBankRepo: repo}
+func NewQuestionBankController(repo *repository.QuestionBankRepository, subjectRepo *repository.QuestionBankSubjectRepository, auditLogRepo *repository.AuditLogRepository) *QuestionBankController {
+	return &QuestionBankController{questionBankRepo: repo, subjectRepo: subjectRepo, auditLogRepo: auditLogRepo}
 }
 
 // CreateQuestion godoc
@@ -189,7 +192,105 @@ func (ctrl *QuestionBankController) Delete(c *gin.Context) {
 //	@Security		BearerAuth
 //	@Router			/question-bank/taxonomy [get]
 func (ctrl *QuestionBankController) GetTaxonomy(c *gin.Context) {
-	c.JSON(http.StatusOK, models.GetQuestionBankTaxonomy())
+	subjects, err := ctrl.subjectRepo.List(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch subjects"})
+		return
+	}
+
+	tree := make([]models.QuestionBankTaxonomy, 0, len(subjects))
+	for _, s := range subjects {
+		topics := models.TopicsForSubject(s.Name)
+		if topics == nil {
+			topics = []models.QuestionBankTopic{} // never null — the frontend type isn't optional
+		}
+		tree = append(tree, models.QuestionBankTaxonomy{
+			Subject: s.Name,
+			Topics:  topics,
+			ShortID: s.ShortID,
+		})
+	}
+	c.JSON(http.StatusOK, tree)
+}
+
+// CreateSubject godoc
+//
+//	@Summary		Add a question bank subject
+//	@Description	Adds a new subject tile to the question bank browse page.
+//	@Tags			questions
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body		object{name=string}	true	"Subject name"
+//	@Success		201		{object}	models.QuestionBankSubject
+//	@Failure		400		{object}	map[string]string	"Validation error"
+//	@Failure		409		{object}	map[string]string	"Name already exists"
+//	@Security		BearerAuth
+//	@Router			/question-bank/subjects [post]
+func (ctrl *QuestionBankController) CreateSubject(c *gin.Context) {
+	var input struct {
+		Name string `json:"name" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	name := strings.TrimSpace(input.Name)
+	if name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "name cannot be blank"})
+		return
+	}
+
+	subject, err := ctrl.subjectRepo.Create(c.Request.Context(), name, c.GetString("user_id"))
+	if err != nil {
+		if errors.Is(err, repository.ErrSubjectNameTaken) {
+			c.JSON(http.StatusConflict, gin.H{"error": "a subject with this name already exists"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create subject"})
+		return
+	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "create", EntityType: "question_bank_subject",
+		EntityID: subject.ID, EntityShortID: subject.ShortID, EntityLabel: subject.Name,
+	})
+
+	c.JSON(http.StatusCreated, subject)
+}
+
+// DeleteSubject godoc
+//
+//	@Summary		Delete a question bank subject
+//	@Description	Removes a subject tile. Refuses if any question still uses this subject.
+//	@Tags			questions
+//	@Produce		json
+//	@Param			short_id	path	string	true	"Subject short ID"
+//	@Success		204			"No Content"
+//	@Failure		404			{object}	map[string]string	"Not found"
+//	@Failure		409			{object}	map[string]string	"Subject still has questions"
+//	@Security		BearerAuth
+//	@Router			/question-bank/subjects/{short_id} [delete]
+func (ctrl *QuestionBankController) DeleteSubject(c *gin.Context) {
+	shortID := c.Param("short_id")
+
+	if err := ctrl.subjectRepo.Delete(c.Request.Context(), shortID); err != nil {
+		if errors.Is(err, repository.ErrSubjectInUse) {
+			c.JSON(http.StatusConflict, gin.H{"error": "this subject still has questions assigned to it — move or delete them first"})
+			return
+		}
+		if errors.Is(err, pgx.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "subject not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not delete subject"})
+		return
+	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "delete", EntityType: "question_bank_subject", EntityShortID: shortID,
+	})
+
+	c.Status(http.StatusNoContent)
 }
 
 // GetStats godoc

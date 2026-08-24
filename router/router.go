@@ -47,6 +47,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	resourceRepo := repository.NewResourceRepository(pool)
 	projectRepo := repository.NewProjectRepository(pool)
 	questionBankRepo := repository.NewQuestionBankRepository(pool)
+	questionBankSubjectRepo := repository.NewQuestionBankSubjectRepository(pool)
 	examAttemptRepo := repository.NewExamAttemptRepository(pool)
 	attendanceRepo := repository.NewAttendanceRepository(pool)
 	scoreRepo := repository.NewScoreRepository(pool)
@@ -105,7 +106,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	assignmentCtrl := controller.NewAssignmentController(assignmentRepo, batchRepo, notificationRepo, auditLogRepo)
 	resourceCtrl := controller.NewResourceController(resourceRepo, batchRepo, auditLogRepo)
 	projectCtrl := controller.NewProjectController(projectRepo, batchRepo, notificationRepo, auditLogRepo)
-	questionBankCtrl := controller.NewQuestionBankController(questionBankRepo)
+	questionBankCtrl := controller.NewQuestionBankController(questionBankRepo, questionBankSubjectRepo, auditLogRepo)
 	examAttemptCtrl := controller.NewExamAttemptController(examAttemptRepo, assessmentRepo, questionBankRepo, batchRepo, notificationRepo, auditLogRepo)
 	attendanceCtrl := controller.NewAttendanceController(attendanceRepo, sessionRepo, batchRepo, auditLogRepo)
 	scoreCtrl := controller.NewScoreController(scoreRepo, batchRepo, auditLogRepo)
@@ -600,6 +601,8 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			{
 				questionBank.GET("/taxonomy", questionBankCtrl.GetTaxonomy)
 				questionBank.GET("/stats", questionBankCtrl.GetStats)
+				questionBank.POST("/subjects", staffOrAbove, questionBankCtrl.CreateSubject)
+				questionBank.DELETE("/subjects/:short_id", staffOrAbove, questionBankCtrl.DeleteSubject)
 			}
 
 			// Communities — scoped to a batch. super_admin / team_lead / mentor manage them;
