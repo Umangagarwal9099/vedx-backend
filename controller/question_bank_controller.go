@@ -2,6 +2,7 @@ package controller
 
 import (
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 
@@ -145,6 +146,7 @@ func (ctrl *QuestionBankController) Update(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "provide at least one field to update"})
 			return
 		}
+		log.Printf("update question: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not update question"})
 		return
 	}

@@ -131,7 +131,7 @@ func (r *CodingQuestionRepository) Create(ctx context.Context, in models.CreateC
 		INSERT INTO coding_questions
 		  (short_id, title, description, difficulty, subject, subtopic, topics, languages, constraints,
 		   examples, starter_code, test_cases, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::JSONB, $11::JSONB, $12::JSONB, $13)
 		RETURNING ` + selectFields
 
 	topics := in.Topics
@@ -147,6 +147,10 @@ func (r *CodingQuestionRepository) Create(ctx context.Context, in models.CreateC
 		examples = []models.CodingExample{}
 	}
 
+	// Marshaled JSON must go in as a string, not []byte — pgx's simple query
+	// protocol (required for Neon's transaction-mode pooler, see db/db.go)
+	// sends a []byte query param as a bytea literal, which jsonb_in() then
+	// rejects outright. Same fix already applied in audit_log_repo.go.
 	examplesJSON, _ := json.Marshal(examples)
 	starterJSON, _ := json.Marshal(in.StarterCode)
 	testCasesJSON, _ := json.Marshal(in.TestCases)
@@ -156,7 +160,7 @@ func (r *CodingQuestionRepository) Create(ctx context.Context, in models.CreateC
 		row := r.pool.QueryRow(ctx, q,
 			shortID, in.Title, in.Description, in.Difficulty, in.Subject, in.Subtopic,
 			topics, in.Languages, constraints,
-			examplesJSON, starterJSON, testCasesJSON,
+			string(examplesJSON), string(starterJSON), string(testCasesJSON),
 			createdBy,
 		)
 		result, err := r.scanOne(row)
@@ -284,20 +288,20 @@ func (r *CodingQuestionRepository) Update(ctx context.Context, shortID string, i
 	}
 	if in.Examples != nil {
 		b, _ := json.Marshal(in.Examples)
-		setClauses = append(setClauses, fmt.Sprintf("examples = $%d", i))
-		args = append(args, b)
+		setClauses = append(setClauses, fmt.Sprintf("examples = $%d::JSONB", i))
+		args = append(args, string(b))
 		i++
 	}
 	if in.StarterCode != nil {
 		b, _ := json.Marshal(*in.StarterCode)
-		setClauses = append(setClauses, fmt.Sprintf("starter_code = $%d", i))
-		args = append(args, b)
+		setClauses = append(setClauses, fmt.Sprintf("starter_code = $%d::JSONB", i))
+		args = append(args, string(b))
 		i++
 	}
 	if in.TestCases != nil {
 		b, _ := json.Marshal(in.TestCases)
-		setClauses = append(setClauses, fmt.Sprintf("test_cases = $%d", i))
-		args = append(args, b)
+		setClauses = append(setClauses, fmt.Sprintf("test_cases = $%d::JSONB", i))
+		args = append(args, string(b))
 		i++
 	}
 	if in.IsActive != nil {

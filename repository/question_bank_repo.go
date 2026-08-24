@@ -66,13 +66,16 @@ func (r *QuestionBankRepository) Create(ctx context.Context, in models.CreateQue
 	if options == nil {
 		options = []models.QuestionOption{}
 	}
+	// Must go in as a string, not []byte — pgx's simple query protocol
+	// (required for Neon's transaction-mode pooler) sends a []byte query
+	// param as a bytea literal, which jsonb_in() then rejects outright.
+	// Same fix already applied in audit_log_repo.go / coding_question_repo.go.
 	optionsJSON, _ := json.Marshal(options)
 
 	correctOptionIDs := in.CorrectOptionIDs
 	if correctOptionIDs == nil {
 		correctOptionIDs = []string{}
 	}
-
 
 	for attempt := 0; attempt < 3; attempt++ {
 		shortID := util.GenerateShortID()
@@ -90,7 +93,7 @@ func (r *QuestionBankRepository) Create(ctx context.Context, in models.CreateQue
 					correct_text, explanation, marks, negative_marks, subject, topic, subtopic, difficulty,
 					coding_question_id, visibility, created_by
 				) VALUES (
-					$1, $2::assessment_question_type, NULLIF($3,''), $4, $5,
+					$1, $2::assessment_question_type, NULLIF($3,''), $4::JSONB, $5,
 					NULLIF($6,''), NULLIF($7,''), $8, $9, NULLIF($10,''), NULLIF($11,''), NULLIF($12,''), NULLIF($13,''),
 					(SELECT id FROM coding_questions WHERE short_id = NULLIF($14,'') AND deleted_at IS NULL),
 					$15::question_visibility, $16
@@ -106,7 +109,7 @@ func (r *QuestionBankRepository) Create(ctx context.Context, in models.CreateQue
 			FROM ins
 			JOIN users u ON ins.created_by = u.id AND u.deleted_at IS NULL
 			LEFT JOIN coding_questions cq ON ins.coding_question_id = cq.id AND cq.deleted_at IS NULL`,
-			shortID, in.QuestionType, in.QuestionText, optionsJSON, correctOptionIDs,
+			shortID, in.QuestionType, in.QuestionText, string(optionsJSON), correctOptionIDs,
 			in.CorrectText, in.Explanation, in.Marks, in.NegativeMarks, in.Subject, in.Topic, in.Subtopic, in.Difficulty,
 			in.CodingQuestionShortID, visibilityOrDefault(in.Visibility), createdBy,
 		))
@@ -219,7 +222,7 @@ func (r *QuestionBankRepository) Update(ctx context.Context, shortID string, in 
 	}
 	if in.Options != nil {
 		b, _ := json.Marshal(in.Options)
-		add("options = $%d", b)
+		add("options = $%d::JSONB", string(b))
 	}
 	if in.CorrectOptionIDs != nil {
 		add("correct_option_ids = $%d", in.CorrectOptionIDs)

@@ -45,6 +45,7 @@ func (ctrl *CodingQuestionController) Create(c *gin.Context) {
 	createdBy := c.GetString("user_id")
 	q, err := ctrl.repo.Create(c.Request.Context(), input, createdBy)
 	if err != nil {
+		log.Printf("create coding question: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create coding question"})
 		return
 	}
@@ -190,6 +191,7 @@ func (ctrl *CodingQuestionController) Update(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "provide at least one field to update"})
 			return
 		}
+		log.Printf("update coding question: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not update coding question"})
 		return
 	}
