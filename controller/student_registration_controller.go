@@ -31,6 +31,100 @@ func NewStudentRegistrationController(registrationRepo *repository.StudentRegist
 	return &StudentRegistrationController{registrationRepo: registrationRepo, noteRepo: noteRepo, auditLogRepo: auditLogRepo, userRepo: userRepo, collegeRepo: collegeRepo, emailSvc: emailSvc, publicURL: publicURL}
 }
 
+// validateRegistrationInput checks the admin-editable demographic fields and
+// trims the free-text ones in place. Every field here is optional, so empty
+// values pass — only malformed or over-long ones are rejected. Only fields
+// present in the request (non-nil pointers) are touched.
+func validateRegistrationInput(input *models.UpdateStudentRegistrationInput) error {
+	// Enums must match the <select> options the admin portal renders, so a
+	// hand-crafted request can't store a value the UI can never display back.
+	enums := []struct {
+		field   string
+		value   *string
+		allowed []string
+	}{
+		{"gender", input.Gender, []string{"male", "female", "other"}},
+		{"student_source", input.StudentSource, []string{"database", "referral", "website", "social", "walk-in"}},
+	}
+	for _, e := range enums {
+		if e.value == nil {
+			continue
+		}
+		if err := util.ValidateOneOf(e.field, *e.value, e.allowed...); err != nil {
+			return err
+		}
+	}
+
+	phones := []struct {
+		field string
+		value *string
+	}{
+		{"alternate_contact", input.AlternateContact},
+		{"parent_contact", input.ParentContact},
+	}
+	for _, p := range phones {
+		if p.value == nil {
+			continue
+		}
+		if err := util.ValidatePhone(p.field, *p.value); err != nil {
+			return err
+		}
+	}
+
+	if input.ParentEmail != nil {
+		if err := util.ValidateEmailAddr("parent_email", *input.ParentEmail); err != nil {
+			return err
+		}
+	}
+	if input.Pincode != nil {
+		if err := util.ValidatePincode("pincode", *input.Pincode); err != nil {
+			return err
+		}
+	}
+	if input.ParentName != nil {
+		if strings.TrimSpace(*input.ParentName) != "" {
+			if err := util.ValidateName("parent_name", *input.ParentName); err != nil {
+				return err
+			}
+		}
+	}
+
+	texts := []struct {
+		field string
+		value **string
+		max   int
+	}{
+		{"enrollment_no", &input.EnrollmentNo, util.MaxShortTextLen},
+		{"religion", &input.Religion, util.MaxShortTextLen},
+		{"standard", &input.Standard, util.MaxShortTextLen},
+		{"occupation", &input.Occupation, util.MaxShortTextLen},
+		{"timezone", &input.Timezone, util.MaxShortTextLen},
+		{"area", &input.Area, util.MaxShortTextLen},
+		{"school_college_name", &input.SchoolCollegeName, util.MaxShortTextLen},
+		{"city", &input.City, util.MaxShortTextLen},
+		{"state", &input.State, util.MaxShortTextLen},
+		{"parent_name", &input.ParentName, util.MaxNameLen},
+		{"parent_email", &input.ParentEmail, util.MaxShortTextLen},
+		{"alternate_contact", &input.AlternateContact, util.MaxShortTextLen},
+		{"parent_contact", &input.ParentContact, util.MaxShortTextLen},
+		{"pincode", &input.Pincode, util.MaxShortTextLen},
+		{"residential_address", &input.ResidentialAddress, util.MaxAddressLen},
+		{"permanent_address", &input.PermanentAddress, util.MaxAddressLen},
+	}
+	for _, t := range texts {
+		if *t.value == nil {
+			continue
+		}
+		if err := util.ValidateText(t.field, **t.value, t.max); err != nil {
+			return err
+		}
+		trimmed := strings.TrimSpace(**t.value)
+		*t.value = &trimmed
+	}
+
+	return nil
+}
+
 // registrationUpdateDiff builds a { field: {from, to} } metadata map for only
 // the fields actually present in the request, mirroring userUpdateDiff.
 func registrationUpdateDiff(before *models.StudentRegistrationDetails, input models.UpdateStudentRegistrationInput) map[string]interface{} {
@@ -116,6 +210,11 @@ func (ctrl *StudentRegistrationController) UpdateDetails(c *gin.Context) {
 
 	var input models.UpdateStudentRegistrationInput
 	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := validateRegistrationInput(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

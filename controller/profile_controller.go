@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"net/http"
 	"net/url"
 	"strings"
@@ -8,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/umangagarwal/vedx-backend/models"
 	"github.com/umangagarwal/vedx-backend/repository"
+	"github.com/umangagarwal/vedx-backend/util"
 )
 
 type ProfileController struct {
@@ -39,6 +41,75 @@ func normalizeProfileURL(raw string) (string, string) {
 		return "", "must be a valid http(s) URL"
 	}
 	return trimmed, ""
+}
+
+// validateProfileInput checks every field the client may send, and trims the
+// free-text ones in place so what lands in the database matches what was
+// validated. Only fields actually present in the request (non-nil pointers)
+// are touched — a PATCH that omits a field leaves it alone.
+func validateProfileInput(input *models.UpdateProfileDetailsInput) error {
+	if input.Phone != nil {
+		if err := util.ValidatePhone("phone", *input.Phone); err != nil {
+			return err
+		}
+		trimmed := strings.TrimSpace(*input.Phone)
+		input.Phone = &trimmed
+	}
+
+	textFields := []struct {
+		name  string
+		value **string
+		max   int
+	}{
+		{"bio", &input.Bio, util.MaxBioLen},
+		{"location", &input.Location, util.MaxShortTextLen},
+		{"education", &input.Education, util.MaxShortTextLen},
+	}
+	for _, f := range textFields {
+		if *f.value == nil {
+			continue
+		}
+		if err := util.ValidateText(f.name, **f.value, f.max); err != nil {
+			return err
+		}
+		trimmed := strings.TrimSpace(**f.value)
+		*f.value = &trimmed
+	}
+
+	if input.Skills != nil {
+		if err := util.ValidateSkills(*input.Skills); err != nil {
+			return err
+		}
+		trimmed := make([]string, 0, len(*input.Skills))
+		for _, s := range *input.Skills {
+			trimmed = append(trimmed, strings.TrimSpace(s))
+		}
+		input.Skills = &trimmed
+	}
+
+	urlFields := []struct {
+		name  string
+		value **string
+	}{
+		{"github_url", &input.GithubURL},
+		{"linkedin_url", &input.LinkedInURL},
+		{"resume_url", &input.ResumeURL},
+	}
+	for _, f := range urlFields {
+		if *f.value == nil {
+			continue
+		}
+		if err := util.ValidateText(f.name, **f.value, util.MaxURLLen); err != nil {
+			return err
+		}
+		normalized, errMsg := normalizeProfileURL(**f.value)
+		if errMsg != "" {
+			return errors.New(f.name + " " + errMsg)
+		}
+		*f.value = &normalized
+	}
+
+	return nil
 }
 
 // GetDetails godoc
@@ -91,21 +162,9 @@ func (ctrl *ProfileController) UpdateDetails(c *gin.Context) {
 		return
 	}
 
-	if input.GithubURL != nil {
-		normalized, errMsg := normalizeProfileURL(*input.GithubURL)
-		if errMsg != "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "github_url " + errMsg})
-			return
-		}
-		input.GithubURL = &normalized
-	}
-	if input.LinkedInURL != nil {
-		normalized, errMsg := normalizeProfileURL(*input.LinkedInURL)
-		if errMsg != "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "linkedin_url " + errMsg})
-			return
-		}
-		input.LinkedInURL = &normalized
+	if err := validateProfileInput(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
 
 	if input.Phone != nil {

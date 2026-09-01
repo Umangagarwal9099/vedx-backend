@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
@@ -102,6 +103,15 @@ type CreateStaffUserResponse struct {
 func (ctrl *UserController) CreateStaffUser(c *gin.Context) {
 	var req CreateStaffUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := util.ValidateName("first_name", req.FirstName); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := util.ValidateName("last_name", req.LastName); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -241,6 +251,15 @@ type CreateStudentRequest struct {
 func (ctrl *UserController) CreateStudent(c *gin.Context) {
 	var req CreateStudentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := util.ValidateName("first_name", req.FirstName); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := util.ValidateName("last_name", req.LastName); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -476,6 +495,11 @@ func (ctrl *UserController) Update(c *gin.Context) {
 		return
 	}
 
+	if err := validateUserUpdateInput(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	role := c.GetString("role")
 	isStaff := role == string(models.RoleSuperAdmin) || role == string(models.RoleTeamLead)
 	if c.GetString("user_id") != id && !isStaff {
@@ -519,6 +543,44 @@ func (ctrl *UserController) Update(c *gin.Context) {
 	})
 
 	c.JSON(http.StatusOK, user)
+}
+
+// validateUserUpdateInput checks the editable core-user fields and trims them
+// in place. Only fields present in the request (non-nil pointers) are touched.
+func validateUserUpdateInput(input *models.UpdateUserInput) error {
+	names := []struct {
+		field string
+		value **string
+	}{
+		{"first_name", &input.FirstName},
+		{"last_name", &input.LastName},
+	}
+	for _, n := range names {
+		if *n.value == nil {
+			continue
+		}
+		if err := util.ValidateName(n.field, **n.value); err != nil {
+			return err
+		}
+		trimmed := strings.TrimSpace(**n.value)
+		*n.value = &trimmed
+	}
+
+	if input.Phone != nil {
+		if err := util.ValidatePhone("phone", *input.Phone); err != nil {
+			return err
+		}
+		trimmed := strings.TrimSpace(*input.Phone)
+		input.Phone = &trimmed
+	}
+
+	if input.DateOfBirth != nil {
+		if err := util.ValidateDateOfBirth("date_of_birth", *input.DateOfBirth); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // userUpdateDiff builds a { field: {from, to} } metadata map for only the

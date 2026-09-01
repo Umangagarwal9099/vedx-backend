@@ -300,6 +300,30 @@ func (ctrl *AuthController) Register(c *gin.Context) {
 	}
 	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
 
+	if err := util.ValidatePassword(req.Password); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := util.ValidateName("first_name", req.FirstName); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := util.ValidateName("last_name", req.LastName); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := util.ValidatePhone("phone", req.Phone); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := util.ValidateDateOfBirth("date_of_birth", req.DateOfBirth); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	req.FirstName = strings.TrimSpace(req.FirstName)
+	req.LastName = strings.TrimSpace(req.LastName)
+	req.Phone = strings.TrimSpace(req.Phone)
+
 	exists, err := ctrl.userRepo.EmailExists(c.Request.Context(), req.Email)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
@@ -382,6 +406,11 @@ type ChangePasswordRequest struct {
 func (ctrl *AuthController) ChangePassword(c *gin.Context) {
 	var req ChangePasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := util.ValidatePassword(req.NewPassword); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -490,6 +519,13 @@ func (ctrl *AuthController) ResetPassword(c *gin.Context) {
 		return
 	}
 	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+
+	// Checked before the OTP is looked up so a policy failure never consumes
+	// the user's single-use code — they can retype the password and retry.
+	if err := util.ValidatePassword(req.NewPassword); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 
 	const invalidOTPMsg = "invalid or expired OTP"
 
