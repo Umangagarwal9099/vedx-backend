@@ -2,6 +2,7 @@ package controller
 
 import (
 	"errors"
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -14,16 +15,17 @@ import (
 )
 
 type UserController struct {
-	userRepo       *repository.UserRepository
-	collegeRepo    *repository.CollegeRepository
-	enrollmentRepo *repository.EnrollmentRepository
-	emailSvc       *service.EmailService
-	publicURL      string
-	auditLogRepo   *repository.AuditLogRepository
+	userRepo            *repository.UserRepository
+	collegeRepo         *repository.CollegeRepository
+	collegeEmployeeRepo *repository.CollegeEmployeeRepository
+	enrollmentRepo      *repository.EnrollmentRepository
+	emailSvc            *service.EmailService
+	publicURL           string
+	auditLogRepo        *repository.AuditLogRepository
 }
 
-func NewUserController(userRepo *repository.UserRepository, collegeRepo *repository.CollegeRepository, enrollmentRepo *repository.EnrollmentRepository, emailSvc *service.EmailService, publicURL string, auditLogRepo *repository.AuditLogRepository) *UserController {
-	return &UserController{userRepo: userRepo, collegeRepo: collegeRepo, enrollmentRepo: enrollmentRepo, emailSvc: emailSvc, publicURL: publicURL, auditLogRepo: auditLogRepo}
+func NewUserController(userRepo *repository.UserRepository, collegeRepo *repository.CollegeRepository, collegeEmployeeRepo *repository.CollegeEmployeeRepository, enrollmentRepo *repository.EnrollmentRepository, emailSvc *service.EmailService, publicURL string, auditLogRepo *repository.AuditLogRepository) *UserController {
+	return &UserController{userRepo: userRepo, collegeRepo: collegeRepo, collegeEmployeeRepo: collegeEmployeeRepo, enrollmentRepo: enrollmentRepo, emailSvc: emailSvc, publicURL: publicURL, auditLogRepo: auditLogRepo}
 }
 
 // stripStudentPIIForMentor removes a student's phone/email/date-of-birth from
@@ -68,6 +70,11 @@ type CreateStaffUserRequest struct {
 	// default). Ignored for mentor/employee/team_lead, which always land on
 	// the Internal EdTech Platform.
 	CollegeShortID string `json:"college_short_id" example:"use GET /colleges to pick a real short_id — required for college_admin/college_staff"`
+	// Department/DepartmentTeam are only valid when role=employee — hr,
+	// operations, digital_marketing, or manager. department_team currently
+	// only applies to hr (recruitment or campus_drive).
+	Department     string `json:"department"      binding:"omitempty,oneof=hr operations digital_marketing manager" example:"hr"`
+	DepartmentTeam string `json:"department_team" binding:"omitempty,oneof=recruitment campus_drive" example:"recruitment"`
 }
 
 // CreateStaffUserResponse returns the created user plus the one-time-shown
@@ -118,6 +125,15 @@ func (ctrl *UserController) CreateStaffUser(c *gin.Context) {
 
 	role := models.Role(req.Role)
 
+	if (req.Department != "" || req.DepartmentTeam != "") && role != models.RoleEmployee {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "department is only valid for role=employee"})
+		return
+	}
+	if req.DepartmentTeam != "" && req.Department != "hr" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "department_team is only valid when department=hr"})
+		return
+	}
+
 	var collegeID string
 	if role == models.RoleCollegeAdmin || role == models.RoleCollegeStaff {
 		// Only super_admin may create these roles, and they must be
@@ -155,10 +171,22 @@ func (ctrl *UserController) CreateStaffUser(c *gin.Context) {
 		FirstName:    req.FirstName,
 		LastName:     req.LastName,
 		Phone:        req.Phone,
-	}, role, collegeID)
+	}, role, collegeID, req.Department, req.DepartmentTeam)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create account: " + err.Error()})
+		if errors.Is(err, repository.ErrEmailAlreadyExists) {
+			c.JSON(http.StatusConflict, gin.H{"error": "email already in use"})
+			return
+		}
+		log.Printf("create staff user: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create account"})
 		return
+	}
+
+	// Seeds this college as the new hire's default membership — best-effort,
+	// since users.college_id (already set above) remains the source of truth
+	// every other query reads; college_employees is the fuller list on top.
+	if err := ctrl.collegeEmployeeRepo.AddMembership(c.Request.Context(), userID, collegeID, c.GetString("user_id")); err != nil {
+		log.Printf("seed default college membership for new staff user %s: %v", userID, err)
 	}
 
 	user, err := ctrl.userRepo.FindByID(c.Request.Context(), userID)
@@ -261,7 +289,12 @@ func (ctrl *UserController) CreateStudent(c *gin.Context) {
 		DateOfBirth:  req.DateOfBirth,
 	}, collegeID, registrationNo)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create account: " + err.Error()})
+		if errors.Is(err, repository.ErrEmailAlreadyExists) {
+			c.JSON(http.StatusConflict, gin.H{"error": "email already in use"})
+			return
+		}
+		log.Printf("create student: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create account"})
 		return
 	}
 
@@ -570,6 +603,200 @@ func (ctrl *UserController) ChangeRole(c *gin.Context) {
 	c.JSON(http.StatusOK, user)
 }
 
+// UpdateDepartmentRequest carries an employee's new department/sub-team.
+// department_team currently only applies when department is "hr".
+type UpdateDepartmentRequest struct {
+	Department     string `json:"department"      binding:"required,oneof=hr operations digital_marketing manager" example:"hr"`
+	DepartmentTeam string `json:"department_team"  binding:"omitempty,oneof=recruitment campus_drive" example:"recruitment"`
+}
+
+// UpdateDepartment godoc
+//
+//	@Summary		Set an employee's department
+//	@Description	Sets the department (hr/operations/digital_marketing/manager) and, for hr, the sub-team (recruitment/campus_drive) on a role=employee account. 400 for any other role.
+//	@Tags			users
+//	@Accept			json
+//	@Produce		json
+//	@Param			id		path		string					true	"User ID (UUID)"
+//	@Param			body	body		UpdateDepartmentRequest	true	"Department"
+//	@Success		200		{object}	models.User
+//	@Failure		400		{object}	map[string]string	"Not an employee, or invalid department_team"
+//	@Failure		404		{object}	map[string]string	"User not found"
+//	@Failure		500		{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/users/{id}/department [patch]
+func (ctrl *UserController) UpdateDepartment(c *gin.Context) {
+	id := c.Param("id")
+
+	var req UpdateDepartmentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.DepartmentTeam != "" && req.Department != "hr" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "department_team is only valid when department=hr"})
+		return
+	}
+
+	before, err := ctrl.userRepo.FindByID(c.Request.Context(), id)
+	if err != nil || before == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+	if before.Role != models.RoleEmployee {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "department is only valid for role=employee"})
+		return
+	}
+
+	if err := ctrl.userRepo.SetEmployeeDepartment(c.Request.Context(), id, req.Department, req.DepartmentTeam); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "employee profile not found"})
+			return
+		}
+		log.Printf("update department: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not update department"})
+		return
+	}
+
+	user, err := ctrl.userRepo.FindByID(c.Request.Context(), id)
+	if err != nil || user == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch updated user"})
+		return
+	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "update", EntityType: "user",
+		EntityID: user.ID, EntityLabel: user.FirstName + " " + user.LastName,
+		Metadata: map[string]interface{}{"department": map[string]string{"from": before.Department, "to": user.Department}},
+	})
+
+	c.JSON(http.StatusOK, user)
+}
+
+// ListColleges godoc
+//
+//	@Summary		List a staff member's colleges
+//	@Description	Returns every college a mentor/employee/team_lead currently serves, default first.
+//	@Tags			users
+//	@Produce		json
+//	@Param			id	path		string	true	"User ID (UUID)"
+//	@Success		200	{array}		models.CollegeMembership
+//	@Failure		500	{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/users/{id}/colleges [get]
+func (ctrl *UserController) ListColleges(c *gin.Context) {
+	memberships, err := ctrl.collegeEmployeeRepo.List(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch colleges"})
+		return
+	}
+	c.JSON(http.StatusOK, memberships)
+}
+
+// AddCollegeRequest names the college to link.
+type AddCollegeRequest struct {
+	CollegeShortID string `json:"college_short_id" binding:"required" example:"ABCENG"`
+}
+
+// AddCollege godoc
+//
+//	@Summary		Add a college to a staff member
+//	@Description	Links a mentor/employee/team_lead to an additional college — their existing college memberships are unaffected. super_admin only.
+//	@Tags			users
+//	@Accept			json
+//	@Produce		json
+//	@Param			id		path		string				true	"User ID (UUID)"
+//	@Param			body	body		AddCollegeRequest	true	"College to add"
+//	@Success		201		{array}		models.CollegeMembership
+//	@Failure		400		{object}	map[string]string	"Validation error"
+//	@Failure		404		{object}	map[string]string	"User or college not found"
+//	@Failure		500		{object}	map[string]string	"Internal server error"
+//	@Security		BearerAuth
+//	@Router			/users/{id}/colleges [post]
+func (ctrl *UserController) AddCollege(c *gin.Context) {
+	id := c.Param("id")
+
+	var req AddCollegeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	user, err := ctrl.userRepo.FindByID(c.Request.Context(), id)
+	if err != nil || user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+	college, err := ctrl.collegeRepo.FindByShortID(c.Request.Context(), req.CollegeShortID)
+	if err != nil || college == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "college not found"})
+		return
+	}
+
+	if err := ctrl.collegeEmployeeRepo.AddMembership(c.Request.Context(), id, college.ID, c.GetString("user_id")); err != nil {
+		log.Printf("add college membership: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not add college"})
+		return
+	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "add_college", EntityType: "user",
+		EntityID: id, EntityLabel: user.FirstName + " " + user.LastName,
+		Metadata: map[string]interface{}{"college_short_id": college.ShortID},
+	})
+
+	memberships, err := ctrl.collegeEmployeeRepo.List(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch colleges"})
+		return
+	}
+	c.JSON(http.StatusCreated, memberships)
+}
+
+// RemoveCollege godoc
+//
+//	@Summary		Remove a college from a staff member
+//	@Description	Unlinks a mentor/employee/team_lead from one college. Refuses if it's their only remaining college. super_admin only.
+//	@Tags			users
+//	@Produce		json
+//	@Param			id					path	string	true	"User ID (UUID)"
+//	@Param			college_short_id	path	string	true	"College short ID"
+//	@Success		204					"No Content"
+//	@Failure		404					{object}	map[string]string	"Not found"
+//	@Failure		409					{object}	map[string]string	"This is the employee's only college"
+//	@Security		BearerAuth
+//	@Router			/users/{id}/colleges/{college_short_id} [delete]
+func (ctrl *UserController) RemoveCollege(c *gin.Context) {
+	id := c.Param("id")
+
+	college, err := ctrl.collegeRepo.FindByShortID(c.Request.Context(), c.Param("college_short_id"))
+	if err != nil || college == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "college not found"})
+		return
+	}
+
+	if err := ctrl.collegeEmployeeRepo.RemoveMembership(c.Request.Context(), id, college.ID); err != nil {
+		if errors.Is(err, repository.ErrLastCollegeMembership) {
+			c.JSON(http.StatusConflict, gin.H{"error": "cannot remove an employee's only remaining college"})
+			return
+		}
+		if errors.Is(err, pgx.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "this user is not linked to that college"})
+			return
+		}
+		log.Printf("remove college membership: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not remove college"})
+		return
+	}
+
+	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
+		Action: "remove_college", EntityType: "user",
+		EntityID: id, Metadata: map[string]interface{}{"college_short_id": college.ShortID},
+	})
+
+	c.Status(http.StatusNoContent)
+}
+
 // TransferCollegeRequest carries the target college and an optional reason
 // for a super_admin-initiated college transfer.
 type TransferCollegeRequest struct {
@@ -700,7 +927,7 @@ func (ctrl *UserController) ChangeEmail(c *gin.Context) {
 			return
 		}
 		if exists {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "this email is already in use"})
+			c.JSON(http.StatusConflict, gin.H{"error": "email already in use"})
 			return
 		}
 	}
@@ -710,6 +937,11 @@ func (ctrl *UserController) ChangeEmail(c *gin.Context) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
 			return
 		}
+		if errors.Is(err, repository.ErrEmailAlreadyExists) {
+			c.JSON(http.StatusConflict, gin.H{"error": "email already in use"})
+			return
+		}
+		log.Printf("change email: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not change email"})
 		return
 	}

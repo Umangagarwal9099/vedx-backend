@@ -29,6 +29,7 @@ func JWTAuth(jwtSecret string) gin.HandlerFunc {
 		c.Set("email", claims.Email)
 		c.Set("role", claims.Role)
 		c.Set("college_id", claims.CollegeID)
+		c.Set("department", claims.Department)
 		c.Next()
 	}
 }
@@ -69,6 +70,7 @@ func JWTAuthCookieOrHeader(jwtSecret string) gin.HandlerFunc {
 		c.Set("email", claims.Email)
 		c.Set("role", claims.Role)
 		c.Set("college_id", claims.CollegeID)
+		c.Set("department", claims.Department)
 		c.Next()
 	}
 }
@@ -84,6 +86,32 @@ func RequireRole(roles ...models.Role) gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
+		role, _ := c.Get("role")
+		if _, ok := allowed[role.(string)]; !ok {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "you do not have permission to access this resource"})
+			return
+		}
+		c.Next()
+	}
+}
+
+// RequireRoleOrDepartment allows a request through if EITHER the caller's
+// role is in the allowed list OR their department matches (case: an
+// employee whose department is "hr" needs access to routes that would
+// otherwise be gated to super_admin/team_lead, e.g. the leave-request
+// review screen, without granting them every other adminOrAbove route).
+// Must be placed after JWTAuth in the middleware chain.
+func RequireRoleOrDepartment(department string, roles ...models.Role) gin.HandlerFunc {
+	allowed := make(map[string]struct{}, len(roles))
+	for _, r := range roles {
+		allowed[string(r)] = struct{}{}
+	}
+
+	return func(c *gin.Context) {
+		if c.GetString("department") == department {
+			c.Next()
+			return
+		}
 		role, _ := c.Get("role")
 		if _, ok := allowed[role.(string)]; !ok {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "you do not have permission to access this resource"})

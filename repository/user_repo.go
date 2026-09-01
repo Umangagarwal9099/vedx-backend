@@ -9,10 +9,25 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/umangagarwal/vedx-backend/models"
 	"github.com/umangagarwal/vedx-backend/util"
 )
+
+// ErrEmailAlreadyExists is returned by Register/CreateStaffUser/UpdateEmail
+// when the email uniqueness constraint rejects the write — the defense-in-depth
+// backstop behind each caller's own EmailExists pre-check, for the race window
+// between that check and the insert (two concurrent requests for the same new
+// email), so it never surfaces as a raw, leaked Postgres error string.
+var ErrEmailAlreadyExists = errors.New("email already in use")
+
+// isDuplicateEmail reports whether err is a unique-violation on the email
+// constraint specifically (not some other constraint on the same insert).
+func isDuplicateEmail(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "users_email_key"
+}
 
 type UserRepository struct {
 	pool *pgxpool.Pool
@@ -22,12 +37,16 @@ func NewUserRepository(pool *pgxpool.Pool) *UserRepository {
 	return &UserRepository{pool: pool}
 }
 
-// UpdateEmail changes a user's login email. Callers must check EmailExists
-// first — this does not enforce uniqueness itself beyond the DB's own
-// constraint, so a duplicate will surface as a generic DB error.
+// UpdateEmail changes a user's login email. Callers should check EmailExists
+// first for a fast, friendly rejection — this also guards the race window
+// itself, returning ErrEmailAlreadyExists on a duplicate rather than leaking
+// the raw constraint-violation error.
 func (r *UserRepository) UpdateEmail(ctx context.Context, id, email string) error {
 	tag, err := r.pool.Exec(ctx, `UPDATE users SET email = $1, updated_at = NOW() WHERE id = $2::UUID AND deleted_at IS NULL`, email, id)
 	if err != nil {
+		if isDuplicateEmail(err) {
+			return ErrEmailAlreadyExists
+		}
 		return err
 	}
 	if tag.RowsAffected() == 0 {
@@ -126,19 +145,53 @@ func (r *UserRepository) GetCollegeID(ctx context.Context, userID string) (strin
 	return collegeID, err
 }
 
+// GetEmployeeDepartment returns a user's department (empty string if unset or
+// not an employee) — kept as its own query, same best-effort convention as
+// GetCollegeID, so a lookup failure never blocks login.
+func (r *UserRepository) GetEmployeeDepartment(ctx context.Context, userID string) (string, error) {
+	var department string
+	err := r.pool.QueryRow(ctx, `SELECT COALESCE(department, '') FROM employees WHERE user_id = $1::UUID`, userID).Scan(&department)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	return department, err
+}
+
+// SetEmployeeDepartment sets an employee's department/department_team.
+// Only meaningful for role=employee — callers must check the role themselves
+// (see UserController.UpdateDepartment) since there's no employees row at
+// all for any other role, in which case this is a silent no-op (0 rows
+// affected, not an error).
+func (r *UserRepository) SetEmployeeDepartment(ctx context.Context, userID, department, departmentTeam string) error {
+	tag, err := r.pool.Exec(ctx,
+		`UPDATE employees SET department = NULLIF($2,''), department_team = NULLIF($3,''), updated_at = NOW() WHERE user_id = $1::UUID`,
+		userID, department, departmentTeam,
+	)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
 func (r *UserRepository) FindByID(ctx context.Context, id string) (*models.User, error) {
 	const q = `
-		SELECT id, email, first_name, last_name,
+		SELECT users.id, email, first_name, last_name,
 		       COALESCE(phone, ''), COALESCE(date_of_birth::TEXT, ''),
-		       role, is_active, created_at, updated_at
+		       role, is_active, users.created_at, users.updated_at,
+		       COALESCE(e.department, ''), COALESCE(e.department_team, '')
 		FROM users
-		WHERE id = $1 AND deleted_at IS NULL
+		LEFT JOIN employees e ON e.user_id = users.id
+		WHERE users.id = $1 AND deleted_at IS NULL
 		LIMIT 1`
 
 	var u models.User
 	err := r.pool.QueryRow(ctx, q, id).Scan(
 		&u.ID, &u.Email, &u.FirstName, &u.LastName,
 		&u.Phone, &u.DateOfBirth, &u.Role, &u.IsActive, &u.CreatedAt, &u.UpdatedAt,
+		&u.Department, &u.DepartmentTeam,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
@@ -153,27 +206,31 @@ func (r *UserRepository) FindByID(ctx context.Context, id string) (*models.User,
 // for non-super-admin callers (empty = unscoped).
 func (r *UserRepository) FindAll(ctx context.Context, collegeID string) ([]models.User, error) {
 	q := `
-		SELECT id, email, first_name, last_name,
+		SELECT users.id, email, first_name, last_name,
 		       COALESCE(phone, ''), COALESCE(date_of_birth::TEXT, ''),
-		       role, is_active, created_at, updated_at, COALESCE(college_id::TEXT, '')
+		       role, is_active, users.created_at, users.updated_at, COALESCE(college_id::TEXT, ''),
+		       COALESCE(e.department, ''), COALESCE(e.department_team, '')
 		FROM users
+		LEFT JOIN employees e ON e.user_id = users.id
 		WHERE deleted_at IS NULL`
 	args := []interface{}{}
 	if collegeID != "" {
 		q += ` AND college_id = $1::UUID`
 		args = append(args, collegeID)
 	}
-	q += ` ORDER BY created_at DESC`
+	q += ` ORDER BY users.created_at DESC`
 	return r.scanUsers(ctx, q, args...)
 }
 
 // FindDeleted returns all soft-deleted users.
 func (r *UserRepository) FindDeleted(ctx context.Context) ([]models.User, error) {
 	const q = `
-		SELECT id, email, first_name, last_name,
+		SELECT users.id, email, first_name, last_name,
 		       COALESCE(phone, ''), COALESCE(date_of_birth::TEXT, ''),
-		       role, is_active, created_at, updated_at, COALESCE(college_id::TEXT, '')
+		       role, is_active, users.created_at, users.updated_at, COALESCE(college_id::TEXT, ''),
+		       COALESCE(e.department, ''), COALESCE(e.department_team, '')
 		FROM users
+		LEFT JOIN employees e ON e.user_id = users.id
 		WHERE deleted_at IS NOT NULL
 		ORDER BY deleted_at DESC`
 
@@ -184,10 +241,12 @@ func (r *UserRepository) FindDeleted(ctx context.Context) ([]models.User, error)
 // scopes the list for non-super-admin callers (empty = unscoped).
 func (r *UserRepository) FindByRole(ctx context.Context, role models.Role, collegeID string) ([]models.User, error) {
 	q := `
-		SELECT id, email, first_name, last_name,
+		SELECT users.id, email, first_name, last_name,
 		       COALESCE(phone, ''), COALESCE(date_of_birth::TEXT, ''),
-		       role, is_active, created_at, updated_at, COALESCE(college_id::TEXT, '')
+		       role, is_active, users.created_at, users.updated_at, COALESCE(college_id::TEXT, ''),
+		       COALESCE(e.department, ''), COALESCE(e.department_team, '')
 		FROM users
+		LEFT JOIN employees e ON e.user_id = users.id
 		WHERE role = $1 AND deleted_at IS NULL`
 	args := []interface{}{role}
 	if collegeID != "" {
@@ -203,13 +262,15 @@ func (r *UserRepository) FindByRole(ctx context.Context, role models.Role, colle
 // callers (empty = unscoped).
 func (r *UserRepository) SearchUsers(ctx context.Context, query, collegeID string) ([]models.User, error) {
 	q := `
-		SELECT id, email, first_name, last_name,
+		SELECT users.id, email, first_name, last_name,
 		       COALESCE(phone, ''), COALESCE(date_of_birth::TEXT, ''),
-		       role, is_active, created_at, updated_at, COALESCE(college_id::TEXT, '')
+		       role, is_active, users.created_at, users.updated_at, COALESCE(college_id::TEXT, ''),
+		       COALESCE(e.department, ''), COALESCE(e.department_team, '')
 		FROM users
+		LEFT JOIN employees e ON e.user_id = users.id
 		WHERE deleted_at IS NULL
 		  AND (
-		        id::TEXT ILIKE $1
+		        users.id::TEXT ILIKE $1
 		     OR email ILIKE $1
 		     OR phone ILIKE $1
 		     OR first_name ILIKE $1
@@ -221,7 +282,7 @@ func (r *UserRepository) SearchUsers(ctx context.Context, query, collegeID strin
 		q += ` AND college_id = $2::UUID`
 		args = append(args, collegeID)
 	}
-	q += ` ORDER BY created_at DESC`
+	q += ` ORDER BY users.created_at DESC`
 	return r.scanUsers(ctx, q, args...)
 }
 
@@ -233,7 +294,8 @@ func (r *UserRepository) FindStudentsForMentor(ctx context.Context, mentorID str
 	const q = `
 		SELECT DISTINCT u.id, u.email, u.first_name, u.last_name,
 		       COALESCE(u.phone, ''), COALESCE(u.date_of_birth::TEXT, ''),
-		       u.role, u.is_active, u.created_at, u.updated_at, COALESCE(u.college_id::TEXT, '')
+		       u.role, u.is_active, u.created_at, u.updated_at, COALESCE(u.college_id::TEXT, ''),
+		       '', ''
 		FROM users u
 		JOIN batch_students bs ON bs.user_id = u.id
 		JOIN batches b ON b.id = bs.batch_id AND b.deleted_at IS NULL
@@ -250,7 +312,8 @@ func (r *UserRepository) SearchStudentsForMentor(ctx context.Context, mentorID, 
 	const q = `
 		SELECT DISTINCT u.id, u.email, u.first_name, u.last_name,
 		       COALESCE(u.phone, ''), COALESCE(u.date_of_birth::TEXT, ''),
-		       u.role, u.is_active, u.created_at, u.updated_at, COALESCE(u.college_id::TEXT, '')
+		       u.role, u.is_active, u.created_at, u.updated_at, COALESCE(u.college_id::TEXT, ''),
+		       '', ''
 		FROM users u
 		JOIN batch_students bs ON bs.user_id = u.id
 		JOIN batches b ON b.id = bs.batch_id AND b.deleted_at IS NULL
@@ -281,6 +344,7 @@ func (r *UserRepository) scanUsers(ctx context.Context, q string, args ...interf
 		if err := rows.Scan(
 			&u.ID, &u.Email, &u.FirstName, &u.LastName,
 			&u.Phone, &u.DateOfBirth, &u.Role, &u.IsActive, &u.CreatedAt, &u.UpdatedAt, &u.CollegeID,
+			&u.Department, &u.DepartmentTeam,
 		); err != nil {
 			return nil, err
 		}
@@ -322,6 +386,9 @@ func (r *UserRepository) Register(ctx context.Context, user models.User, college
 		user.Phone, user.DateOfBirth, collegeID,
 	).Scan(&userID)
 	if err != nil {
+		if isDuplicateEmail(err) {
+			return "", ErrEmailAlreadyExists
+		}
 		return "", fmt.Errorf("insert user: %w", err)
 	}
 
@@ -356,7 +423,7 @@ func (r *UserRepository) Register(ctx context.Context, user models.User, college
 // entry in profileTable (college_admin, college_staff) skip that insert
 // entirely rather than erroring — there's no dedicated schema for them yet,
 // they're just users rows scoped by college_id.
-func (r *UserRepository) CreateStaffUser(ctx context.Context, user models.User, role models.Role, collegeID string) (string, error) {
+func (r *UserRepository) CreateStaffUser(ctx context.Context, user models.User, role models.Role, collegeID, department, departmentTeam string) (string, error) {
 	table, hasProfileTable := profileTable[role]
 
 	tx, err := r.pool.Begin(ctx)
@@ -373,11 +440,23 @@ func (r *UserRepository) CreateStaffUser(ctx context.Context, user models.User, 
 		user.Email, user.PasswordHash, user.FirstName, user.LastName, user.Phone, role, collegeID,
 	).Scan(&userID)
 	if err != nil {
+		if isDuplicateEmail(err) {
+			return "", ErrEmailAlreadyExists
+		}
 		return "", fmt.Errorf("insert user: %w", err)
 	}
 
 	if hasProfileTable {
-		if _, err = tx.Exec(ctx, fmt.Sprintf(`INSERT INTO %s (user_id) VALUES ($1)`, table), userID); err != nil {
+		if role == models.RoleEmployee {
+			// The only profile table that takes extra columns at creation —
+			// department/department_team only ever apply to this role.
+			if _, err = tx.Exec(ctx,
+				`INSERT INTO employees (user_id, department, department_team) VALUES ($1, NULLIF($2,''), NULLIF($3,''))`,
+				userID, department, departmentTeam,
+			); err != nil {
+				return "", fmt.Errorf("insert employee profile: %w", err)
+			}
+		} else if _, err = tx.Exec(ctx, fmt.Sprintf(`INSERT INTO %s (user_id) VALUES ($1)`, table), userID); err != nil {
 			return "", fmt.Errorf("insert %s profile: %w", table, err)
 		}
 	}

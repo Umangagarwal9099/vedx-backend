@@ -268,6 +268,26 @@ func (r *EnrollmentRepository) Transfer(ctx context.Context, studentID, fromBatc
 		return nil, fmt.Errorf("mark old enrollment transferred: %w", err)
 	}
 
+	// batch_students and student_enrollments are two hand-synced tables (see
+	// the identical note on AddStudentsWithEnrollment) — moving the roster
+	// row in the same transaction as the enrollment status change means a
+	// mid-way failure rolls back both instead of leaving the student on one
+	// batch's roster but "active" in student_enrollments for the other.
+	if _, err := tx.Exec(ctx, `
+		DELETE FROM batch_students WHERE batch_id = $1::UUID AND user_id = $2::UUID`,
+		fromBatchID, studentID,
+	); err != nil {
+		return nil, fmt.Errorf("remove from source batch roster: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO batch_students (batch_id, user_id, added_by)
+		VALUES ($1::UUID, $2::UUID, $3::UUID)
+		ON CONFLICT (batch_id, user_id) DO NOTHING`,
+		toBatchID, studentID, actorID,
+	); err != nil {
+		return nil, fmt.Errorf("add to destination batch roster: %w", err)
+	}
+
 	// See the comment on assessment_repo.go's Create for why this reads FROM
 	// ins rather than FROM student_enrollments.
 	transferInsSelect := strings.Replace(enrollmentBaseSelect, "FROM student_enrollments se", "FROM ins se", 1)

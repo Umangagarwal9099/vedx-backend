@@ -449,7 +449,13 @@ func (ctrl *StudentRegistrationController) BulkImportStudents(c *gin.Context) {
 			FirstName: row.FirstName, LastName: row.LastName, Phone: row.Phone,
 		}, collegeID, registrationNo)
 		if err != nil {
-			result.Skipped = append(result.Skipped, models.StudentImportRowError{RowNumber: row.RowNumber, Reason: "could not create account: " + err.Error()})
+			reason := "could not create account"
+			if errors.Is(err, repository.ErrEmailAlreadyExists) {
+				reason = "email already in use"
+			} else {
+				log.Printf("bulk import row %d: create account: %v", row.RowNumber, err)
+			}
+			result.Skipped = append(result.Skipped, models.StudentImportRowError{RowNumber: row.RowNumber, Reason: reason})
 			continue
 		}
 

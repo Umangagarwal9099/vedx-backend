@@ -567,12 +567,18 @@ func (r *LeadRepository) AutoAssignRoundRobin(ctx context.Context, leadShortIDs 
 	assigned := 0
 	for _, shortID := range leadShortIDs {
 		var employeeID string
+		// Eligible for a general lead: team_lead (oversight role, unchanged),
+		// or an employee specifically in the Operations department — plain
+		// employees outside Operations (HR, Digital Marketing, Manager, or no
+		// department set) are no longer in the auto-assign pool.
 		err := tx.QueryRow(ctx, `
 			SELECT u.id
 			FROM users u
+			LEFT JOIN employees e ON e.user_id = u.id
 			LEFT JOIN leads l ON l.assigned_to = u.id AND l.deleted_at IS NULL
 				AND l.status NOT IN ('converted', 'lost', 'not_interested')
-			WHERE u.role IN ('employee', 'team_lead') AND u.deleted_at IS NULL AND u.is_active = TRUE
+			WHERE (u.role = 'team_lead' OR (u.role = 'employee' AND e.department = 'operations'))
+			  AND u.deleted_at IS NULL AND u.is_active = TRUE
 			GROUP BY u.id
 			ORDER BY COUNT(l.id) ASC, u.id ASC
 			LIMIT 1`,
@@ -631,9 +637,10 @@ func (r *LeadRepository) GetTeamSummary(ctx context.Context) ([]models.EmployeeL
 		       COUNT(cl.id) FILTER (WHERE cl.called_at::DATE = CURRENT_DATE) AS calls_today,
 		       COUNT(l.id) FILTER (WHERE l.status = 'converted') AS conversions
 		FROM users u
+		LEFT JOIN employees e ON e.user_id = u.id
 		LEFT JOIN leads l ON l.assigned_to = u.id AND l.deleted_at IS NULL
 		LEFT JOIN lead_call_logs cl ON cl.employee_id = u.id
-		WHERE u.role IN ('employee', 'team_lead') AND u.deleted_at IS NULL
+		WHERE (u.role = 'team_lead' OR (u.role = 'employee' AND e.department = 'operations')) AND u.deleted_at IS NULL
 		GROUP BY u.id, u.first_name, u.last_name
 		ORDER BY u.first_name, u.last_name`)
 	if err != nil {

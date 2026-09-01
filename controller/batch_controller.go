@@ -16,8 +16,8 @@ import (
 )
 
 type BatchController struct {
-	batchRepo      *repository.BatchRepository
-	enrollmentRepo *repository.EnrollmentRepository
+	batchRepo        *repository.BatchRepository
+	enrollmentRepo   *repository.EnrollmentRepository
 	notificationRepo *repository.NotificationRepository
 	userRepo         *repository.UserRepository
 	collegeRepo      *repository.CollegeRepository
@@ -480,7 +480,7 @@ func (ctrl *BatchController) AddStudents(c *gin.Context) {
 			Action: "enroll", EntityType: "enrollment",
 			EntityShortID: shortID, EntityLabel: batch.BatchNumber,
 			BatchShortID: batch.ShortID,
-			Metadata: map[string]interface{}{"student_ids": added, "count": len(added)},
+			Metadata:     map[string]interface{}{"student_ids": added, "count": len(added)},
 		})
 	}
 
@@ -563,18 +563,18 @@ func (ctrl *BatchController) RemoveStudent(c *gin.Context) {
 		return
 	}
 
-	if err := ctrl.batchRepo.RemoveStudent(c.Request.Context(), shortID, userID); err != nil {
+	if err := ctrl.batchRepo.RemoveStudentWithEnrollment(c.Request.Context(), shortID, userID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "student not enrolled in batch"})
 			return
 		}
+		log.Printf("remove student %s from batch %s: %v", userID, shortID, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not remove student"})
 		return
 	}
 
-	if err := ctrl.enrollmentRepo.UpdateStatus(c.Request.Context(), userID, batch.ID, models.EnrollmentRemoved); err != nil {
-		log.Printf("mark enrollment removed for %s in batch %s: %v", userID, shortID, err)
-	}
+	// Community membership sync stays best-effort/logged-only — it's a
+	// secondary feature, not the roster of record.
 	if err := ctrl.communityRepo.RemoveMemberByBatchShortID(c.Request.Context(), shortID, userID); err != nil {
 		log.Printf("remove community membership for %s in batch %s: %v", userID, shortID, err)
 	}
@@ -635,21 +635,20 @@ func (ctrl *BatchController) TransferStudent(c *gin.Context) {
 
 	actorID := c.GetString("user_id")
 
+	// Transfer moves both student_enrollments AND the batch_students roster
+	// row in one transaction — see the comment on EnrollmentRepository.Transfer.
+	// Community membership sync below stays best-effort/logged-only, same as
+	// on a plain removal — it's a secondary feature, not the roster of record.
 	if _, err := ctrl.enrollmentRepo.Transfer(c.Request.Context(), userID, fromBatch.ID, toBatch.ID, toBatch.CourseID, actorID); err != nil {
 		if errors.Is(err, repository.ErrBatchCollegeMismatch) {
 			c.JSON(http.StatusBadRequest, gin.H{"code": "BATCH_COLLEGE_MISMATCH", "error": "the student and destination batch belong to different colleges"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not transfer student: " + err.Error()})
+		log.Printf("transfer student: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not transfer student"})
 		return
 	}
 
-	if err := ctrl.batchRepo.RemoveStudent(c.Request.Context(), fromShortID, userID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		log.Printf("remove from source batch during transfer: %v", err)
-	}
-	if _, err := ctrl.batchRepo.AddStudents(c.Request.Context(), toBatch.ShortID, []string{userID}, actorID); err != nil {
-		log.Printf("add to destination batch during transfer: %v", err)
-	}
 	if err := ctrl.communityRepo.RemoveMemberByBatchShortID(c.Request.Context(), fromShortID, userID); err != nil {
 		log.Printf("remove community membership during transfer: %v", err)
 	}
@@ -669,7 +668,7 @@ func (ctrl *BatchController) TransferStudent(c *gin.Context) {
 		Action: "transfer", EntityType: "enrollment",
 		EntityShortID: userID, EntityLabel: fmt.Sprintf("%s -> %s", fromBatch.BatchNumber, toBatch.BatchNumber),
 		BatchShortID: toBatch.ShortID,
-		Metadata: map[string]interface{}{"from_batch_short_id": fromShortID, "to_batch_short_id": toBatch.ShortID},
+		Metadata:     map[string]interface{}{"from_batch_short_id": fromShortID, "to_batch_short_id": toBatch.ShortID},
 	})
 
 	c.Status(http.StatusNoContent)
@@ -724,7 +723,7 @@ func (ctrl *BatchController) UpdateEnrollmentStatus(c *gin.Context) {
 		Action: "update", EntityType: "enrollment",
 		EntityShortID: userID, EntityLabel: batch.BatchNumber,
 		BatchShortID: batch.ShortID,
-		Metadata: map[string]interface{}{"status": input.Status},
+		Metadata:     map[string]interface{}{"status": input.Status},
 	})
 
 	c.Status(http.StatusNoContent)
@@ -797,7 +796,7 @@ func (ctrl *BatchController) SetStudentFeesPaid(c *gin.Context) {
 	logAudit(c, ctrl.auditLogRepo, models.AuditEntry{
 		Action: "update", EntityType: "fees",
 		EntityShortID: userID,
-		Metadata: map[string]interface{}{"fees_paid": *input.FeesPaid},
+		Metadata:      map[string]interface{}{"fees_paid": *input.FeesPaid},
 	})
 
 	c.JSON(http.StatusOK, gin.H{"status": "updated"})

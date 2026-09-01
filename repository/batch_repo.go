@@ -480,7 +480,10 @@ func (r *BatchRepository) AddStudentsWithEnrollment(
 	return added, nil
 }
 
-// RemoveStudent removes a single student from a batch.
+// RemoveStudent removes a single student from a batch. Prefer
+// RemoveStudentWithEnrollment for actual student removal — this is kept for
+// callers that only ever manage the roster directly (e.g. mid-transfer,
+// where the caller handles student_enrollments itself in its own transaction).
 func (r *BatchRepository) RemoveStudent(ctx context.Context, batchShortID, userID string) error {
 	result, err := r.pool.Exec(ctx, `
 		DELETE FROM batch_students
@@ -495,6 +498,50 @@ func (r *BatchRepository) RemoveStudent(ctx context.Context, batchShortID, userI
 		return pgx.ErrNoRows
 	}
 	return nil
+}
+
+// RemoveStudentWithEnrollment removes a student from a batch's roster AND
+// marks their student_enrollments row 'removed', in one transaction —
+// batch_students and student_enrollments are two hand-synced tables (see the
+// identical note on AddStudentsWithEnrollment); doing this as two separate
+// statements meant a failure on the second one silently left the student
+// removed from the roster but still "active" in student_enrollments, where
+// dashboard counts and enrollment-history queries read from. A missing
+// enrollment row (e.g. a student added via the older AddStudents path, which
+// never created one) is tolerated, not an error — removing them from the
+// roster is still the correct outcome. Returns pgx.ErrNoRows if the student
+// wasn't on the roster at all.
+func (r *BatchRepository) RemoveStudentWithEnrollment(ctx context.Context, batchShortID, userID string) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	var batchID string
+	err = tx.QueryRow(ctx, `
+		DELETE FROM batch_students
+		WHERE batch_id = (SELECT id FROM batches WHERE short_id = $1 AND deleted_at IS NULL)
+		  AND user_id = $2::uuid
+		RETURNING batch_id`,
+		batchShortID, userID,
+	).Scan(&batchID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return pgx.ErrNoRows
+		}
+		return err
+	}
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE student_enrollments SET status = 'removed', updated_at = NOW()
+		WHERE student_id = $1::UUID AND batch_id = $2::UUID`,
+		userID, batchID,
+	); err != nil {
+		return fmt.Errorf("mark enrollment removed: %w", err)
+	}
+
+	return tx.Commit(ctx)
 }
 
 // GetStudents returns every student enrolled in a batch, newest enrollment first.

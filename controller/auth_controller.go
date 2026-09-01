@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
 	"strings"
@@ -66,6 +67,10 @@ type LoginResponse struct {
 	UserID    string `json:"user_id"    example:"550e8400-e29b-41d4-a716-446655440000"`
 	FirstName string `json:"first_name" example:"John"`
 	LastName  string `json:"last_name"  example:"Doe"`
+	// Department is only ever set for role=employee — lets the frontend
+	// decide whether to show department-gated UI (e.g. HR's leave-review
+	// screen) without decoding the JWT client-side.
+	Department string `json:"department,omitempty" example:"hr"`
 }
 
 // LoginOTPRequiredResponse is returned when credentials are valid — a
@@ -208,7 +213,16 @@ func (ctrl *AuthController) VerifyLoginOTP(c *gin.Context) {
 		collegeID = ""
 	}
 
-	token, err := auth.GenerateToken(user.ID, user.Email, string(user.Role), collegeID, ctrl.jwtSecret)
+	// Same best-effort treatment as collegeID above — only role=employee ever
+	// has one, and a lookup failure just means this session can't use
+	// department-gated routes (e.g. HR's leave-review screen) this time.
+	department, err := ctrl.userRepo.GetEmployeeDepartment(c.Request.Context(), user.ID)
+	if err != nil {
+		log.Printf("fetch department for login: %v", err)
+		department = ""
+	}
+
+	token, err := auth.GenerateToken(user.ID, user.Email, string(user.Role), collegeID, department, ctrl.jwtSecret)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not generate token"})
 		return
@@ -224,11 +238,12 @@ func (ctrl *AuthController) VerifyLoginOTP(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, LoginResponse{
-		Token:     token,
-		Role:      string(user.Role),
-		UserID:    user.ID,
-		FirstName: user.FirstName,
-		LastName:  user.LastName,
+		Token:      token,
+		Role:       string(user.Role),
+		UserID:     user.ID,
+		FirstName:  user.FirstName,
+		LastName:   user.LastName,
+		Department: department,
 	})
 }
 
@@ -274,7 +289,7 @@ type RegisterResponse struct {
 //	@Param			body	body		RegisterRequest		true	"Registration payload"
 //	@Success		201		{object}	RegisterResponse
 //	@Failure		400		{object}	map[string]string	"Validation error"
-//	@Failure		409		{object}	map[string]string	"Email already registered"
+//	@Failure		409		{object}	map[string]string	"Email already in use"
 //	@Failure		500		{object}	map[string]string	"Internal server error"
 //	@Router			/auth/register [post]
 func (ctrl *AuthController) Register(c *gin.Context) {
@@ -291,7 +306,7 @@ func (ctrl *AuthController) Register(c *gin.Context) {
 		return
 	}
 	if exists {
-		c.JSON(http.StatusConflict, gin.H{"error": "email already registered"})
+		c.JSON(http.StatusConflict, gin.H{"error": "email already in use"})
 		return
 	}
 
@@ -328,6 +343,11 @@ func (ctrl *AuthController) Register(c *gin.Context) {
 
 	userID, err := ctrl.userRepo.Register(c.Request.Context(), user, collegeID, registrationNo)
 	if err != nil {
+		if errors.Is(err, repository.ErrEmailAlreadyExists) {
+			c.JSON(http.StatusConflict, gin.H{"error": "email already in use"})
+			return
+		}
+		log.Printf("register: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create account"})
 		return
 	}

@@ -75,6 +75,17 @@ type College struct {
 	UpdatedAt             time.Time       `json:"updated_at"`
 }
 
+// CollegeMembership is one college a mentor/employee/team_lead currently
+// serves — see repository.CollegeEmployeeRepository. IsDefault marks the
+// one membership that also matches the user's users.college_id column.
+type CollegeMembership struct {
+	CollegeID      string    `json:"college_id"`
+	CollegeShortID string    `json:"college_short_id"`
+	CollegeName    string    `json:"college_name"`
+	IsDefault      bool      `json:"is_default"`
+	AssignedAt     time.Time `json:"assigned_at"`
+}
+
 // CreateCollegeInput carries the fields for creating a college. Feature
 // toggles are optional — omit to start with everything disabled.
 type CreateCollegeInput struct {

@@ -22,19 +22,26 @@ const (
 )
 
 type User struct {
-	ID           string     `json:"id"`
-	Email        string     `json:"email"`
-	PasswordHash string     `json:"-"`
-	FirstName    string     `json:"first_name"`
-	LastName     string     `json:"last_name"`
-	Phone        string     `json:"phone,omitempty"`
-	DateOfBirth  string     `json:"date_of_birth,omitempty"`
-	Role         Role       `json:"role"`
-	CollegeID    string     `json:"college_id,omitempty"` // empty for super_admin / legacy users predating multi-tenancy
-	IsActive     bool       `json:"is_active"`
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
-	DeletedAt    *time.Time `json:"deleted_at,omitempty"`
+	ID           string `json:"id"`
+	Email        string `json:"email"`
+	PasswordHash string `json:"-"`
+	FirstName    string `json:"first_name"`
+	LastName     string `json:"last_name"`
+	Phone        string `json:"phone,omitempty"`
+	DateOfBirth  string `json:"date_of_birth,omitempty"`
+	Role         Role   `json:"role"`
+	CollegeID    string `json:"college_id,omitempty"` // empty for super_admin / legacy users predating multi-tenancy
+	// Department/DepartmentTeam only apply to role=employee and live on the
+	// employees profile table (employees.department already existed, unused
+	// until now; department_team is new) — populated via a LEFT JOIN in the
+	// listing queries, never written through this struct directly (see
+	// UserRepository.SetEmployeeDepartment).
+	Department     string     `json:"department,omitempty"`
+	DepartmentTeam string     `json:"department_team,omitempty"`
+	IsActive       bool       `json:"is_active"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
+	DeletedAt      *time.Time `json:"deleted_at,omitempty"`
 }
 
 // PasswordResetOTP is a single row in password_reset_otps — one issued
@@ -67,6 +74,17 @@ type UpdateUserInput struct {
 	Phone       *string `json:"phone"         example:"+919876543210"`
 	DateOfBirth *string `json:"date_of_birth" example:"1998-05-20"`
 	IsActive    *bool   `json:"is_active"     example:"false"`
+}
+
+// EmployeeNote is one Manager-authored note on an employee's profile — a
+// running record, not a one-time review. See repository.EmployeeNoteRepository.
+type EmployeeNote struct {
+	ShortID        string    `json:"short_id"`
+	EmployeeUserID string    `json:"employee_user_id"`
+	AuthorUserID   string    `json:"author_user_id"`
+	AuthorName     string    `json:"author_name,omitempty"`
+	NoteText       string    `json:"note_text"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 // ── Role-specific profile structs (populated via separate APIs) ──────────────

@@ -80,7 +80,10 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 
 	// Controllers
 	authCtrl := controller.NewAuthController(userRepo, passwordResetRepo, loginOtpRepo, loginActivityRepo, collegeRepo, emailSvc, cfg.JWT.Secret)
-	userCtrl := controller.NewUserController(userRepo, collegeRepo, enrollmentRepo, emailSvc, cfg.App.PublicURL, auditLogRepo)
+	collegeEmployeeRepo := repository.NewCollegeEmployeeRepository(pool)
+	userCtrl := controller.NewUserController(userRepo, collegeRepo, collegeEmployeeRepo, enrollmentRepo, emailSvc, cfg.App.PublicURL, auditLogRepo)
+	employeeNoteRepo := repository.NewEmployeeNoteRepository(pool)
+	employeeNoteCtrl := controller.NewEmployeeNoteController(employeeNoteRepo, userRepo)
 	studentRegistrationCtrl := controller.NewStudentRegistrationController(studentRegistrationRepo, studentNoteRepo, auditLogRepo, userRepo, collegeRepo, emailSvc, cfg.App.PublicURL)
 	loginActivityCtrl := controller.NewLoginActivityController(loginActivityRepo)
 	courseCtrl := controller.NewCourseController(courseRepo, collegeRepo, auditLogRepo)
@@ -230,6 +233,15 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			protected.PATCH("/users/:id", userCtrl.Update)
 			protected.PATCH("/users/:id/role", middleware.RequireRole(models.RoleSuperAdmin), userCtrl.ChangeRole)
 			protected.PATCH("/users/:id/college", middleware.RequireRole(models.RoleSuperAdmin), userCtrl.TransferCollege)
+			protected.PATCH("/users/:id/department", adminOrAbove, userCtrl.UpdateDepartment)
+			protected.GET("/users/:id/colleges", adminOrAbove, userCtrl.ListColleges)
+			protected.POST("/users/:id/colleges", middleware.RequireRole(models.RoleSuperAdmin), userCtrl.AddCollege)
+			protected.DELETE("/users/:id/colleges/:college_short_id", middleware.RequireRole(models.RoleSuperAdmin), userCtrl.RemoveCollege)
+			// Manager-department employee notes — a running record on an
+			// employee's profile. managerOrAbove mirrors hrOrAbove's pattern.
+			managerOrAbove := middleware.RequireRoleOrDepartment("manager", models.RoleSuperAdmin, models.RoleTeamLead)
+			protected.POST("/users/:id/employee-notes", managerOrAbove, employeeNoteCtrl.AddNote)
+			protected.GET("/users/:id/employee-notes", managerOrAbove, employeeNoteCtrl.GetNotes)
 			protected.PATCH("/users/:id/email", adminOrAbove, userCtrl.ChangeEmail)
 			// Deleting an account is destructive and irreversible from the API's
 			// perspective (soft-delete, but still removes access) — super_admin only.
@@ -289,15 +301,19 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				officeLocations.POST("/resolve-link", adminOrAbove, officeLocationCtrl.ResolveLink)
 			}
 
-			// Employee leave requests — apply/view own, admin approves/rejects.
+			// Employee leave requests — apply/view own, admin OR the HR
+			// department approves/rejects (RequireRoleOrDepartment lets an
+			// employee whose department is "hr" through without granting
+			// them every other adminOrAbove route).
+			hrOrAbove := middleware.RequireRoleOrDepartment("hr", models.RoleSuperAdmin, models.RoleTeamLead)
 			leaves := protected.Group("/leaves")
 			{
 				leaves.POST("", leadOrAbove, leaveCtrl.Apply)
-				leaves.GET("", adminOrAbove, leaveCtrl.GetAll)
+				leaves.GET("", hrOrAbove, leaveCtrl.GetAll)
 				leaves.GET("/me", leadOrAbove, leaveCtrl.GetMine)
 				leaves.GET("/me/balance", leadOrAbove, leaveCtrl.GetMyBalance)
-				leaves.GET("/pending", adminOrAbove, leaveCtrl.GetAllPending)
-				leaves.PATCH("/:short_id/review", adminOrAbove, leaveCtrl.Review)
+				leaves.GET("/pending", hrOrAbove, leaveCtrl.GetAllPending)
+				leaves.PATCH("/:short_id/review", hrOrAbove, leaveCtrl.Review)
 			}
 
 			// Employee monthly conversion targets.
