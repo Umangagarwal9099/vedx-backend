@@ -25,6 +25,7 @@ type Session struct {
 	RecordingURL                 string     `json:"recording_url,omitempty"`
 	RecordingVisible             bool       `json:"recording_visible"`
 	RecordingAvailableFrom       *time.Time `json:"recording_available_from,omitempty"`
+	IsDemo                       bool       `json:"is_demo"`
 	FeedbackFormShortID          string     `json:"feedback_form_short_id,omitempty"`
 	FeedbackFormTitle            string     `json:"feedback_form_title,omitempty"`
 	SessionType                  string     `json:"session_type"`
@@ -129,6 +130,7 @@ type RecordingListItem struct {
 	Name             string `json:"name"`
 	SessionDate      string `json:"session_date"`
 	RecordingURL     string `json:"recording_url"`
+	IsDemo           bool   `json:"is_demo"`
 }
 
 // BatchRecordingsResponse is the student-facing view of a batch's session

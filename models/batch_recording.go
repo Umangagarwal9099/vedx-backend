@@ -20,6 +20,7 @@ type BatchRecording struct {
 	UploadedBy     string    `json:"uploaded_by"`
 	UploadedByName string    `json:"uploaded_by_name"`
 	OrderIndex     int       `json:"order_index"`
+	IsDemo         bool      `json:"is_demo"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
 }

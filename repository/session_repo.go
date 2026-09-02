@@ -39,7 +39,7 @@ const sessionBaseSelect = `
 	       COALESCE(s.zoom_join_url, ''),
 	       COALESCE(s.zoom_start_url, ''),
 	       COALESCE(s.recording_url, ''),
-	       s.recording_visible, s.recording_available_from,
+	       s.recording_visible, s.recording_available_from, s.is_demo,
 	       COALESCE(ff.short_id, ''),
 	       COALESCE(ff.title, ''),
 	       s.session_type::TEXT,
@@ -68,7 +68,7 @@ func scanSession(row pgx.Row) (*models.Session, error) {
 		&s.ZoomJoinURL,
 		&s.ZoomStartURL,
 		&s.RecordingURL,
-		&s.RecordingVisible, &s.RecordingAvailableFrom,
+		&s.RecordingVisible, &s.RecordingAvailableFrom, &s.IsDemo,
 		&s.FeedbackFormShortID,
 		&s.FeedbackFormTitle,
 		&s.SessionType,
@@ -138,7 +138,7 @@ func (r *SessionRepository) Create(ctx context.Context, in models.CreateSessionI
 		       COALESCE(ins.zoom_join_url, ''),
 		       COALESCE(ins.zoom_start_url, ''),
 		       COALESCE(ins.recording_url, ''),
-		       ins.recording_visible, ins.recording_available_from,
+		       ins.recording_visible, ins.recording_available_from, ins.is_demo,
 		       COALESCE(ff.short_id, ''),
 		       COALESCE(ff.title, ''),
 		       ins.session_type::TEXT,
@@ -352,6 +352,23 @@ func (r *SessionRepository) Update(ctx context.Context, shortID string, in model
 	}
 	if result.RowsAffected() == 0 {
 		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+// SetDemoFlags replaces the set of demo-marked sessions within one batch —
+// every session whose short_id is in demoShortIDs is marked is_demo, every
+// other session in the batch is unmarked. A nil/empty demoShortIDs clears
+// every session in the batch.
+func (r *SessionRepository) SetDemoFlags(ctx context.Context, batchShortID string, demoShortIDs []string) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE sessions SET is_demo = (short_id = ANY($2)), updated_at = NOW()
+		WHERE batch_id = (SELECT id FROM batches WHERE short_id = $1 AND deleted_at IS NULL)
+		  AND deleted_at IS NULL`,
+		batchShortID, demoShortIDs,
+	)
+	if err != nil {
+		return fmt.Errorf("set session demo flags: %w", err)
 	}
 	return nil
 }

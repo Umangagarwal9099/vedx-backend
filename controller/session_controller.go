@@ -510,6 +510,7 @@ func (ctrl *SessionController) GetBatchRecordings(c *gin.Context) {
 			Name:           s.Name,
 			SessionDate:    s.SessionDate,
 			RecordingURL:   ctrl.sessionRecordingStreamURL(c, s.ShortID),
+			IsDemo:         s.IsDemo,
 		})
 	}
 
@@ -528,6 +529,7 @@ func (ctrl *SessionController) GetBatchRecordings(c *gin.Context) {
 			Name:             u.Title,
 			SessionDate:      u.CreatedAt.Format("2006-01-02"),
 			RecordingURL:     ctrl.batchRecordingStreamURL(c, u.ShortID),
+			IsDemo:           u.IsDemo,
 		})
 	}
 
@@ -710,7 +712,7 @@ func (ctrl *SessionController) StreamSessionRecording(c *gin.Context) {
 		return
 	}
 
-	if role == string(models.RoleStudent) {
+	if role == string(models.RoleStudent) && !session.IsDemo {
 		paid, err := ctrl.batchRepo.IsFeesPaid(c.Request.Context(), session.BatchID, userID)
 		if err != nil || !paid {
 			c.JSON(http.StatusForbidden, gin.H{"error": "please pay your fees for this batch to access session recordings"})
@@ -743,7 +745,7 @@ func (ctrl *SessionController) StreamBatchRecording(c *gin.Context) {
 		return
 	}
 
-	if role == string(models.RoleStudent) {
+	if role == string(models.RoleStudent) && !rec.IsDemo {
 		paid, err := ctrl.batchRepo.IsFeesPaidByBatchShortID(c.Request.Context(), rec.BatchShortID, userID)
 		if err != nil || !paid {
 			c.JSON(http.StatusForbidden, gin.H{"error": "please pay your fees for this batch to access session recordings"})

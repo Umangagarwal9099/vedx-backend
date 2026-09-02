@@ -26,6 +26,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	courseRepo := repository.NewCourseRepository(pool)
 	batchRepo := repository.NewBatchRepository(pool)
 	batchRecordingRepo := repository.NewBatchRecordingRepository(pool)
+	demoClassRepo := repository.NewDemoClassRepository(pool)
 	enrollmentRepo := repository.NewEnrollmentRepository(pool)
 	eventRepo := repository.NewEventRepository(pool)
 	announcementRepo := repository.NewAnnouncementRepository(pool)
@@ -105,6 +106,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	notificationCtrl := controller.NewNotificationController(notificationRepo)
 	devicePushTokenCtrl := controller.NewDevicePushTokenController(devicePushTokenRepo)
 	sessionCtrl := controller.NewSessionController(sessionRepo, batchRepo, notificationRepo, userRepo, zoomSvc, emailSvc, storageSvc, cfg.App.PublicURL, cfg.App.Timezone, auditLogRepo, feedbackFormRepo, batchRecordingRepo)
+	demoClassCtrl := controller.NewDemoClassController(sessionRepo, batchRepo, batchRecordingRepo, demoClassRepo)
 	zoomWebhookCtrl := controller.NewZoomWebhookController(zoomSvc, storageSvc, sessionRepo, cfg.App.Timezone)
 	assignmentCtrl := controller.NewAssignmentController(assignmentRepo, batchRepo, notificationRepo, auditLogRepo)
 	resourceCtrl := controller.NewResourceController(resourceRepo, batchRepo, auditLogRepo)
@@ -383,6 +385,11 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				batches.PATCH("/:short_id/recordings/:recording_short_id/order", staffOrAbove, sessionCtrl.UpdateBatchRecordingOrder)
 				batches.POST("/:short_id/recordings/presign", staffOrAbove, sessionCtrl.PresignBatchRecordingUpload)
 				batches.POST("/:short_id/recordings/complete", staffOrAbove, sessionCtrl.CompleteBatchRecordingUpload)
+				// Demo Classes — super_admin picks which of this batch's
+				// recordings (from either source) are shown publicly to
+				// every student on the Demo Classes page, bypassing the
+				// usual fees_paid gate.
+				batches.PUT("/:short_id/demo-recordings", middleware.RequireRole(models.RoleSuperAdmin), demoClassCtrl.SetBatchDemoSelection)
 
 				// Attendance rollup — every enrolled student's present/absent/late/
 				// excused counts and percentage across the batch's held sessions.
@@ -409,6 +416,15 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 
 				// Audit trail for this batch — mentor scoped to batches they manage.
 				batches.GET("/:short_id/audit-log", staffOrAbove, auditLogCtrl.GetForBatch)
+			}
+
+			// Demo Classes — public-to-any-authenticated-user preview of
+			// hand-picked session recordings, so a newly registered student
+			// can watch sample content before enrolling/paying for a batch.
+			demoClasses := protected.Group("/demo-classes")
+			{
+				demoClasses.GET("", demoClassCtrl.ListDemoBatches)
+				demoClasses.GET("/:short_id", demoClassCtrl.GetBatchDemoRecordings)
 			}
 
 			// A student's real batch enrollment, for their admin profile page.

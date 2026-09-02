@@ -1,5 +1,20 @@
 basePath: /api/v1
 definitions:
+  controller.AddCollegeRequest:
+    properties:
+      college_short_id:
+        example: ABCENG
+        type: string
+    required:
+    - college_short_id
+    type: object
+  controller.AddEmployeeNoteRequest:
+    properties:
+      note_text:
+        type: string
+    required:
+    - note_text
+    type: object
   controller.AdminResetPasswordResponse:
     properties:
       email_sent:
@@ -61,6 +76,24 @@ definitions:
           default). Ignored for mentor/employee/team_lead, which always land on
           the Internal EdTech Platform.
         example: use GET /colleges to pick a real short_id — required for college_admin/college_staff
+        type: string
+      department:
+        description: |-
+          Department/DepartmentTeam are only valid when role=employee — hr,
+          operations, digital_marketing, or manager. department_team currently
+          only applies to hr (recruitment or campus_drive).
+        enum:
+        - hr
+        - operations
+        - digital_marketing
+        - manager
+        example: hr
+        type: string
+      department_team:
+        enum:
+        - recruitment
+        - campus_drive
+        example: recruitment
         type: string
       email:
         example: jane@example.com
@@ -185,6 +218,13 @@ definitions:
     type: object
   controller.LoginResponse:
     properties:
+      department:
+        description: |-
+          Department is only ever set for role=employee — lets the frontend
+          decide whether to show department-gated UI (e.g. HR's leave-review
+          screen) without decoding the JWT client-side.
+        example: hr
+        type: string
       first_name:
         example: John
         type: string
@@ -283,6 +323,25 @@ definitions:
         type: string
     required:
     - college_short_id
+    type: object
+  controller.UpdateDepartmentRequest:
+    properties:
+      department:
+        enum:
+        - hr
+        - operations
+        - digital_marketing
+        - manager
+        example: hr
+        type: string
+      department_team:
+        enum:
+        - recruitment
+        - campus_drive
+        example: recruitment
+        type: string
+    required:
+    - department
     type: object
   controller.VerifyLoginOTPRequest:
     properties:
@@ -985,6 +1044,8 @@ definitions:
         type: integer
       id:
         type: string
+      is_demo:
+        type: boolean
       order_index:
         type: integer
       short_id:
@@ -1259,6 +1320,19 @@ definitions:
         type: string
       updated_at:
         type: string
+    type: object
+  models.CollegeMembership:
+    properties:
+      assigned_at:
+        type: string
+      college_id:
+        type: string
+      college_name:
+        type: string
+      college_short_id:
+        type: string
+      is_default:
+        type: boolean
     type: object
   models.Community:
     properties:
@@ -2568,6 +2642,47 @@ definitions:
           $ref: '#/definitions/models.DashboardSession'
         type: array
     type: object
+  models.DemoBatchSummary:
+    properties:
+      batch_number:
+        type: string
+      batch_short_id:
+        type: string
+      course_name:
+        type: string
+      course_short_id:
+        type: string
+      demo_video_count:
+        type: integer
+    type: object
+  models.DemoClassesBatchResponse:
+    properties:
+      batch_number:
+        type: string
+      batch_short_id:
+        type: string
+      course_name:
+        type: string
+      recordings:
+        items:
+          $ref: '#/definitions/models.RecordingListItem'
+        type: array
+    type: object
+  models.DemoRecordingSelection:
+    properties:
+      short_id:
+        example: A3F72C1D
+        type: string
+      source:
+        enum:
+        - session
+        - upload
+        example: session
+        type: string
+    required:
+    - short_id
+    - source
+    type: object
   models.EmployeeAttendance:
     properties:
       check_in_at:
@@ -2616,6 +2731,21 @@ definitions:
       employee_id:
         type: string
       employee_name:
+        type: string
+    type: object
+  models.EmployeeNote:
+    properties:
+      author_name:
+        type: string
+      author_user_id:
+        type: string
+      created_at:
+        type: string
+      employee_user_id:
+        type: string
+      note_text:
+        type: string
+      short_id:
         type: string
     type: object
   models.EnrollmentTrendPoint:
@@ -3762,8 +3892,27 @@ definitions:
       total:
         type: integer
     type: object
+  models.QuestionBankSubject:
+    properties:
+      created_at:
+        type: string
+      display_order:
+        type: integer
+      id:
+        type: string
+      name:
+        type: string
+      short_id:
+        type: string
+    type: object
   models.QuestionBankTaxonomy:
     properties:
+      short_id:
+        description: |-
+          ShortID is only populated when this tree came from the DB-backed subject
+          list (see QuestionBankController.GetTaxonomy) — needed so the admin UI
+          can target a subject for deletion.
+        type: string
       subject:
         type: string
       topics:
@@ -3859,6 +4008,8 @@ definitions:
     type: object
   models.RecordingListItem:
     properties:
+      is_demo:
+        type: boolean
       name:
         type: string
       recording_short_id:
@@ -4066,6 +4217,8 @@ definitions:
         type: string
       is_active:
         type: boolean
+      is_demo:
+        type: boolean
       meeting_platform:
         type: string
       mentor_id:
@@ -4119,6 +4272,12 @@ definitions:
         type: integer
       zoom_start_url:
         description: host token — stripped for students in the controller
+        type: string
+      zoom_warning:
+        description: |-
+          ZoomWarning is set only in the response to a Create/Update call where a
+          Zoom meeting was expected but couldn't be created — never persisted or
+          read back, purely a one-shot signal to the admin/mentor who made the call.
         type: string
     type: object
   models.SessionAttendance:
@@ -4185,11 +4344,17 @@ definitions:
     type: object
   models.SessionJoinInfo:
     properties:
+      completed:
+        type: boolean
       end_time:
+        type: string
+      join_url:
         type: string
       meeting_platform:
         type: string
       mentor_name:
+        type: string
+      message:
         type: string
       mode:
         type: string
@@ -4199,8 +4364,17 @@ definitions:
         type: string
       start_time:
         type: string
+      status:
+        type: string
       zoom_join_url:
         type: string
+    type: object
+  models.SetDemoSelectionInput:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/models.DemoRecordingSelection'
+        type: array
     type: object
   models.SetModuleScheduleInput:
     properties:
@@ -5622,6 +5796,16 @@ definitions:
       date_of_birth:
         type: string
       deleted_at:
+        type: string
+      department:
+        description: |-
+          Department/DepartmentTeam only apply to role=employee and live on the
+          employees profile table (employees.department already existed, unused
+          until now; department_team is new) — populated via a LEFT JOIN in the
+          listing queries, never written through this struct directly (see
+          UserRepository.SetEmployeeDepartment).
+        type: string
+      department_team:
         type: string
       email:
         type: string
@@ -7533,7 +7717,7 @@ paths:
               type: string
             type: object
         "409":
-          description: Email already registered
+          description: Email already in use
           schema:
             additionalProperties:
               type: string
@@ -8097,6 +8281,53 @@ paths:
       summary: Get a batch's curriculum (with module release status)
       tags:
       - curriculum
+  /batches/{short_id}/demo-recordings:
+    put:
+      consumes:
+      - application/json
+      description: Replaces the full set of recordings (from either source — session-linked
+        or uploaded) marked as demo videos for this batch. Any recording in the batch
+        not included in items is unmarked. Demo recordings bypass the usual fees_paid
+        gate — every authenticated student can watch them via GET /demo-classes/{short_id},
+        whether or not they're enrolled in this batch.
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      - description: Recordings to mark as demo
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.SetDemoSelectionInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid request body
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Batch not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Set a batch's demo-class recordings
+      tags:
+      - demo-classes
   /batches/{short_id}/leaderboard:
     get:
       description: Computes every enrolled student's weighted final score (assignments
@@ -10455,6 +10686,66 @@ paths:
       summary: Admin dashboard stats
       tags:
       - dashboard
+  /demo-classes:
+    get:
+      description: Every batch that has at least one recording marked as a demo video
+        — this is the "Demo Classes" landing list shown to students (including ones
+        not yet enrolled anywhere), so they can preview real class content before
+        enrolling or paying.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.DemoBatchSummary'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List batches with demo classes
+      tags:
+      - demo-classes
+  /demo-classes/{short_id}:
+    get:
+      description: The demo-marked recordings for one batch — open to any authenticated
+        user regardless of enrollment or fees_paid status, unlike GET /batches/{short_id}/recordings.
+      parameters:
+      - description: Batch short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.DemoClassesBatchResponse'
+        "404":
+          description: Batch not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List a batch's demo-class recordings
+      tags:
+      - demo-classes
   /events:
     get:
       description: Returns all non-deleted events ordered newest first. Use query
@@ -14024,6 +14315,77 @@ paths:
       summary: Get question bank stats for a subject
       tags:
       - questions
+  /question-bank/subjects:
+    post:
+      consumes:
+      - application/json
+      description: Adds a new subject tile to the question bank browse page.
+      parameters:
+      - description: Subject name
+        in: body
+        name: body
+        required: true
+        schema:
+          properties:
+            name:
+              type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.QuestionBankSubject'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Name already exists
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Add a question bank subject
+      tags:
+      - questions
+  /question-bank/subjects/{short_id}:
+    delete:
+      description: Removes a subject tile. Refuses if any question still uses this
+        subject.
+      parameters:
+      - description: Subject short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Subject still has questions
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete a question bank subject
+      tags:
+      - questions
   /question-bank/taxonomy:
     get:
       description: Returns the fixed Subject -> Topic -> Subtopic reference tree used
@@ -14784,6 +15146,39 @@ paths:
       security:
       - BearerAuth: []
       summary: Check feedback submission status for a session
+      tags:
+      - sessions
+  /sessions/{short_id}/join:
+    get:
+      description: Public, unauthenticated lookup of a session's join status — the
+        page a student lands on when clicking a session link from an email. Never
+        returns the Zoom host start URL.
+      parameters:
+      - description: Session short ID
+        in: path
+        name: short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.SessionJoinInfo'
+        "404":
+          description: Not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Resolve a session's join gateway by short ID
       tags:
       - sessions
   /sessions/by-token/{token}:
@@ -16163,6 +16558,171 @@ paths:
       summary: Transfer a user to a different college
       tags:
       - users
+  /users/{id}/colleges:
+    get:
+      description: Returns every college a mentor/employee/team_lead currently serves,
+        default first.
+      parameters:
+      - description: User ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.CollegeMembership'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List a staff member's colleges
+      tags:
+      - users
+    post:
+      consumes:
+      - application/json
+      description: Links a mentor/employee/team_lead to an additional college — their
+        existing college memberships are unaffected. super_admin only.
+      parameters:
+      - description: User ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: College to add
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/controller.AddCollegeRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            items:
+              $ref: '#/definitions/models.CollegeMembership'
+            type: array
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: User or college not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Add a college to a staff member
+      tags:
+      - users
+  /users/{id}/colleges/{college_short_id}:
+    delete:
+      description: Unlinks a mentor/employee/team_lead from one college. Refuses if
+        it's their only remaining college. super_admin only.
+      parameters:
+      - description: User ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: College short ID
+        in: path
+        name: college_short_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: This is the employee's only college
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Remove a college from a staff member
+      tags:
+      - users
+  /users/{id}/department:
+    patch:
+      consumes:
+      - application/json
+      description: Sets the department (hr/operations/digital_marketing/manager) and,
+        for hr, the sub-team (recruitment/campus_drive) on a role=employee account.
+        400 for any other role.
+      parameters:
+      - description: User ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Department
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/controller.UpdateDepartmentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.User'
+        "400":
+          description: Not an employee, or invalid department_team
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: User not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Set an employee's department
+      tags:
+      - users
   /users/{id}/email:
     patch:
       consumes:
@@ -16209,6 +16769,82 @@ paths:
       security:
       - BearerAuth: []
       summary: Change a user's login email
+      tags:
+      - users
+  /users/{id}/employee-notes:
+    get:
+      description: Manager-department only. Newest first.
+      parameters:
+      - description: Employee user ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.EmployeeNote'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List notes on an employee's profile
+      tags:
+      - users
+    post:
+      consumes:
+      - application/json
+      description: Manager-department only. Adds a dated note — a running record,
+        not a one-time review.
+      parameters:
+      - description: Employee user ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Note text
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/controller.AddEmployeeNoteRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.EmployeeNote'
+        "400":
+          description: Validation error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Employee not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Add a note to an employee's profile
       tags:
       - users
   /users/{id}/enrollments:

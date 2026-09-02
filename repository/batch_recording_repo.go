@@ -24,7 +24,7 @@ func NewBatchRecordingRepository(pool *pgxpool.Pool) *BatchRecordingRepository {
 const batchRecordingBaseSelect = `
 	SELECT r.id, r.short_id, r.batch_id, b.short_id, b.batch_number,
 	       r.title, r.url, COALESCE(r.file_size, 0), COALESCE(r.content_type, ''),
-	       r.uploaded_by, CONCAT(u.first_name, ' ', u.last_name), r.order_index,
+	       r.uploaded_by, CONCAT(u.first_name, ' ', u.last_name), r.order_index, r.is_demo,
 	       r.created_at, r.updated_at
 	FROM batch_recordings r
 	JOIN batches b ON r.batch_id    = b.id AND b.deleted_at IS NULL
@@ -35,7 +35,7 @@ func scanBatchRecording(row pgx.Row) (models.BatchRecording, error) {
 	err := row.Scan(
 		&r.ID, &r.ShortID, &r.BatchID, &r.BatchShortID, &r.BatchNumber,
 		&r.Title, &r.URL, &r.FileSize, &r.ContentType,
-		&r.UploadedBy, &r.UploadedByName, &r.OrderIndex,
+		&r.UploadedBy, &r.UploadedByName, &r.OrderIndex, &r.IsDemo,
 		&r.CreatedAt, &r.UpdatedAt,
 	)
 	return r, err
@@ -128,6 +128,23 @@ func (r *BatchRecordingRepository) UpdateOrderIndex(ctx context.Context, shortID
 	}
 	if tag.RowsAffected() == 0 {
 		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+// SetDemoFlags replaces the set of demo-marked uploads within one batch —
+// every upload whose short_id is in demoShortIDs is marked is_demo, every
+// other upload in the batch is unmarked. A nil/empty demoShortIDs clears
+// every upload in the batch.
+func (r *BatchRecordingRepository) SetDemoFlags(ctx context.Context, batchShortID string, demoShortIDs []string) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE batch_recordings SET is_demo = (short_id = ANY($2)), updated_at = NOW()
+		WHERE batch_id = (SELECT id FROM batches WHERE short_id = $1 AND deleted_at IS NULL)
+		  AND deleted_at IS NULL`,
+		batchShortID, demoShortIDs,
+	)
+	if err != nil {
+		return fmt.Errorf("set batch recording demo flags: %w", err)
 	}
 	return nil
 }

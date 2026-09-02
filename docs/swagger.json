@@ -2756,7 +2756,7 @@
                         }
                     },
                     "409": {
-                        "description": "Email already registered",
+                        "description": "Email already in use",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -3710,6 +3710,73 @@
                     },
                     "500": {
                         "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/batches/{short_id}/demo-recordings": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Replaces the full set of recordings (from either source — session-linked or uploaded) marked as demo videos for this batch. Any recording in the batch not included in items is unmarked. Demo recordings bypass the usual fees_paid gate — every authenticated student can watch them via GET /demo-classes/{short_id}, whether or not they're enrolled in this batch.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "demo-classes"
+                ],
+                "summary": "Set a batch's demo-class recordings",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Batch short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Recordings to mark as demo",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.SetDemoSelectionInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request body",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Batch not found",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -7131,6 +7198,95 @@
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/models.DashboardStats"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/demo-classes": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Every batch that has at least one recording marked as a demo video — this is the \"Demo Classes\" landing list shown to students (including ones not yet enrolled anywhere), so they can preview real class content before enrolling or paying.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "demo-classes"
+                ],
+                "summary": "List batches with demo classes",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.DemoBatchSummary"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/demo-classes/{short_id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "The demo-marked recordings for one batch — open to any authenticated user regardless of enrollment or fees_paid status, unlike GET /batches/{short_id}/recordings.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "demo-classes"
+                ],
+                "summary": "List a batch's demo-class recordings",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Batch short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.DemoClassesBatchResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Batch not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "500": {
@@ -12548,6 +12704,117 @@
                 }
             }
         },
+        "/question-bank/subjects": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Adds a new subject tile to the question bank browse page.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "questions"
+                ],
+                "summary": "Add a question bank subject",
+                "parameters": [
+                    {
+                        "description": "Subject name",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "name": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.QuestionBankSubject"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Name already exists",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/question-bank/subjects/{short_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Removes a subject tile. Refuses if any question still uses this subject.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "questions"
+                ],
+                "summary": "Delete a question bank subject",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Subject short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Subject still has questions",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/question-bank/taxonomy": {
             "get": {
                 "security": [
@@ -13708,6 +13975,53 @@
                     },
                     "404": {
                         "description": "Session not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/sessions/{short_id}/join": {
+            "get": {
+                "description": "Public, unauthenticated lookup of a session's join status — the page a student lands on when clicking a session link from an email. Never returns the Zoom host start URL.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Resolve a session's join gateway by short ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Session short ID",
+                        "name": "short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.SessionJoinInfo"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -16013,6 +16327,255 @@
                 }
             }
         },
+        "/users/{id}/colleges": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns every college a mentor/employee/team_lead currently serves, default first.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "List a staff member's colleges",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.CollegeMembership"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Links a mentor/employee/team_lead to an additional college — their existing college memberships are unaffected. super_admin only.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Add a college to a staff member",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "College to add",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/controller.AddCollegeRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.CollegeMembership"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "User or college not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{id}/colleges/{college_short_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Unlinks a mentor/employee/team_lead from one college. Refuses if it's their only remaining college. super_admin only.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Remove a college from a staff member",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "College short ID",
+                        "name": "college_short_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "This is the employee's only college",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{id}/department": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Sets the department (hr/operations/digital_marketing/manager) and, for hr, the sub-team (recruitment/campus_drive) on a role=employee account. 400 for any other role.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Set an employee's department",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Department",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/controller.UpdateDepartmentRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.User"
+                        }
+                    },
+                    "400": {
+                        "description": "Not an employee, or invalid department_team",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "User not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/users/{id}/email": {
             "patch": {
                 "security": [
@@ -16067,6 +16630,123 @@
                     },
                     "404": {
                         "description": "User not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{id}/employee-notes": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Manager-department only. Newest first.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "List notes on an employee's profile",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Employee user ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.EmployeeNote"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Manager-department only. Adds a dated note — a running record, not a one-time review.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Add a note to an employee's profile",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Employee user ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Note text",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/controller.AddEmployeeNoteRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.EmployeeNote"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Employee not found",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -17104,6 +17784,29 @@
         }
     },
     "definitions": {
+        "controller.AddCollegeRequest": {
+            "type": "object",
+            "required": [
+                "college_short_id"
+            ],
+            "properties": {
+                "college_short_id": {
+                    "type": "string",
+                    "example": "ABCENG"
+                }
+            }
+        },
+        "controller.AddEmployeeNoteRequest": {
+            "type": "object",
+            "required": [
+                "note_text"
+            ],
+            "properties": {
+                "note_text": {
+                    "type": "string"
+                }
+            }
+        },
         "controller.AdminResetPasswordResponse": {
             "type": "object",
             "properties": {
@@ -17192,6 +17895,25 @@
                     "description": "CollegeShortID is REQUIRED when role is college_admin/college_staff\n(only super_admin may create those roles, and every College Admin must\nbe permanently linked to one specific college — there is no sensible\ndefault). Ignored for mentor/employee/team_lead, which always land on\nthe Internal EdTech Platform.",
                     "type": "string",
                     "example": "use GET /colleges to pick a real short_id — required for college_admin/college_staff"
+                },
+                "department": {
+                    "description": "Department/DepartmentTeam are only valid when role=employee — hr,\noperations, digital_marketing, or manager. department_team currently\nonly applies to hr (recruitment or campus_drive).",
+                    "type": "string",
+                    "enum": [
+                        "hr",
+                        "operations",
+                        "digital_marketing",
+                        "manager"
+                    ],
+                    "example": "hr"
+                },
+                "department_team": {
+                    "type": "string",
+                    "enum": [
+                        "recruitment",
+                        "campus_drive"
+                    ],
+                    "example": "recruitment"
                 },
                 "email": {
                     "type": "string",
@@ -17348,6 +18070,11 @@
         "controller.LoginResponse": {
             "type": "object",
             "properties": {
+                "department": {
+                    "description": "Department is only ever set for role=employee — lets the frontend\ndecide whether to show department-gated UI (e.g. HR's leave-review\nscreen) without decoding the JWT client-side.",
+                    "type": "string",
+                    "example": "hr"
+                },
                 "first_name": {
                     "type": "string",
                     "example": "John"
@@ -17481,6 +18208,32 @@
                 "reason": {
                     "type": "string",
                     "example": "Student transferred to partner college"
+                }
+            }
+        },
+        "controller.UpdateDepartmentRequest": {
+            "type": "object",
+            "required": [
+                "department"
+            ],
+            "properties": {
+                "department": {
+                    "type": "string",
+                    "enum": [
+                        "hr",
+                        "operations",
+                        "digital_marketing",
+                        "manager"
+                    ],
+                    "example": "hr"
+                },
+                "department_team": {
+                    "type": "string",
+                    "enum": [
+                        "recruitment",
+                        "campus_drive"
+                    ],
+                    "example": "recruitment"
                 }
             }
         },
@@ -18505,6 +19258,9 @@
                 "id": {
                     "type": "string"
                 },
+                "is_demo": {
+                    "type": "boolean"
+                },
                 "order_index": {
                     "type": "integer"
                 },
@@ -18917,6 +19673,26 @@
                 },
                 "updated_at": {
                     "type": "string"
+                }
+            }
+        },
+        "models.CollegeMembership": {
+            "type": "object",
+            "properties": {
+                "assigned_at": {
+                    "type": "string"
+                },
+                "college_id": {
+                    "type": "string"
+                },
+                "college_name": {
+                    "type": "string"
+                },
+                "college_short_id": {
+                    "type": "string"
+                },
+                "is_default": {
+                    "type": "boolean"
                 }
             }
         },
@@ -20693,6 +21469,67 @@
                 }
             }
         },
+        "models.DemoBatchSummary": {
+            "type": "object",
+            "properties": {
+                "batch_number": {
+                    "type": "string"
+                },
+                "batch_short_id": {
+                    "type": "string"
+                },
+                "course_name": {
+                    "type": "string"
+                },
+                "course_short_id": {
+                    "type": "string"
+                },
+                "demo_video_count": {
+                    "type": "integer"
+                }
+            }
+        },
+        "models.DemoClassesBatchResponse": {
+            "type": "object",
+            "properties": {
+                "batch_number": {
+                    "type": "string"
+                },
+                "batch_short_id": {
+                    "type": "string"
+                },
+                "course_name": {
+                    "type": "string"
+                },
+                "recordings": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.RecordingListItem"
+                    }
+                }
+            }
+        },
+        "models.DemoRecordingSelection": {
+            "type": "object",
+            "required": [
+                "short_id",
+                "source"
+            ],
+            "properties": {
+                "short_id": {
+                    "type": "string",
+                    "example": "A3F72C1D"
+                },
+                "source": {
+                    "type": "string",
+                    "enum": [
+                        "session",
+                        "upload"
+                    ],
+                    "example": "session"
+                }
+            }
+        },
         "models.EmployeeAttendance": {
             "type": "object",
             "properties": {
@@ -20765,6 +21602,29 @@
                     "type": "string"
                 },
                 "employee_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.EmployeeNote": {
+            "type": "object",
+            "properties": {
+                "author_name": {
+                    "type": "string"
+                },
+                "author_user_id": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "employee_user_id": {
+                    "type": "string"
+                },
+                "note_text": {
+                    "type": "string"
+                },
+                "short_id": {
                     "type": "string"
                 }
             }
@@ -22446,9 +23306,33 @@
                 }
             }
         },
+        "models.QuestionBankSubject": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "display_order": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "short_id": {
+                    "type": "string"
+                }
+            }
+        },
         "models.QuestionBankTaxonomy": {
             "type": "object",
             "properties": {
+                "short_id": {
+                    "description": "ShortID is only populated when this tree came from the DB-backed subject\nlist (see QuestionBankController.GetTaxonomy) — needed so the admin UI\ncan target a subject for deletion.",
+                    "type": "string"
+                },
                 "subject": {
                     "type": "string"
                 },
@@ -22587,6 +23471,9 @@
         "models.RecordingListItem": {
             "type": "object",
             "properties": {
+                "is_demo": {
+                    "type": "boolean"
+                },
                 "name": {
                     "type": "string"
                 },
@@ -22891,6 +23778,9 @@
                 "is_active": {
                     "type": "boolean"
                 },
+                "is_demo": {
+                    "type": "boolean"
+                },
                 "meeting_platform": {
                     "type": "string"
                 },
@@ -22960,6 +23850,10 @@
                 },
                 "zoom_start_url": {
                     "description": "host token — stripped for students in the controller",
+                    "type": "string"
+                },
+                "zoom_warning": {
+                    "description": "ZoomWarning is set only in the response to a Create/Update call where a\nZoom meeting was expected but couldn't be created — never persisted or\nread back, purely a one-shot signal to the admin/mentor who made the call.",
                     "type": "string"
                 }
             }
@@ -23061,13 +23955,22 @@
         "models.SessionJoinInfo": {
             "type": "object",
             "properties": {
+                "completed": {
+                    "type": "boolean"
+                },
                 "end_time": {
+                    "type": "string"
+                },
+                "join_url": {
                     "type": "string"
                 },
                 "meeting_platform": {
                     "type": "string"
                 },
                 "mentor_name": {
+                    "type": "string"
+                },
+                "message": {
                     "type": "string"
                 },
                 "mode": {
@@ -23082,8 +23985,22 @@
                 "start_time": {
                     "type": "string"
                 },
+                "status": {
+                    "type": "string"
+                },
                 "zoom_join_url": {
                     "type": "string"
+                }
+            }
+        },
+        "models.SetDemoSelectionInput": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.DemoRecordingSelection"
+                    }
                 }
             }
         },
@@ -25099,6 +26016,13 @@
                     "type": "string"
                 },
                 "deleted_at": {
+                    "type": "string"
+                },
+                "department": {
+                    "description": "Department/DepartmentTeam only apply to role=employee and live on the\nemployees profile table (employees.department already existed, unused\nuntil now; department_team is new) — populated via a LEFT JOIN in the\nlisting queries, never written through this struct directly (see\nUserRepository.SetEmployeeDepartment).",
+                    "type": "string"
+                },
+                "department_team": {
                     "type": "string"
                 },
                 "email": {
