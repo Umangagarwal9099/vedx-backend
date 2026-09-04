@@ -465,7 +465,7 @@ func (r *SessionRepository) scanSessions(ctx context.Context, q string, args ...
 			&s.ZoomJoinURL,
 			&s.ZoomStartURL,
 			&s.RecordingURL,
-			&s.RecordingVisible, &s.RecordingAvailableFrom,
+			&s.RecordingVisible, &s.RecordingAvailableFrom, &s.IsDemo,
 			&s.FeedbackFormShortID,
 			&s.FeedbackFormTitle,
 			&s.SessionType,
