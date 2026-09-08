@@ -1,10 +1,14 @@
 package controller
 
 import (
+	"context"
 	"encoding/csv"
 	"errors"
+	"log"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
@@ -20,10 +24,130 @@ type LeadController struct {
 	notificationRepo          *repository.NotificationRepository
 	auditLogRepo              *repository.AuditLogRepository
 	collegeRepo               *repository.CollegeRepository
+	userRepo                  *repository.UserRepository
+
+	// cachedIntakeCreator memoizes the system user id used as created_by for
+	// public website leads (the first super_admin). Resolved lazily on the
+	// first /leads/intake call and cached for the process lifetime.
+	intakeCreatorMu     sync.Mutex
+	cachedIntakeCreator string
 }
 
-func NewLeadController(leadRepo *repository.LeadRepository, leadCallLogRepo *repository.LeadCallLogRepository, leadAssignmentHistoryRepo *repository.LeadAssignmentHistoryRepository, notificationRepo *repository.NotificationRepository, auditLogRepo *repository.AuditLogRepository, collegeRepo *repository.CollegeRepository) *LeadController {
-	return &LeadController{leadRepo: leadRepo, leadCallLogRepo: leadCallLogRepo, leadAssignmentHistoryRepo: leadAssignmentHistoryRepo, notificationRepo: notificationRepo, auditLogRepo: auditLogRepo, collegeRepo: collegeRepo}
+func NewLeadController(leadRepo *repository.LeadRepository, leadCallLogRepo *repository.LeadCallLogRepository, leadAssignmentHistoryRepo *repository.LeadAssignmentHistoryRepository, notificationRepo *repository.NotificationRepository, auditLogRepo *repository.AuditLogRepository, collegeRepo *repository.CollegeRepository, userRepo *repository.UserRepository) *LeadController {
+	return &LeadController{leadRepo: leadRepo, leadCallLogRepo: leadCallLogRepo, leadAssignmentHistoryRepo: leadAssignmentHistoryRepo, notificationRepo: notificationRepo, auditLogRepo: auditLogRepo, collegeRepo: collegeRepo, userRepo: userRepo}
+}
+
+// intakeCreatorID resolves (and caches) the user id credited as created_by
+// for unauthenticated website leads — the first super_admin account. Returns
+// an error if none exists so the caller can fail closed.
+func (ctrl *LeadController) intakeCreatorID(ctx context.Context) (string, error) {
+	ctrl.intakeCreatorMu.Lock()
+	defer ctrl.intakeCreatorMu.Unlock()
+	if ctrl.cachedIntakeCreator != "" {
+		return ctrl.cachedIntakeCreator, nil
+	}
+	admins, err := ctrl.userRepo.FindByRole(ctx, models.RoleSuperAdmin, "")
+	if err != nil {
+		return "", err
+	}
+	if len(admins) == 0 {
+		return "", errors.New("no super_admin account to own website leads")
+	}
+	ctrl.cachedIntakeCreator = admins[0].ID
+	return ctrl.cachedIntakeCreator, nil
+}
+
+// PublicIntake godoc
+//
+//	@Summary		Submit a website lead (public)
+//	@Description	Unauthenticated endpoint for marketing-website forms (Contact Us, Course Enquiry, etc). Creates a lead on the Internal EdTech Platform with source=website, status=new. Accidental resubmissions within 6h (same email or phone) are collapsed into the existing lead. Always returns a generic success — never leaks whether a lead already existed.
+//	@Tags			leads
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body		models.PublicLeadIntakeInput	true	"Lead submission"
+//	@Success		200		{object}	map[string]string
+//	@Failure		400		{object}	map[string]string	"Validation error"
+//	@Failure		503		{object}	map[string]string	"Intake temporarily unavailable"
+//	@Router			/leads/intake [post]
+func (ctrl *LeadController) PublicIntake(c *gin.Context) {
+	var in models.PublicLeadIntakeInput
+	if err := c.ShouldBindJSON(&in); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "name and phone are required"})
+		return
+	}
+
+	// Honeypot — bots fill hidden fields. Accept silently, create nothing.
+	if strings.TrimSpace(in.Website) != "" {
+		c.JSON(http.StatusOK, gin.H{"message": "received"})
+		return
+	}
+
+	in.Name = strings.TrimSpace(in.Name)
+	in.Email = strings.TrimSpace(strings.ToLower(in.Email))
+	in.Phone = strings.TrimSpace(in.Phone)
+	if in.Name == "" || in.Phone == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "name and phone are required"})
+		return
+	}
+	if len(in.Name) > 200 || len(in.Email) > 200 || len(in.Phone) > 40 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "one or more fields exceed the allowed length"})
+		return
+	}
+	if len(in.Message) > 2000 {
+		in.Message = in.Message[:2000]
+	}
+
+	ctx := c.Request.Context()
+
+	collegeID, err := ctrl.collegeRepo.DefaultCollegeID(ctx)
+	if err != nil {
+		log.Printf("lead intake: resolve default college: %v", err)
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "lead intake temporarily unavailable"})
+		return
+	}
+	creatorID, err := ctrl.intakeCreatorID(ctx)
+	if err != nil {
+		log.Printf("lead intake: resolve system creator: %v", err)
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "lead intake temporarily unavailable"})
+		return
+	}
+
+	// Collapse accidental resubmissions — but always answer success so the
+	// caller can't probe which emails/phones are already in the CRM.
+	if dup, dupErr := ctrl.leadRepo.ExistsRecentDuplicate(ctx, in.Email, in.Phone, 6*time.Hour); dupErr == nil && dup {
+		c.JSON(http.StatusOK, gin.H{"message": "lead received"})
+		return
+	}
+
+	courseInterest := strings.TrimSpace(in.InterestedIn)
+	if courseInterest == "" {
+		courseInterest = "General Enquiry"
+	}
+	notes := strings.TrimSpace(in.Message)
+	if form := strings.TrimSpace(in.Source); form != "" {
+		if notes != "" {
+			notes = "Form: " + form + "\n" + notes
+		} else {
+			notes = "Form: " + form
+		}
+	}
+
+	lead, err := ctrl.leadRepo.Create(ctx, models.CreateLeadInput{
+		Name:           in.Name,
+		Phone:          in.Phone,
+		Email:          in.Email,
+		City:           strings.TrimSpace(in.City),
+		CourseInterest: courseInterest,
+		Source:         "website",
+		Notes:          notes,
+	}, creatorID, collegeID)
+	if err != nil {
+		log.Printf("lead intake: create lead: %v", err)
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "lead intake temporarily unavailable"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "lead received", "id": lead.ShortID})
 }
 
 // isEmployeeOnly reports whether the caller is a plain employee (not

@@ -123,7 +123,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	profileCtrl := controller.NewProfileController(profileRepo, userRepo)
 	dashboardCtrl := controller.NewDashboardController(batchRepo, enrollmentRepo, sessionRepo, attendanceRepo, certificateRepo)
 	analyticsCtrl := controller.NewAnalyticsController(analyticsRepo, batchRepo)
-	leadCtrl := controller.NewLeadController(leadRepo, leadCallLogRepo, leadAssignmentHistoryRepo, notificationRepo, auditLogRepo, collegeRepo)
+	leadCtrl := controller.NewLeadController(leadRepo, leadCallLogRepo, leadAssignmentHistoryRepo, notificationRepo, auditLogRepo, collegeRepo, userRepo)
 	employeeAttendanceCtrl := controller.NewEmployeeAttendanceController(employeeAttendanceRepo, officeLocationRepo)
 	leaveCtrl := controller.NewLeaveController(leaveRequestRepo, leaveBalanceRepo, userRepo, emailSvc)
 	monthlyTargetCtrl := controller.NewMonthlyTargetController(monthlyTargetRepo)
@@ -165,6 +165,12 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 		// what session emails link to (see withShareLink).
 		v1.GET("/sessions/:short_id/join", sessionCtrl.JoinByShortID)
 		v1.GET("/certificates/verify/:certificate_number", certificateCtrl.VerifyCertificate)
+
+		// Public lead capture — marketing-website forms (Contact Us, Course
+		// Enquiry, etc.) POST here with no auth. Creates a source=website lead
+		// on the Internal EdTech Platform; the admin CRM picks it up from
+		// there. Resubmissions within 6h are de-duplicated server-side.
+		v1.POST("/leads/intake", leadCtrl.PublicIntake)
 
 		// Zoom calls this directly (no JWT) — authenticity is instead verified via
 		// the x-zm-signature header against the Event Subscriptions secret token.

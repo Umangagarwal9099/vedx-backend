@@ -122,6 +122,36 @@ func (r *LeadRepository) Create(ctx context.Context, in models.CreateLeadInput, 
 	return nil, fmt.Errorf("could not generate a unique short ID after 3 attempts")
 }
 
+// ExistsRecentDuplicate reports whether a non-deleted lead with the same
+// email or phone was created within the last `within` window — used by the
+// public website-intake endpoint to collapse accidental resubmissions
+// (double-click, browser retry, the same visitor filling two forms) into the
+// one lead, without blocking a genuine fresh enquiry weeks later. An empty
+// email/phone is ignored (never matches).
+func (r *LeadRepository) ExistsRecentDuplicate(ctx context.Context, email, phone string, within time.Duration) (bool, error) {
+	email = strings.TrimSpace(strings.ToLower(email))
+	phone = strings.TrimSpace(phone)
+	if email == "" && phone == "" {
+		return false, nil
+	}
+	since := time.Now().Add(-within)
+	var exists bool
+	err := r.pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM leads
+			WHERE deleted_at IS NULL
+			  AND created_at >= $1
+			  AND (
+			        ($2 <> '' AND LOWER(email) = $2)
+			     OR ($3 <> '' AND phone = $3)
+			  )
+		)`, since, email, phone).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("check recent duplicate lead: %w", err)
+	}
+	return exists, nil
+}
+
 // buildLeadWhere returns the shared WHERE clauses + args for both the
 // unscoped (admin) and employee-scoped views, given the filter and an
 // optional employeeID (non-empty pins results to that employee's leads) and

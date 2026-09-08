@@ -49,6 +49,29 @@ type CreateLeadInput struct {
 	Notes          string `json:"notes"`
 }
 
+// PublicLeadIntakeInput is an unauthenticated lead submission from a
+// marketing-website form (Contact Us, Enroll/Course Enquiry, etc). It is
+// deliberately minimal and never carries a college — every website lead
+// lands on the Internal EdTech Platform with source=website, status=new,
+// created by the platform's system account. The controller maps this onto a
+// CreateLeadInput.
+type PublicLeadIntakeInput struct {
+	Name         string `json:"name"          binding:"required"`
+	Phone        string `json:"phone"         binding:"required"`
+	Email        string `json:"email"         binding:"omitempty,email"`
+	City         string `json:"city"`
+	Message      string `json:"message"`
+	// InterestedIn is the course/program the visitor picked, if any — mapped
+	// to course_interest (falls back to "General Enquiry" when blank).
+	InterestedIn string `json:"interested_in"`
+	// Source is the human-readable form name ("Contact Us", "Course Enquiry")
+	// — recorded in the lead notes; the DB source column is always "website".
+	Source string `json:"source"`
+	// Website is a honeypot field — real users never fill it; a non-empty
+	// value means a bot and the submission is silently accepted but dropped.
+	Website string `json:"website"`
+}
+
 // UpdateLeadInput is a partial update. An employee may only send status/
 // priority/next_follow_up_at/notes on their own lead — the controller
 // enforces that restriction, not this struct.
