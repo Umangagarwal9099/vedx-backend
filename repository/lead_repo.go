@@ -372,6 +372,7 @@ func (r *LeadRepository) BulkImport(ctx context.Context, rows []models.LeadImpor
 			City:           row.City,
 			CourseInterest: row.CourseInterest,
 			Source:         "excel_import",
+			Notes:          row.Notes,
 		}, createdBy, collegeID)
 		if err != nil {
 			result.Skipped = append(result.Skipped, models.LeadImportRowError{

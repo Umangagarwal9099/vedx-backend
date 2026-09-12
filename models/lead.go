@@ -152,6 +152,7 @@ type LeadImportRow struct {
 	Email          string `json:"email"`
 	City           string `json:"city"`
 	CourseInterest string `json:"course_interest"`
+	Notes          string `json:"notes"`
 }
 
 // LeadImportRowError reports why one row of an import was skipped.

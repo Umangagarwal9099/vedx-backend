@@ -459,8 +459,10 @@ var leadImportColumns = map[string]string{
 	"name": "name", "full name": "name", "lead name": "name",
 	"phone": "phone", "phone number": "phone", "mobile": "phone", "mobile number": "phone",
 	"email": "email", "email address": "email",
-	"city":   "city",
+	"city": "city",
 	"course": "course", "course interest": "course", "interested course": "course",
+	"interest": "course", "program": "course", "interest / program": "course", "program / course": "course",
+	"message": "notes", "notes": "notes", "comments": "notes", "enquiry": "notes",
 }
 
 func parseLeadRows(header []string, records [][]string) []models.LeadImportRow {
@@ -489,6 +491,7 @@ func parseLeadRows(header []string, records [][]string) []models.LeadImportRow {
 			Email:          get(rec, "email"),
 			City:           get(rec, "city"),
 			CourseInterest: get(rec, "course"),
+			Notes:          get(rec, "notes"),
 		})
 	}
 	return rows
@@ -497,7 +500,7 @@ func parseLeadRows(header []string, records [][]string) []models.LeadImportRow {
 // BulkImport godoc
 //
 //	@Summary		Import leads from Excel/CSV
-//	@Description	Uploads a .xlsx/.xls/.csv file of leads (columns: name/phone/email/city/course, header names flexible) and bulk-inserts them as source=excel_import. Restricted to super_admin/team_lead.
+//	@Description	Uploads a .xlsx/.xls/.csv file of leads (columns: name/phone/email/city/course/message, header names flexible — e.g. "Interest / Program" and "Message" from the marketing Google Sheet are recognized) and bulk-inserts them as source=excel_import. Restricted to super_admin/team_lead.
 //	@Tags			leads
 //	@Accept			multipart/form-data
 //	@Produce		json
