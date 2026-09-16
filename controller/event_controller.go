@@ -53,7 +53,7 @@ func (ctrl *EventController) Create(c *gin.Context) {
 		"New event: "+event.Name,
 		fmt.Sprintf("A new event %q has been scheduled.", event.Name),
 		"event", "event", event.ShortID, createdBy,
-		[]string{"student", "mentor", "team_lead"},
+		[]string{"student", "mentor", "admin"},
 	); err != nil {
 		log.Printf("notify event create: %v", err)
 	}

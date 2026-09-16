@@ -109,7 +109,7 @@ func (ctrl *AssignmentController) notifyPublished(c *gin.Context, a *models.Assi
 	}
 	if err := ctrl.notificationRepo.NotifyRoles(c.Request.Context(),
 		title, message, "assignment", "assignment", a.ShortID, actorID,
-		[]string{string(models.RoleTeamLead), string(models.RoleSuperAdmin)},
+		[]string{string(models.RoleAdmin), string(models.RoleSuperAdmin)},
 	); err != nil {
 		log.Printf("notify assignment publish (team_lead/super_admin): %v", err)
 	}

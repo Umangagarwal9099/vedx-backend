@@ -25,6 +25,7 @@ type LeadController struct {
 	auditLogRepo              *repository.AuditLogRepository
 	collegeRepo               *repository.CollegeRepository
 	userRepo                  *repository.UserRepository
+	teamRepo                  *repository.TeamRepository
 
 	// cachedIntakeCreator memoizes the system user id used as created_by for
 	// public website leads (the first super_admin). Resolved lazily on the
@@ -33,8 +34,29 @@ type LeadController struct {
 	cachedIntakeCreator string
 }
 
-func NewLeadController(leadRepo *repository.LeadRepository, leadCallLogRepo *repository.LeadCallLogRepository, leadAssignmentHistoryRepo *repository.LeadAssignmentHistoryRepository, notificationRepo *repository.NotificationRepository, auditLogRepo *repository.AuditLogRepository, collegeRepo *repository.CollegeRepository, userRepo *repository.UserRepository) *LeadController {
-	return &LeadController{leadRepo: leadRepo, leadCallLogRepo: leadCallLogRepo, leadAssignmentHistoryRepo: leadAssignmentHistoryRepo, notificationRepo: notificationRepo, auditLogRepo: auditLogRepo, collegeRepo: collegeRepo, userRepo: userRepo}
+func NewLeadController(leadRepo *repository.LeadRepository, leadCallLogRepo *repository.LeadCallLogRepository, leadAssignmentHistoryRepo *repository.LeadAssignmentHistoryRepository, notificationRepo *repository.NotificationRepository, auditLogRepo *repository.AuditLogRepository, collegeRepo *repository.CollegeRepository, userRepo *repository.UserRepository, teamRepo *repository.TeamRepository) *LeadController {
+	return &LeadController{leadRepo: leadRepo, leadCallLogRepo: leadCallLogRepo, leadAssignmentHistoryRepo: leadAssignmentHistoryRepo, notificationRepo: notificationRepo, auditLogRepo: auditLogRepo, collegeRepo: collegeRepo, userRepo: userRepo, teamRepo: teamRepo}
+}
+
+// checkTeamLeadCanAssign enforces the hard wall: a caller tagged
+// department=team_lead may only assign/reassign leads to their own team's
+// members. Manager/Admin/Super Admin are unrestricted — this is a no-op for
+// them. Returns false (having already written the response) if the caller
+// is a Team Lead targeting someone outside their team.
+func (ctrl *LeadController) checkTeamLeadCanAssign(c *gin.Context, employeeID string) bool {
+	if c.GetString("department") != "team_lead" {
+		return true
+	}
+	isMember, err := ctrl.teamRepo.IsMember(c.Request.Context(), c.GetString("user_id"), employeeID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not verify team membership"})
+		return false
+	}
+	if !isMember {
+		c.JSON(http.StatusForbidden, gin.H{"error": "you can only assign leads to your own team members"})
+		return false
+	}
+	return true
 }
 
 // intakeCreatorID resolves (and caches) the user id credited as created_by
@@ -230,7 +252,12 @@ func (ctrl *LeadController) GetAll(c *gin.Context) {
 
 	var leads []models.Lead
 
-	if role == string(models.RoleEmployee) {
+	// A plain employee sees only their own leads. Team Lead and Manager are
+	// still role=employee but need the unscoped view — that's the pool they
+	// assign out of. checkTeamLeadCanAssign is what actually narrows a Team
+	// Lead's *target* list; this only controls what they can see.
+	department := c.GetString("department")
+	if role == string(models.RoleEmployee) && department != "team_lead" && department != "manager" {
 		leads, err = ctrl.leadRepo.FindAllForEmployee(c.Request.Context(), userID, filter, collegeID)
 	} else {
 		leads, err = ctrl.leadRepo.FindAll(c.Request.Context(), filter, collegeID)
@@ -606,6 +633,9 @@ func (ctrl *LeadController) AssignBulk(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	if !ctrl.checkTeamLeadCanAssign(c, input.EmployeeID) {
+		return
+	}
 
 	performedBy := c.GetString("user_id")
 	count, err := ctrl.leadRepo.AssignBulk(c.Request.Context(), input.LeadShortIDs, input.EmployeeID, input.Priority, input.NextFollowUpAt, performedBy)
@@ -640,6 +670,9 @@ func (ctrl *LeadController) Reassign(c *gin.Context) {
 	var input models.ReassignLeadsInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if !ctrl.checkTeamLeadCanAssign(c, input.EmployeeID) {
 		return
 	}
 

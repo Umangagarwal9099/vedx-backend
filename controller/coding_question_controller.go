@@ -54,7 +54,7 @@ func (ctrl *CodingQuestionController) Create(c *gin.Context) {
 		"New coding question: "+q.Title,
 		fmt.Sprintf("A new coding question %q has been added.", q.Title),
 		"coding_question", "coding_question", q.ShortID, createdBy,
-		[]string{"student", "mentor", "team_lead"},
+		[]string{"student", "mentor", "admin"},
 	); err != nil {
 		log.Printf("notify coding question create: %v", err)
 	}

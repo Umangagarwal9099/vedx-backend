@@ -72,7 +72,7 @@ func (ctrl *QuestionBankController) GetAll(c *gin.Context) {
 
 	role := c.GetString("role")
 	creatorID := c.GetString("user_id")
-	if role == string(models.RoleSuperAdmin) || role == string(models.RoleTeamLead) {
+	if role == string(models.RoleSuperAdmin) || role == string(models.RoleAdmin) {
 		creatorID = "" // staff see everything, not just their own + shared
 	}
 

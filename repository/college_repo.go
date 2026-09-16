@@ -38,7 +38,7 @@ const collegeBaseSelect = `
 	       COALESCE(c.subscription_start_date::TEXT,''), COALESCE(c.subscription_end_date::TEXT,''),
 	       c.max_students, c.max_employees, c.status, c.enabled_features,
 	       (SELECT COUNT(*) FROM users u WHERE u.college_id = c.id AND u.role = 'student' AND u.deleted_at IS NULL),
-	       (SELECT COUNT(*) FROM users u WHERE u.college_id = c.id AND u.role IN ('employee','team_lead','mentor') AND u.deleted_at IS NULL),
+	       (SELECT COUNT(*) FROM users u WHERE u.college_id = c.id AND u.role IN ('employee','admin','mentor') AND u.deleted_at IS NULL),
 	       c.created_at, c.updated_at
 	FROM colleges c`
 

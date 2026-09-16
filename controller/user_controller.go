@@ -52,7 +52,7 @@ func stripStudentPIIForMentor(users []models.User, callerRole string) []models.U
 var roleLabels = map[models.Role]string{
 	models.RoleMentor:       "Mentor",
 	models.RoleEmployee:     "Employee",
-	models.RoleTeamLead:     "Team Lead",
+	models.RoleAdmin:       "Admin",
 	models.RoleStudent:      "Student",
 	models.RoleCollegeAdmin: "College Admin",
 	models.RoleCollegeStaff: "College Staff",
@@ -64,7 +64,7 @@ type CreateStaffUserRequest struct {
 	LastName  string `json:"last_name"  binding:"required" example:"Doe"`
 	Email     string `json:"email"      binding:"required,email" example:"jane@example.com"`
 	Phone     string `json:"phone"      binding:"required,e164" example:"+919876543210"`
-	Role      string `json:"role"       binding:"required,oneof=mentor employee team_lead college_admin college_staff" enums:"mentor,employee,team_lead,college_admin,college_staff" example:"employee"`
+	Role      string `json:"role"       binding:"required,oneof=mentor employee admin college_admin college_staff" enums:"mentor,employee,admin,college_admin,college_staff" example:"employee"`
 	// CollegeShortID is REQUIRED when role is college_admin/college_staff
 	// (only super_admin may create those roles, and every College Admin must
 	// be permanently linked to one specific college — there is no sensible
@@ -74,7 +74,7 @@ type CreateStaffUserRequest struct {
 	// Department/DepartmentTeam are only valid when role=employee — hr,
 	// operations, digital_marketing, or manager. department_team currently
 	// only applies to hr (recruitment or campus_drive).
-	Department     string `json:"department"      binding:"omitempty,oneof=hr operations digital_marketing manager" example:"hr"`
+	Department     string `json:"department"      binding:"omitempty,oneof=hr operations digital_marketing manager team_lead business_development" example:"hr"`
 	DepartmentTeam string `json:"department_team" binding:"omitempty,oneof=recruitment campus_drive" example:"recruitment"`
 }
 
@@ -501,7 +501,7 @@ func (ctrl *UserController) Update(c *gin.Context) {
 	}
 
 	role := c.GetString("role")
-	isStaff := role == string(models.RoleSuperAdmin) || role == string(models.RoleTeamLead)
+	isStaff := role == string(models.RoleSuperAdmin) || role == string(models.RoleAdmin)
 	if c.GetString("user_id") != id && !isStaff {
 		c.JSON(http.StatusForbidden, gin.H{"error": "you can only update your own profile"})
 		return
@@ -608,7 +608,7 @@ func userUpdateDiff(before *models.User, input models.UpdateUserInput) map[strin
 
 // ChangeRoleRequest holds the target role for a promotion.
 type ChangeRoleRequest struct {
-	Role string `json:"role" binding:"required,oneof=student mentor employee team_lead" enums:"student,mentor,employee,team_lead" example:"mentor"`
+	Role string `json:"role" binding:"required,oneof=student mentor employee admin" enums:"student,mentor,employee,admin" example:"mentor"`
 }
 
 // ChangeRole godoc
@@ -668,7 +668,7 @@ func (ctrl *UserController) ChangeRole(c *gin.Context) {
 // UpdateDepartmentRequest carries an employee's new department/sub-team.
 // department_team currently only applies when department is "hr".
 type UpdateDepartmentRequest struct {
-	Department     string `json:"department"      binding:"required,oneof=hr operations digital_marketing manager" example:"hr"`
+	Department     string `json:"department"      binding:"required,oneof=hr operations digital_marketing manager team_lead business_development" example:"hr"`
 	DepartmentTeam string `json:"department_team"  binding:"omitempty,oneof=recruitment campus_drive" example:"recruitment"`
 }
 

@@ -98,17 +98,29 @@ func RequireRole(roles ...models.Role) gin.HandlerFunc {
 // RequireRoleOrDepartment allows a request through if EITHER the caller's
 // role is in the allowed list OR their department matches (case: an
 // employee whose department is "hr" needs access to routes that would
-// otherwise be gated to super_admin/team_lead, e.g. the leave-request
+// otherwise be gated to super_admin/admin, e.g. the leave-request
 // review screen, without granting them every other adminOrAbove route).
 // Must be placed after JWTAuth in the middleware chain.
 func RequireRoleOrDepartment(department string, roles ...models.Role) gin.HandlerFunc {
+	return RequireRoleOrDepartments([]string{department}, roles...)
+}
+
+// RequireRoleOrDepartments is RequireRoleOrDepartment for the case where more
+// than one department should qualify — e.g. lead-assignment routes open to
+// both "manager" and "team_lead" without granting every other adminOrAbove
+// route to either. Must be placed after JWTAuth in the middleware chain.
+func RequireRoleOrDepartments(departments []string, roles ...models.Role) gin.HandlerFunc {
 	allowed := make(map[string]struct{}, len(roles))
 	for _, r := range roles {
 		allowed[string(r)] = struct{}{}
 	}
+	allowedDepts := make(map[string]struct{}, len(departments))
+	for _, d := range departments {
+		allowedDepts[d] = struct{}{}
+	}
 
 	return func(c *gin.Context) {
-		if c.GetString("department") == department {
+		if _, ok := allowedDepts[c.GetString("department")]; ok {
 			c.Next()
 			return
 		}

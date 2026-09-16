@@ -325,7 +325,7 @@ func (ctrl *SessionController) Create(c *gin.Context) {
 	// team_lead and super_admin oversee all batches, so they're notified broadly rather than per-batch.
 	if err := ctrl.notificationRepo.NotifyRoles(c.Request.Context(),
 		title, message, "session", "session", session.ShortID, createdBy,
-		[]string{string(models.RoleTeamLead), string(models.RoleSuperAdmin)},
+		[]string{string(models.RoleAdmin), string(models.RoleSuperAdmin)},
 	); err != nil {
 		log.Printf("notify session create (team_lead/super_admin): %v", err)
 	}

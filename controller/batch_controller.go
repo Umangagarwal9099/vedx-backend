@@ -168,7 +168,7 @@ func (ctrl *BatchController) Create(c *gin.Context) {
 		"New batch: "+batch.BatchNumber,
 		fmt.Sprintf("A new batch %q has been created.", batch.BatchNumber),
 		"batch", "batch", batch.ShortID, createdBy,
-		[]string{"mentor", "team_lead"},
+		[]string{"mentor", "admin"},
 	); err != nil {
 		log.Printf("notify batch create: %v", err)
 	}

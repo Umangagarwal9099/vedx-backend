@@ -61,7 +61,7 @@ func (ctrl *AssessmentController) Create(c *gin.Context) {
 		"New assessment: "+assessment.Name,
 		fmt.Sprintf("A new assessment %q has been added.", assessment.Name),
 		"assessment", "assessment", assessment.ShortID, createdBy,
-		[]string{"student", "mentor", "team_lead"},
+		[]string{"student", "mentor", "admin"},
 	); err != nil {
 		log.Printf("notify assessment create: %v", err)
 	}
@@ -94,7 +94,7 @@ func (ctrl *AssessmentController) notifyBatch(c *gin.Context, a *models.Assessme
 	}
 	if err := ctrl.notificationRepo.NotifyRoles(c.Request.Context(),
 		title, message, "assessment", "assessment", a.ShortID, actorID,
-		[]string{string(models.RoleTeamLead), string(models.RoleSuperAdmin)},
+		[]string{string(models.RoleAdmin), string(models.RoleSuperAdmin)},
 	); err != nil {
 		log.Printf("notify assessment publish (team_lead/super_admin): %v", err)
 	}

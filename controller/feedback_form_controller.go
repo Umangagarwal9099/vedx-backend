@@ -58,7 +58,7 @@ func (ctrl *FeedbackFormController) Create(c *gin.Context) {
 		"New feedback form: "+form.Title,
 		fmt.Sprintf("A new feedback form %q has been created.", form.Title),
 		"feedback_form", "feedback_form", form.ShortID, createdBy,
-		[]string{"student", "mentor", "team_lead"},
+		[]string{"student", "mentor", "admin"},
 	); err != nil {
 		log.Printf("notify feedback form create: %v", err)
 	}

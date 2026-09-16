@@ -108,7 +108,7 @@ func (ctrl *ProjectController) notifyPublished(c *gin.Context, p *models.Project
 	}
 	if err := ctrl.notificationRepo.NotifyRoles(c.Request.Context(),
 		title, message, "project", "project", p.ShortID, actorID,
-		[]string{string(models.RoleTeamLead), string(models.RoleSuperAdmin)},
+		[]string{string(models.RoleAdmin), string(models.RoleSuperAdmin)},
 	); err != nil {
 		log.Printf("notify project publish (team_lead/super_admin): %v", err)
 	}

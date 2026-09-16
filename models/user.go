@@ -8,7 +8,7 @@ const (
 	RoleStudent    Role = "student"
 	RoleMentor     Role = "mentor"
 	RoleEmployee   Role = "employee"
-	RoleTeamLead   Role = "team_lead"
+	RoleAdmin      Role = "admin"
 	RoleSuperAdmin Role = "super_admin"
 	// RolePlatformAdmin, RoleCollegeAdmin and RoleCollegeStaff are
 	// college-scoped roles (multi-tenant college management) — deliberately
@@ -38,6 +38,9 @@ type User struct {
 	// UserRepository.SetEmployeeDepartment).
 	Department     string     `json:"department,omitempty"`
 	DepartmentTeam string     `json:"department_team,omitempty"`
+	// EmployeeCode is a human-readable id (EMP-0001 style), the employee
+	// equivalent of a student's enrollment_no. Empty for any non-employee role.
+	EmployeeCode   string     `json:"employee_code,omitempty"`
 	IsActive       bool       `json:"is_active"`
 	CreatedAt      time.Time  `json:"created_at"`
 	UpdatedAt      time.Time  `json:"updated_at"`

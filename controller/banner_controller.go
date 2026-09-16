@@ -53,7 +53,7 @@ func (ctrl *BannerController) Create(c *gin.Context) {
 		"New banner: "+banner.Name,
 		fmt.Sprintf("A new banner %q has been added.", banner.Name),
 		"banner", "banner", banner.ShortID, createdBy,
-		[]string{"student", "mentor", "team_lead"},
+		[]string{"student", "mentor", "admin"},
 	); err != nil {
 		log.Printf("notify banner create: %v", err)
 	}

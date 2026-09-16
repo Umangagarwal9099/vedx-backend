@@ -22,7 +22,7 @@ func NewCommunityPostController(postRepo *repository.CommunityPostRepository, co
 // isStaff reports whether the caller can moderate any community without
 // being a member — students must be a member of the specific community.
 func isStaff(role string) bool {
-	return role == string(models.RoleSuperAdmin) || role == string(models.RoleTeamLead) || role == string(models.RoleMentor)
+	return role == string(models.RoleSuperAdmin) || role == string(models.RoleAdmin) || role == string(models.RoleMentor)
 }
 
 // checkCommunityMembership enforces that a non-staff caller is a member of

@@ -25,7 +25,7 @@ func NewNotificationRepository(pool *pgxpool.Pool) *NotificationRepository {
 // allRoles lists every valid user role — expanded from the "all" target.
 var allRoles = []string{
 	string(models.RoleStudent), string(models.RoleMentor), string(models.RoleEmployee),
-	string(models.RoleTeamLead), string(models.RoleSuperAdmin),
+	string(models.RoleAdmin), string(models.RoleSuperAdmin),
 }
 
 func isValidRole(role string) bool {

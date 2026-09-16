@@ -59,7 +59,7 @@ func (ctrl *BlogController) Create(c *gin.Context) {
 			"New blog post: "+blog.Title,
 			fmt.Sprintf("A new blog post %q has been published.", blog.Title),
 			"blog", "blog", blog.ShortID, createdBy,
-			[]string{"student", "mentor", "team_lead"},
+			[]string{"student", "mentor", "admin"},
 		); err != nil {
 			log.Printf("notify blog create: %v", err)
 		}

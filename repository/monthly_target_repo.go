@@ -126,7 +126,7 @@ func (r *MonthlyTargetRepository) GetTeamSummary(ctx context.Context, year, mont
 		FROM users u
 		LEFT JOIN employee_monthly_targets t
 		  ON t.employee_id = u.id AND t.year = $1 AND t.month = $2
-		WHERE u.role IN ('employee', 'team_lead') AND u.deleted_at IS NULL
+		WHERE u.role IN ('employee', 'admin') AND u.deleted_at IS NULL
 		ORDER BY u.first_name, u.last_name`,
 		year, month,
 	)

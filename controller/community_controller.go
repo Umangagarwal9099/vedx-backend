@@ -68,14 +68,14 @@ func (ctrl *CommunityController) Create(c *gin.Context) {
 		"New community: "+community.Name,
 		fmt.Sprintf("A new community %q has been created for batch %q.", community.Name, community.BatchNumber),
 		"community", "community", community.ShortID, createdBy,
-		[]string{"mentor", "team_lead"},
+		[]string{"mentor", "admin"},
 	); err != nil {
 		log.Printf("notify community create: %v", err)
 	}
 
 	if ctrl.emailSvc.Configured() {
 		subject, html := service.CommunityCreatedEmail(community.Name, community.BatchNumber)
-		emailUsersByRoles(c.Request.Context(), ctrl.userRepo, ctrl.emailSvc, []models.Role{models.RoleMentor, models.RoleTeamLead}, subject, html)
+		emailUsersByRoles(c.Request.Context(), ctrl.userRepo, ctrl.emailSvc, []models.Role{models.RoleMentor, models.RoleAdmin}, subject, html)
 	}
 
 	c.JSON(http.StatusCreated, community)

@@ -181,7 +181,7 @@ func (r *UserRepository) FindByID(ctx context.Context, id string) (*models.User,
 		SELECT users.id, email, first_name, last_name,
 		       COALESCE(phone, ''), COALESCE(date_of_birth::TEXT, ''),
 		       role, is_active, users.created_at, users.updated_at,
-		       COALESCE(e.department, ''), COALESCE(e.department_team, '')
+		       COALESCE(e.department, ''), COALESCE(e.department_team, ''), COALESCE(e.employee_code, '')
 		FROM users
 		LEFT JOIN employees e ON e.user_id = users.id
 		WHERE users.id = $1 AND deleted_at IS NULL
@@ -191,7 +191,7 @@ func (r *UserRepository) FindByID(ctx context.Context, id string) (*models.User,
 	err := r.pool.QueryRow(ctx, q, id).Scan(
 		&u.ID, &u.Email, &u.FirstName, &u.LastName,
 		&u.Phone, &u.DateOfBirth, &u.Role, &u.IsActive, &u.CreatedAt, &u.UpdatedAt,
-		&u.Department, &u.DepartmentTeam,
+		&u.Department, &u.DepartmentTeam, &u.EmployeeCode,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
@@ -209,7 +209,7 @@ func (r *UserRepository) FindAll(ctx context.Context, collegeID string) ([]model
 		SELECT users.id, email, first_name, last_name,
 		       COALESCE(phone, ''), COALESCE(date_of_birth::TEXT, ''),
 		       role, is_active, users.created_at, users.updated_at, COALESCE(college_id::TEXT, ''),
-		       COALESCE(e.department, ''), COALESCE(e.department_team, '')
+		       COALESCE(e.department, ''), COALESCE(e.department_team, ''), COALESCE(e.employee_code, '')
 		FROM users
 		LEFT JOIN employees e ON e.user_id = users.id
 		WHERE deleted_at IS NULL`
@@ -228,7 +228,7 @@ func (r *UserRepository) FindDeleted(ctx context.Context) ([]models.User, error)
 		SELECT users.id, email, first_name, last_name,
 		       COALESCE(phone, ''), COALESCE(date_of_birth::TEXT, ''),
 		       role, is_active, users.created_at, users.updated_at, COALESCE(college_id::TEXT, ''),
-		       COALESCE(e.department, ''), COALESCE(e.department_team, '')
+		       COALESCE(e.department, ''), COALESCE(e.department_team, ''), COALESCE(e.employee_code, '')
 		FROM users
 		LEFT JOIN employees e ON e.user_id = users.id
 		WHERE deleted_at IS NOT NULL
@@ -244,7 +244,7 @@ func (r *UserRepository) FindByRole(ctx context.Context, role models.Role, colle
 		SELECT users.id, email, first_name, last_name,
 		       COALESCE(phone, ''), COALESCE(date_of_birth::TEXT, ''),
 		       role, is_active, users.created_at, users.updated_at, COALESCE(college_id::TEXT, ''),
-		       COALESCE(e.department, ''), COALESCE(e.department_team, '')
+		       COALESCE(e.department, ''), COALESCE(e.department_team, ''), COALESCE(e.employee_code, '')
 		FROM users
 		LEFT JOIN employees e ON e.user_id = users.id
 		WHERE role = $1 AND deleted_at IS NULL`
@@ -265,7 +265,7 @@ func (r *UserRepository) SearchUsers(ctx context.Context, query, collegeID strin
 		SELECT users.id, email, first_name, last_name,
 		       COALESCE(phone, ''), COALESCE(date_of_birth::TEXT, ''),
 		       role, is_active, users.created_at, users.updated_at, COALESCE(college_id::TEXT, ''),
-		       COALESCE(e.department, ''), COALESCE(e.department_team, '')
+		       COALESCE(e.department, ''), COALESCE(e.department_team, ''), COALESCE(e.employee_code, '')
 		FROM users
 		LEFT JOIN employees e ON e.user_id = users.id
 		WHERE deleted_at IS NULL
@@ -295,7 +295,7 @@ func (r *UserRepository) FindStudentsForMentor(ctx context.Context, mentorID str
 		SELECT DISTINCT u.id, u.email, u.first_name, u.last_name,
 		       COALESCE(u.phone, ''), COALESCE(u.date_of_birth::TEXT, ''),
 		       u.role, u.is_active, u.created_at, u.updated_at, COALESCE(u.college_id::TEXT, ''),
-		       '', ''
+		       '', '', ''
 		FROM users u
 		JOIN batch_students bs ON bs.user_id = u.id
 		JOIN batches b ON b.id = bs.batch_id AND b.deleted_at IS NULL
@@ -313,7 +313,7 @@ func (r *UserRepository) SearchStudentsForMentor(ctx context.Context, mentorID, 
 		SELECT DISTINCT u.id, u.email, u.first_name, u.last_name,
 		       COALESCE(u.phone, ''), COALESCE(u.date_of_birth::TEXT, ''),
 		       u.role, u.is_active, u.created_at, u.updated_at, COALESCE(u.college_id::TEXT, ''),
-		       '', ''
+		       '', '', ''
 		FROM users u
 		JOIN batch_students bs ON bs.user_id = u.id
 		JOIN batches b ON b.id = bs.batch_id AND b.deleted_at IS NULL
@@ -344,7 +344,7 @@ func (r *UserRepository) scanUsers(ctx context.Context, q string, args ...interf
 		if err := rows.Scan(
 			&u.ID, &u.Email, &u.FirstName, &u.LastName,
 			&u.Phone, &u.DateOfBirth, &u.Role, &u.IsActive, &u.CreatedAt, &u.UpdatedAt, &u.CollegeID,
-			&u.Department, &u.DepartmentTeam,
+			&u.Department, &u.DepartmentTeam, &u.EmployeeCode,
 		); err != nil {
 			return nil, err
 		}
@@ -414,12 +414,12 @@ func (r *UserRepository) Register(ctx context.Context, user models.User, college
 
 // CreateStaffUser inserts a user row with the given role plus an empty
 // role-specific profile row, in a single transaction. Only roles present in
-// profileTable are supported (mentor, employee, team_lead) — student accounts
+// profileTable are supported (mentor, employee, admin) — student accounts
 // go through Register, and there is no backing table for super_admin yet.
 // collegeID must never be empty — see the identical note on Register.
 // CreateStaffUser inserts a user row with the given role plus an empty
 // role-specific profile row, in a single transaction — mentor/employee/
-// team_lead each get a dedicated profile row (profileTable). Roles with no
+// admin each get a dedicated profile row (profileTable). Roles with no
 // entry in profileTable (college_admin, college_staff) skip that insert
 // entirely rather than erroring — there's no dedicated schema for them yet,
 // they're just users rows scoped by college_id.
@@ -450,9 +450,15 @@ func (r *UserRepository) CreateStaffUser(ctx context.Context, user models.User, 
 		if role == models.RoleEmployee {
 			// The only profile table that takes extra columns at creation —
 			// department/department_team only ever apply to this role.
+			// employee_code is a simple sequential EMP-0001 style id, the
+			// same idea as a student's enrollment_no.
+			var employeeCode string
+			if err = tx.QueryRow(ctx, `SELECT 'EMP-' || LPAD((COUNT(*) + 1)::TEXT, 4, '0') FROM employees`).Scan(&employeeCode); err != nil {
+				return "", fmt.Errorf("generate employee_code: %w", err)
+			}
 			if _, err = tx.Exec(ctx,
-				`INSERT INTO employees (user_id, department, department_team) VALUES ($1, NULLIF($2,''), NULLIF($3,''))`,
-				userID, department, departmentTeam,
+				`INSERT INTO employees (user_id, department, department_team, employee_code) VALUES ($1, NULLIF($2,''), NULLIF($3,''), $4)`,
+				userID, department, departmentTeam, employeeCode,
 			); err != nil {
 				return "", fmt.Errorf("insert employee profile: %w", err)
 			}
@@ -469,7 +475,7 @@ var profileTable = map[models.Role]string{
 	models.RoleStudent:  "students",
 	models.RoleMentor:   "mentors",
 	models.RoleEmployee: "employees",
-	models.RoleTeamLead: "team_leads",
+	models.RoleAdmin: "team_leads",
 }
 
 // ChangeUserRole updates a user's role and swaps their role-specific profile row atomically.

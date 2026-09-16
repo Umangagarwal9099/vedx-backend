@@ -53,7 +53,7 @@ func (ctrl *AnnouncementController) Create(c *gin.Context) {
 		"New announcement: "+announcement.Name,
 		fmt.Sprintf("A new announcement %q has been posted.", announcement.Name),
 		"announcement", "announcement", announcement.ShortID, createdBy,
-		[]string{"student", "mentor", "team_lead"},
+		[]string{"student", "mentor", "admin"},
 	); err != nil {
 		log.Printf("notify announcement create: %v", err)
 	}

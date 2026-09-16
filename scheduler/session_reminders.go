@@ -98,7 +98,7 @@ func processDueReminders(
 
 		if err := notificationRepo.NotifyRoles(ctx,
 			title, message, "session", "session", session.ShortID, session.CreatedBy,
-			[]string{string(models.RoleTeamLead), string(models.RoleSuperAdmin)},
+			[]string{string(models.RoleAdmin), string(models.RoleSuperAdmin)},
 		); err != nil {
 			log.Printf("scheduler: notify reminder (team_lead/super_admin) for session %s: %v", session.ShortID, err)
 		}

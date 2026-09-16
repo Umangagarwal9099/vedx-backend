@@ -123,7 +123,9 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	profileCtrl := controller.NewProfileController(profileRepo, userRepo)
 	dashboardCtrl := controller.NewDashboardController(batchRepo, enrollmentRepo, sessionRepo, attendanceRepo, certificateRepo)
 	analyticsCtrl := controller.NewAnalyticsController(analyticsRepo, batchRepo)
-	leadCtrl := controller.NewLeadController(leadRepo, leadCallLogRepo, leadAssignmentHistoryRepo, notificationRepo, auditLogRepo, collegeRepo, userRepo)
+	teamRepo := repository.NewTeamRepository(pool)
+	teamCtrl := controller.NewTeamController(teamRepo)
+	leadCtrl := controller.NewLeadController(leadRepo, leadCallLogRepo, leadAssignmentHistoryRepo, notificationRepo, auditLogRepo, collegeRepo, userRepo, teamRepo)
 	employeeAttendanceCtrl := controller.NewEmployeeAttendanceController(employeeAttendanceRepo, officeLocationRepo)
 	leaveCtrl := controller.NewLeaveController(leaveRequestRepo, leaveBalanceRepo, userRepo, emailSvc)
 	monthlyTargetCtrl := controller.NewMonthlyTargetController(monthlyTargetRepo)
@@ -181,22 +183,22 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 		protected.Use(middleware.JWTAuth(cfg.JWT.Secret))
 		{
 			// Role sets used across multiple route groups
-			adminOrAbove := middleware.RequireRole(models.RoleSuperAdmin, models.RoleTeamLead)
-			staffOrAbove := middleware.RequireRole(models.RoleSuperAdmin, models.RoleTeamLead, models.RoleMentor)
+			adminOrAbove := middleware.RequireRole(models.RoleSuperAdmin, models.RoleAdmin)
+			staffOrAbove := middleware.RequireRole(models.RoleSuperAdmin, models.RoleAdmin, models.RoleMentor)
 			// Lead-CRM routes: team_lead carries a personal lead quota alongside employees.
-			leadOrAbove := middleware.RequireRole(models.RoleSuperAdmin, models.RoleTeamLead, models.RoleEmployee)
+			leadOrAbove := middleware.RequireRole(models.RoleSuperAdmin, models.RoleAdmin, models.RoleEmployee)
 			// College-scoped roles (college_admin/college_staff) are deliberately
 			// NEVER added to adminOrAbove/staffOrAbove above — those groups carry
 			// platform-wide power. This dedicated group is only for the specific
 			// student-list/creation routes where their own data is already
 			// isolated at the repository layer via CollegeFilter/
 			// resolveTargetCollege, so widening just these routes is safe.
-			studentProvisionOrAbove := middleware.RequireRole(models.RoleSuperAdmin, models.RoleTeamLead, models.RoleCollegeAdmin, models.RoleCollegeStaff)
-			studentListOrAbove := middleware.RequireRole(models.RoleSuperAdmin, models.RoleTeamLead, models.RoleMentor, models.RoleCollegeAdmin, models.RoleCollegeStaff)
+			studentProvisionOrAbove := middleware.RequireRole(models.RoleSuperAdmin, models.RoleAdmin, models.RoleCollegeAdmin, models.RoleCollegeStaff)
+			studentListOrAbove := middleware.RequireRole(models.RoleSuperAdmin, models.RoleAdmin, models.RoleMentor, models.RoleCollegeAdmin, models.RoleCollegeStaff)
 			// Same rationale as above — read-only dashboard/analytics views are
 			// already scoped by CollegeFilter at the repository layer, so a
 			// College Admin/Staff seeing only their own college's numbers is safe.
-			collegeReadOrAbove := middleware.RequireRole(models.RoleSuperAdmin, models.RoleTeamLead, models.RoleMentor, models.RoleCollegeAdmin, models.RoleCollegeStaff)
+			collegeReadOrAbove := middleware.RequireRole(models.RoleSuperAdmin, models.RoleAdmin, models.RoleMentor, models.RoleCollegeAdmin, models.RoleCollegeStaff)
 			// Content-authoring routes for assignments/assessments/projects —
 			// create/update/delete/grade/publish. Safe to widen to
 			// college_admin/college_staff specifically because every one of
@@ -206,7 +208,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			// already did). Deliberately not folded into staffOrAbove — other
 			// staffOrAbove routes (resources, coding questions, etc.) haven't
 			// been audited for this and would leak cross-tenant power.
-			collegeContentOrAbove := middleware.RequireRole(models.RoleSuperAdmin, models.RoleTeamLead, models.RoleMentor, models.RoleCollegeAdmin, models.RoleCollegeStaff)
+			collegeContentOrAbove := middleware.RequireRole(models.RoleSuperAdmin, models.RoleAdmin, models.RoleMentor, models.RoleCollegeAdmin, models.RoleCollegeStaff)
 
 			// Colleges — multi-tenancy configuration. Managing colleges/feature
 			// toggles is super_admin only; any authenticated user can read their
@@ -247,7 +249,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			protected.DELETE("/users/:id/colleges/:college_short_id", middleware.RequireRole(models.RoleSuperAdmin), userCtrl.RemoveCollege)
 			// Manager-department employee notes — a running record on an
 			// employee's profile. managerOrAbove mirrors hrOrAbove's pattern.
-			managerOrAbove := middleware.RequireRoleOrDepartment("manager", models.RoleSuperAdmin, models.RoleTeamLead)
+			managerOrAbove := middleware.RequireRoleOrDepartment("manager", models.RoleSuperAdmin, models.RoleAdmin)
 			protected.POST("/users/:id/employee-notes", managerOrAbove, employeeNoteCtrl.AddNote)
 			protected.GET("/users/:id/employee-notes", managerOrAbove, employeeNoteCtrl.GetNotes)
 			protected.PATCH("/users/:id/email", adminOrAbove, userCtrl.ChangeEmail)
@@ -270,13 +272,19 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			// Lead CRM — admin imports/assigns/monitors; employees (and team_lead's
 			// own quota) work only their assigned leads. Static paths registered
 			// before /:short_id so Gin matches them first.
+			// assignOrAbove: super_admin/admin can always assign, plus anyone
+			// tagged department=manager or department=team_lead — a Team
+			// Lead's actual target list is narrowed to their own team inside
+			// AssignBulk/Reassign themselves, not by this route gate.
+			assignOrAbove := middleware.RequireRoleOrDepartments([]string{"manager", "team_lead"}, models.RoleSuperAdmin, models.RoleAdmin)
+
 			leads := protected.Group("/leads", middleware.RequireActiveSubscription(collegeRepo), middleware.RequireFeature(collegeRepo, models.FeatureCRM))
 			{
 				leads.POST("", adminOrAbove, leadCtrl.Create)
 				leads.POST("/import", adminOrAbove, leadCtrl.BulkImport)
-				leads.POST("/assign", adminOrAbove, leadCtrl.AssignBulk)
-				leads.POST("/reassign", adminOrAbove, leadCtrl.Reassign)
-				leads.POST("/unassign", adminOrAbove, leadCtrl.Unassign)
+				leads.POST("/assign", assignOrAbove, leadCtrl.AssignBulk)
+				leads.POST("/reassign", assignOrAbove, leadCtrl.Reassign)
+				leads.POST("/unassign", assignOrAbove, leadCtrl.Unassign)
 				leads.POST("/auto-assign", adminOrAbove, leadCtrl.AutoAssign)
 				leads.GET("", leadOrAbove, leadCtrl.GetAll)
 				leads.GET("/dashboard/me", leadOrAbove, leadCtrl.GetMyDashboard)
@@ -287,6 +295,22 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				leads.POST("/:short_id/calls", leadOrAbove, leadCtrl.AddCallLog)
 				leads.GET("/:short_id/calls", leadOrAbove, leadCtrl.GetCallLogs)
 				leads.GET("/:short_id/history", adminOrAbove, leadCtrl.GetAssignmentHistory)
+			}
+
+			// Team hierarchy — which Operations employee reports to which
+			// Team Lead. Building/editing a team is Manager/Admin/Super
+			// Admin only; a Team Lead may read their own team (enforced
+			// inside GetMembers, since leadOrAbove alone would let any
+			// employee read any team).
+			teamOrAbove := middleware.RequireRoleOrDepartment("manager", models.RoleSuperAdmin, models.RoleAdmin)
+			teams := protected.Group("/teams")
+			{
+				teams.GET("", teamOrAbove, teamCtrl.GetAll)
+				teams.GET("/leads", teamOrAbove, teamCtrl.GetTeamLeadOptions)
+				teams.GET("/eligible-members", teamOrAbove, teamCtrl.GetEligibleMemberOptions)
+				teams.POST("/:team_lead_id/members", teamOrAbove, teamCtrl.AddMember)
+				teams.DELETE("/members/:member_id", teamOrAbove, teamCtrl.RemoveMember)
+				teams.GET("/:team_lead_id/members", leadOrAbove, teamCtrl.GetMembers)
 			}
 
 			// Employee attendance — self check-in/out only, admin views the team roster.
@@ -313,7 +337,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			// department approves/rejects (RequireRoleOrDepartment lets an
 			// employee whose department is "hr" through without granting
 			// them every other adminOrAbove route).
-			hrOrAbove := middleware.RequireRoleOrDepartment("hr", models.RoleSuperAdmin, models.RoleTeamLead)
+			hrOrAbove := middleware.RequireRoleOrDepartment("hr", models.RoleSuperAdmin, models.RoleAdmin)
 			leaves := protected.Group("/leaves")
 			{
 				leaves.POST("", leadOrAbove, leaveCtrl.Apply)
@@ -348,12 +372,12 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			// assignments/projects are, so there's no per-mentor ownership).
 			courses := protected.Group("/courses")
 			{
-				courses.POST("", middleware.RequireRole(models.RoleSuperAdmin, models.RoleTeamLead, models.RoleCollegeAdmin, models.RoleCollegeStaff), courseCtrl.Create)
+				courses.POST("", middleware.RequireRole(models.RoleSuperAdmin, models.RoleAdmin, models.RoleCollegeAdmin, models.RoleCollegeStaff), courseCtrl.Create)
 				courses.GET("", courseCtrl.GetAll)
 				courses.GET("/search", courseCtrl.Search)
 				courses.GET("/:short_id", courseCtrl.GetByShortID)
-				courses.PATCH("/:short_id", middleware.RequireRole(models.RoleSuperAdmin, models.RoleTeamLead, models.RoleCollegeAdmin, models.RoleCollegeStaff), courseCtrl.Update)
-				courses.DELETE("/:short_id", middleware.RequireRole(models.RoleSuperAdmin, models.RoleTeamLead, models.RoleCollegeAdmin, models.RoleCollegeStaff), courseCtrl.Delete)
+				courses.PATCH("/:short_id", middleware.RequireRole(models.RoleSuperAdmin, models.RoleAdmin, models.RoleCollegeAdmin, models.RoleCollegeStaff), courseCtrl.Update)
+				courses.DELETE("/:short_id", middleware.RequireRole(models.RoleSuperAdmin, models.RoleAdmin, models.RoleCollegeAdmin, models.RoleCollegeStaff), courseCtrl.Delete)
 				// Assigning a global course to a college is a cross-tenant
 				// operation — super_admin only, never team_lead.
 				courses.POST("/:short_id/assign", middleware.RequireRole(models.RoleSuperAdmin), courseCtrl.AssignToCollege)
@@ -437,19 +461,19 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			protected.GET("/users/:id/batches", staffOrAbove, batchCtrl.GetByStudentID)
 			// These five are also how a student reads their OWN data (e.g. "My
 			// Certificates"), so self-access is allowed alongside staff.
-			protected.GET("/users/:id/enrollments", middleware.RequireSelfOrRole("id", models.RoleSuperAdmin, models.RoleTeamLead, models.RoleMentor), batchCtrl.GetStudentEnrollments)
-			protected.GET("/users/:id/attendance-summary", middleware.RequireSelfOrRole("id", models.RoleSuperAdmin, models.RoleTeamLead, models.RoleMentor), attendanceCtrl.GetStudentAttendanceSummary)
-			protected.GET("/users/:id/attendance-history", middleware.RequireSelfOrRole("id", models.RoleSuperAdmin, models.RoleTeamLead, models.RoleMentor), attendanceCtrl.GetStudentAttendanceHistory)
-			protected.GET("/users/:id/score-breakdown", middleware.RequireSelfOrRole("id", models.RoleSuperAdmin, models.RoleTeamLead, models.RoleMentor), scoreCtrl.GetStudentScoreBreakdown)
-			protected.GET("/users/:id/certificates", middleware.RequireSelfOrRole("id", models.RoleSuperAdmin, models.RoleTeamLead, models.RoleMentor), certificateCtrl.GetStudentCertificates)
-			protected.GET("/users/:id/streak", middleware.RequireSelfOrRole("id", models.RoleSuperAdmin, models.RoleTeamLead, models.RoleMentor), engagementCtrl.GetStudentStreak)
-			protected.GET("/users/:id/profile-details", middleware.RequireSelfOrRole("id", models.RoleSuperAdmin, models.RoleTeamLead), profileCtrl.GetDetails)
-			protected.PATCH("/users/:id/profile-details", middleware.RequireSelfOrRole("id", models.RoleSuperAdmin, models.RoleTeamLead), profileCtrl.UpdateDetails)
+			protected.GET("/users/:id/enrollments", middleware.RequireSelfOrRole("id", models.RoleSuperAdmin, models.RoleAdmin, models.RoleMentor), batchCtrl.GetStudentEnrollments)
+			protected.GET("/users/:id/attendance-summary", middleware.RequireSelfOrRole("id", models.RoleSuperAdmin, models.RoleAdmin, models.RoleMentor), attendanceCtrl.GetStudentAttendanceSummary)
+			protected.GET("/users/:id/attendance-history", middleware.RequireSelfOrRole("id", models.RoleSuperAdmin, models.RoleAdmin, models.RoleMentor), attendanceCtrl.GetStudentAttendanceHistory)
+			protected.GET("/users/:id/score-breakdown", middleware.RequireSelfOrRole("id", models.RoleSuperAdmin, models.RoleAdmin, models.RoleMentor), scoreCtrl.GetStudentScoreBreakdown)
+			protected.GET("/users/:id/certificates", middleware.RequireSelfOrRole("id", models.RoleSuperAdmin, models.RoleAdmin, models.RoleMentor), certificateCtrl.GetStudentCertificates)
+			protected.GET("/users/:id/streak", middleware.RequireSelfOrRole("id", models.RoleSuperAdmin, models.RoleAdmin, models.RoleMentor), engagementCtrl.GetStudentStreak)
+			protected.GET("/users/:id/profile-details", middleware.RequireSelfOrRole("id", models.RoleSuperAdmin, models.RoleAdmin), profileCtrl.GetDetails)
+			protected.PATCH("/users/:id/profile-details", middleware.RequireSelfOrRole("id", models.RoleSuperAdmin, models.RoleAdmin), profileCtrl.UpdateDetails)
 
 			// Rich learner-detail page support — registration/demographic profile,
 			// status lifecycle, learner notes, admin password reset, login activity.
-			protected.GET("/users/:id/registration-details", middleware.RequireSelfOrRole("id", models.RoleSuperAdmin, models.RoleTeamLead), studentRegistrationCtrl.GetDetails)
-			protected.PATCH("/users/:id/registration-details", middleware.RequireSelfOrRole("id", models.RoleSuperAdmin, models.RoleTeamLead), studentRegistrationCtrl.UpdateDetails)
+			protected.GET("/users/:id/registration-details", middleware.RequireSelfOrRole("id", models.RoleSuperAdmin, models.RoleAdmin), studentRegistrationCtrl.GetDetails)
+			protected.PATCH("/users/:id/registration-details", middleware.RequireSelfOrRole("id", models.RoleSuperAdmin, models.RoleAdmin), studentRegistrationCtrl.UpdateDetails)
 			protected.POST("/users/:id/status", adminOrAbove, studentRegistrationCtrl.UpdateStatus)
 			protected.GET("/users/:id/status-history", adminOrAbove, studentRegistrationCtrl.GetStatusHistory)
 			protected.GET("/students/statuses", adminOrAbove, studentRegistrationCtrl.GetAllStatuses)
@@ -460,7 +484,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			protected.GET("/users/:id/notes", adminOrAbove, studentRegistrationCtrl.GetNotes)
 			// college_admin/college_staff may reset passwords too, but only for
 			// their own college's users — enforced inside ResetPassword itself.
-			protected.POST("/users/:id/reset-password", middleware.RequireRole(models.RoleSuperAdmin, models.RoleTeamLead, models.RoleCollegeAdmin, models.RoleCollegeStaff), userCtrl.ResetPassword)
+			protected.POST("/users/:id/reset-password", middleware.RequireRole(models.RoleSuperAdmin, models.RoleAdmin, models.RoleCollegeAdmin, models.RoleCollegeStaff), userCtrl.ResetPassword)
 			protected.GET("/users/:id/login-activity", adminOrAbove, loginActivityCtrl.GetForUser)
 			protected.DELETE("/users/:id/login-activity/:deviceId", adminOrAbove, loginActivityCtrl.RemoveDevice)
 
@@ -557,7 +581,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			}
 
 			// Feedback Forms
-			ffAuth := middleware.RequireRole(models.RoleSuperAdmin, models.RoleMentor, models.RoleTeamLead)
+			ffAuth := middleware.RequireRole(models.RoleSuperAdmin, models.RoleMentor, models.RoleAdmin)
 			ff := protected.Group("/feedback-forms")
 			{
 				ff.POST("", ffAuth, feedbackFormCtrl.Create)
