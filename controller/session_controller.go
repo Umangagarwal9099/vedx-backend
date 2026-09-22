@@ -693,11 +693,10 @@ func (ctrl *SessionController) CompleteBatchRecordingUpload(c *gin.Context) {
 // StreamSessionRecording godoc
 //
 //	@Summary		Stream a session recording
-//	@Description	Proxies a session-linked recording's bytes from storage. This is what a <video> element's src should point at — never a direct or presigned storage URL — since a plain <video> tag can't send an Authorization header, this route authenticates via the httpOnly session cookie set at login (or a Bearer token, for non-browser callers) instead. Forwards Range requests so seeking/scrubbing works. Applies the same fees_paid gate as GET /sessions/{short_id}.
+//	@Description	This is what a <video> element's src should point at — never a direct or presigned storage URL — since a plain <video> tag can't send an Authorization header, this route authenticates via the httpOnly session cookie set at login (or a Bearer token, for non-browser callers) instead. Applies the same fees_paid gate as GET /sessions/{short_id}, then redirects to a short-lived signed R2 URL so the actual video bytes are served by R2 directly, not proxied through this server.
 //	@Tags			sessions
 //	@Param			short_id	path	string	true	"Session short ID"
-//	@Success		200
-//	@Success		206
+//	@Success		302
 //	@Failure		403	{object}	map[string]string	"Fees not paid"
 //	@Failure		404	{object}	map[string]string	"Recording not found"
 //	@Router			/stream/sessions/{short_id} [get]
@@ -729,8 +728,7 @@ func (ctrl *SessionController) StreamSessionRecording(c *gin.Context) {
 //	@Description	Same as GET /stream/sessions/{short_id}, but for a video uploaded directly to a batch (or backfilled via the importbatchrecordings tool) rather than tied to a Zoom session.
 //	@Tags			sessions
 //	@Param			short_id	path	string	true	"Recording short ID"
-//	@Success		200
-//	@Success		206
+//	@Success		302
 //	@Failure		403	{object}	map[string]string	"Fees not paid"
 //	@Failure		404	{object}	map[string]string	"Recording not found"
 //	@Router			/stream/batch-recordings/{short_id} [get]
@@ -756,31 +754,23 @@ func (ctrl *SessionController) StreamBatchRecording(c *gin.Context) {
 	ctrl.streamRecording(c, rec.URL)
 }
 
-// streamRecording proxies storedURL's bytes to the client, forwarding any
-// Range header so the browser can seek — R2 itself is never reachable from
-// the browser on this path, only from this server.
+// streamRecording redirects the browser to a short-lived signed R2 URL for
+// storedURL, once the caller (StreamSessionRecording/StreamBatchRecording)
+// has already run its auth + fees-paid gate. The video's bytes then flow
+// straight from R2 to the browser — this server's own network is never in
+// that path, which is also what lets a browser's Range-based seeking just
+// work, with R2 answering those requests itself instead of us forwarding
+// them. Previously this proxied every byte through here instead, which both
+// cost real money (R2 egress is free; this server's egress is not) and hit
+// Cloud Run's response-size limit on longer recordings.
 func (ctrl *SessionController) streamRecording(c *gin.Context, storedURL string) {
-	stream, err := ctrl.storageSvc.OpenRecordingStream(c.Request.Context(), storedURL, c.GetHeader("Range"))
+	url, err := ctrl.storageSvc.PresignRecordingDownload(c.Request.Context(), storedURL)
 	if err != nil {
 		log.Printf("stream recording: %v", err)
 		c.JSON(http.StatusBadGateway, gin.H{"error": "could not load recording"})
 		return
 	}
-	defer stream.Body.Close()
-
-	c.Header("Accept-Ranges", "bytes")
-	status := http.StatusOK
-	if stream.Partial {
-		c.Header("Content-Range", stream.ContentRange)
-		status = http.StatusPartialContent
-	}
-	// -1 (not stream.ContentLength) so Gin omits Content-Length and net/http
-	// falls back to chunked transfer — recordings run to hundreds of MB, and
-	// Cloud Run's frontend kills the connection ("Response size was too
-	// large", then a broken pipe) when a fixed Content-Length that large is
-	// declared up front. Chunked streaming of the same bytes isn't subject to
-	// that cutoff. Total size is still conveyed via Content-Range above.
-	c.DataFromReader(status, -1, stream.ContentType, stream.Body, nil)
+	c.Redirect(http.StatusFound, url)
 }
 
 // GetSession godoc

@@ -76,6 +76,11 @@ const maxRecordingUploadSize = 5 << 30 // 5 GB
 // connection without the link expiring mid-transfer.
 const presignedUploadExpiry = 4 * time.Hour
 
+// presignedDownloadExpiry is how long a presigned recording *playback* URL
+// stays valid — generous enough to watch a full class recording start to
+// finish without the link expiring mid-playback.
+const presignedDownloadExpiry = 4 * time.Hour
+
 // allowedRecordingMIME maps MIME type → file extension for videos uploaded
 // directly to a batch (POST /batches/{short_id}/recordings/presign). Mirrors
 // videoExtMIME in cmd/importbatchrecordings, which does the same match in
@@ -203,55 +208,28 @@ func (s *StorageService) PublicURLForKey(key string) string {
 	return strings.TrimRight(s.cfg.PublicURL, "/") + "/" + key
 }
 
-// RecordingObjectStream is one GetObject read of a recording, proxied
-// through this server rather than handed to the browser as a direct or
-// presigned R2 URL — R2 itself is never reachable from the browser on this
-// path. ContentRange/Partial are only set when a Range header was forwarded
-// and R2 honored it, so the controller can mirror a 206 back to the client
-// the same way R2 would have — that's what lets browser seeking/scrubbing
-// keep working.
-type RecordingObjectStream struct {
-	Body          io.ReadCloser
-	ContentType   string
-	ContentLength int64
-	ContentRange  string
-	Partial       bool
-}
-
-// OpenRecordingStream opens a stored recording for proxied reading,
-// forwarding rangeHeader (the client's Range request header, if any)
-// straight through to R2. Callers must Close() the returned Body.
-func (s *StorageService) OpenRecordingStream(ctx context.Context, storedURL, rangeHeader string) (*RecordingObjectStream, error) {
+// PresignRecordingDownload returns a short-lived signed URL the browser can
+// fetch a stored recording's bytes from directly — R2, unlike proxying
+// through this server's own network, charges nothing for that egress.
+// The caller (StreamSessionRecording/StreamBatchRecording) still runs the
+// full auth + fees-paid gate before ever calling this; this only decides
+// where the bytes should actually come from once that gate has passed. R2
+// (S3-compatible) natively honors Range requests against a presigned GET,
+// so the browser's own seeking/scrubbing keeps working with no extra code
+// on our side.
+func (s *StorageService) PresignRecordingDownload(ctx context.Context, storedURL string) (string, error) {
 	key := s.recordingKeyFromURL(storedURL)
 	if key == "" {
-		return nil, fmt.Errorf("cannot determine object key from recording url %q", storedURL)
+		return "", fmt.Errorf("cannot determine object key from recording url %q", storedURL)
 	}
-
-	input := &s3.GetObjectInput{
+	req, err := s.presign.PresignGetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(s.cfg.Bucket),
 		Key:    aws.String(key),
-	}
-	if rangeHeader != "" {
-		input.Range = aws.String(rangeHeader)
-	}
-
-	out, err := s.client.GetObject(ctx, input)
+	}, s3.WithPresignExpires(presignedDownloadExpiry))
 	if err != nil {
-		return nil, fmt.Errorf("get recording object: %w", err)
+		return "", fmt.Errorf("presign recording download: %w", err)
 	}
-
-	stream := &RecordingObjectStream{
-		Body:        out.Body,
-		ContentType: aws.ToString(out.ContentType),
-	}
-	if out.ContentLength != nil {
-		stream.ContentLength = *out.ContentLength
-	}
-	if out.ContentRange != nil {
-		stream.ContentRange = *out.ContentRange
-		stream.Partial = true
-	}
-	return stream, nil
+	return req.URL, nil
 }
 
 // recordingKeyFromURL strips the configured public URL prefix off a stored
