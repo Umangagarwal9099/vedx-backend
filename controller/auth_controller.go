@@ -38,6 +38,14 @@ func setStreamCookie(c *gin.Context, token string) {
 // otpExpiry is how long a forgot-password or login OTP stays valid after being issued.
 const otpExpiry = 5 * time.Minute
 
+// fixedOTPEmails are the only accounts whose login OTP is a fixed value
+// instead of a random emailed one: the internal QA account and the dedicated
+// Google Play review account. Both still require the correct password.
+var fixedOTPEmails = map[string]bool{
+	"ashishrockzz01@gmail.com": true,
+	"playreview@vedxlence.in":  true,
+}
+
 type AuthController struct {
 	userRepo          *repository.UserRepository
 	otpRepo           *repository.PasswordResetRepository
@@ -119,10 +127,11 @@ func (ctrl *AuthController) Login(c *gin.Context) {
 	}
 
 	otp := util.GenerateOTP()
-	// Designated test account — deterministic OTP so manual QA doesn't need
-	// to check email every login. Scoped to exactly this one address; every
-	// other account still gets a real random OTP through the normal flow.
-	if req.Email == "ashishrockzz01@gmail.com" {
+	// Designated test accounts — deterministic OTP so manual QA (and the
+	// Google Play reviewer, who can't read a mailbox) doesn't need to check
+	// email every login. Scoped to exactly these addresses; every other
+	// account still gets a real random OTP through the normal flow.
+	if fixedOTPEmails[req.Email] {
 		otp = "123456"
 	}
 	otpHash, err := bcrypt.GenerateFromPassword([]byte(otp), bcrypt.DefaultCost)
