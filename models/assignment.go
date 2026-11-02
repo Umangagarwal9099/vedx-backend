@@ -31,6 +31,12 @@ type Assignment struct {
 	CreatedAt              time.Time  `json:"created_at"`
 	UpdatedAt              time.Time  `json:"updated_at"`
 	DeletedAt              *time.Time `json:"deleted_at,omitempty"`
+	// IsGuestAccess is only ever set on the student-facing list (GET
+	// /assignments as a student) — true when this assignment's batch is one
+	// the student holds guest access to rather than a real enrollment in.
+	// The frontend should badge these distinctly, never merge them into
+	// "My Assignments" unlabeled.
+	IsGuestAccess bool `json:"is_guest_access,omitempty"`
 }
 
 // CreateAssignmentInput carries the fields required to create a new assignment.

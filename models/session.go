@@ -137,9 +137,10 @@ type RecordingListItem struct {
 // recordings. When FeesPaid is false, Recordings is always empty and Message
 // explains why — the frontend shouldn't need to infer that itself.
 type BatchRecordingsResponse struct {
-	FeesPaid   bool                `json:"fees_paid"`
-	Message    string              `json:"message,omitempty"`
-	Recordings []RecordingListItem `json:"recordings"`
+	FeesPaid    bool                `json:"fees_paid"`
+	GuestAccess bool                `json:"guest_access"`
+	Message     string              `json:"message,omitempty"`
+	Recordings  []RecordingListItem `json:"recordings"`
 }
 
 // SessionFilter holds query params for GET /sessions.

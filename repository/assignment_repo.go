@@ -187,12 +187,61 @@ func (r *AssignmentRepository) FindAllForMentor(ctx context.Context, mentorID st
 }
 
 // FindAllForStudent returns published assignments for batches the student is enrolled in.
+// FindAllForStudent returns every active assignment in a batch studentID is
+// either really enrolled in or holds guest access to (see
+// db/schema_updates_guest_access_v1.sql) — each row's IsGuestAccess says
+// which, so the frontend never has to guess or merge the two silently.
 func (r *AssignmentRepository) FindAllForStudent(ctx context.Context, studentID string) ([]models.Assignment, error) {
-	q := fmt.Sprintf(`%s
-		JOIN batch_students bs ON bs.batch_id = a.batch_id AND bs.user_id = $1
+	rows, err := r.pool.Query(ctx, `
+		SELECT a.id, a.short_id, a.title, COALESCE(a.description,''),
+		       a.batch_id, b.short_id, b.batch_number,
+		       COALESCE(m.short_id, ''), COALESCE(m.module_name, ''),
+		       COALESCE(s.short_id, ''), COALESCE(s.name, ''),
+		       a.max_marks, a.deadline,
+		       a.allowed_submission_types, COALESCE(a.allowed_file_formats, '{}'),
+		       COALESCE(a.max_file_size_mb, 0),
+		       a.late_submission_allowed, COALESCE(a.late_penalty_percent, 0),
+		       a.status::TEXT, a.created_by, CONCAT(u.first_name, ' ', u.last_name),
+		       (SELECT COUNT(*) FROM assignment_submissions asub WHERE asub.assignment_id = a.id),
+		       (SELECT COUNT(*) FROM assignment_submissions asub WHERE asub.assignment_id = a.id AND asub.status IN ('submitted', 'late')),
+		       a.created_at, a.updated_at, access.is_guest
+		FROM assignments a
+		JOIN batches b ON a.batch_id   = b.id
+		JOIN users   u ON a.created_by = u.id AND u.deleted_at IS NULL
+		LEFT JOIN modules  m ON a.module_id  = m.id AND m.deleted_at IS NULL
+		LEFT JOIN sessions s ON a.session_id = s.id AND s.deleted_at IS NULL
+		JOIN (
+			SELECT batch_id, FALSE AS is_guest FROM batch_students WHERE user_id = $1
+			UNION
+			SELECT batch_id, TRUE AS is_guest FROM batch_guest_access WHERE user_id = $1
+		) access ON access.batch_id = a.batch_id
 		WHERE a.deleted_at IS NULL AND a.status = 'active'
-		ORDER BY a.deadline ASC`, assignmentBaseSelect)
-	return r.scanAll(ctx, q, studentID)
+		ORDER BY a.deadline ASC`, studentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var list []models.Assignment
+	for rows.Next() {
+		var a models.Assignment
+		if err := rows.Scan(
+			&a.ID, &a.ShortID, &a.Title, &a.Description,
+			&a.BatchID, &a.BatchShortID, &a.BatchNumber,
+			&a.ModuleShortID, &a.ModuleName,
+			&a.SessionShortID, &a.SessionName,
+			&a.MaxMarks, &a.Deadline,
+			&a.AllowedSubmissionTypes, &a.AllowedFileFormats,
+			&a.MaxFileSizeMB,
+			&a.LateSubmissionAllowed, &a.LatePenaltyPercent,
+			&a.Status, &a.CreatedBy, &a.CreatedByName,
+			&a.SubmissionCount, &a.PendingReviewCount,
+			&a.CreatedAt, &a.UpdatedAt, &a.IsGuestAccess,
+		); err != nil {
+			return nil, err
+		}
+		list = append(list, a)
+	}
+	return list, rows.Err()
 }
 
 // FindDueForDeadlineReminder returns active assignments whose deadline falls
@@ -336,13 +385,23 @@ func scanSubmission(row pgx.Row) (models.AssignmentSubmission, error) {
 // assignment: they must be enrolled in the assignment's batch and the
 // assignment must be published (status = 'active'). Mirrors
 // ProjectRepository.StudentHasAccess.
+// StudentHasAccess reports whether studentID may view/submit the assignment
+// identified by assignmentShortID — true for a real enrollment in its batch
+// (batch_students) or guest access to it (batch_guest_access, see
+// db/schema_updates_guest_access_v1.sql). Guests can submit and be graded
+// like any other student; grading only ever writes to assignment_submissions,
+// never to student_enrollments, so a guest's work never touches progress,
+// final score, or a certificate for a batch they're not really enrolled in.
 func (r *AssignmentRepository) StudentHasAccess(ctx context.Context, assignmentShortID, studentID string) (bool, error) {
 	var exists bool
 	err := r.pool.QueryRow(ctx, `
 		SELECT EXISTS (
 			SELECT 1 FROM assignments a
-			JOIN batch_students bs ON bs.batch_id = a.batch_id AND bs.user_id = $2
 			WHERE a.short_id = $1 AND a.deleted_at IS NULL AND a.status = 'active'
+			  AND (
+			    EXISTS (SELECT 1 FROM batch_students bs WHERE bs.batch_id = a.batch_id AND bs.user_id = $2)
+			    OR EXISTS (SELECT 1 FROM batch_guest_access ga WHERE ga.batch_id = a.batch_id AND ga.user_id = $2)
+			  )
 		)`, assignmentShortID, studentID).Scan(&exists)
 	return exists, err
 }

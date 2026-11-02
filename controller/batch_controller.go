@@ -25,10 +25,11 @@ type BatchController struct {
 	emailSvc         *service.EmailService
 	auditLogRepo     *repository.AuditLogRepository
 	communityRepo    *repository.CommunityRepository
+	guestAccessRepo  *repository.GuestAccessRepository
 }
 
-func NewBatchController(batchRepo *repository.BatchRepository, enrollmentRepo *repository.EnrollmentRepository, notificationRepo *repository.NotificationRepository, userRepo *repository.UserRepository, collegeRepo *repository.CollegeRepository, courseRepo *repository.CourseRepository, emailSvc *service.EmailService, auditLogRepo *repository.AuditLogRepository, communityRepo *repository.CommunityRepository) *BatchController {
-	return &BatchController{batchRepo: batchRepo, enrollmentRepo: enrollmentRepo, notificationRepo: notificationRepo, userRepo: userRepo, collegeRepo: collegeRepo, courseRepo: courseRepo, emailSvc: emailSvc, auditLogRepo: auditLogRepo, communityRepo: communityRepo}
+func NewBatchController(batchRepo *repository.BatchRepository, enrollmentRepo *repository.EnrollmentRepository, notificationRepo *repository.NotificationRepository, userRepo *repository.UserRepository, collegeRepo *repository.CollegeRepository, courseRepo *repository.CourseRepository, emailSvc *service.EmailService, auditLogRepo *repository.AuditLogRepository, communityRepo *repository.CommunityRepository, guestAccessRepo *repository.GuestAccessRepository) *BatchController {
+	return &BatchController{batchRepo: batchRepo, enrollmentRepo: enrollmentRepo, notificationRepo: notificationRepo, userRepo: userRepo, collegeRepo: collegeRepo, courseRepo: courseRepo, emailSvc: emailSvc, auditLogRepo: auditLogRepo, communityRepo: communityRepo, guestAccessRepo: guestAccessRepo}
 }
 
 // batchDateLayout matches how Batch.StartDate/EndDate are stored — plain
@@ -537,7 +538,16 @@ func (ctrl *BatchController) GetMyFeesStatus(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"fees_paid": paid})
+	var guest bool
+	if !paid {
+		guest, err = ctrl.guestAccessRepo.HasAccessByShortID(c.Request.Context(), shortID, userID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch guest access status"})
+			return
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"fees_paid": paid || guest, "guest_access": guest})
 }
 
 // RemoveBatchStudent godoc

@@ -28,9 +28,10 @@ type SessionController struct {
 	auditLogRepo       *repository.AuditLogRepository
 	feedbackFormRepo   *repository.FeedbackFormRepository
 	batchRecordingRepo *repository.BatchRecordingRepository
+	guestAccessRepo    *repository.GuestAccessRepository
 }
 
-func NewSessionController(repo *repository.SessionRepository, batchRepo *repository.BatchRepository, notificationRepo *repository.NotificationRepository, userRepo *repository.UserRepository, zoomSvc *service.ZoomService, emailSvc *service.EmailService, storageSvc *service.StorageService, publicBaseURL, timezone string, auditLogRepo *repository.AuditLogRepository, feedbackFormRepo *repository.FeedbackFormRepository, batchRecordingRepo *repository.BatchRecordingRepository) *SessionController {
+func NewSessionController(repo *repository.SessionRepository, batchRepo *repository.BatchRepository, notificationRepo *repository.NotificationRepository, userRepo *repository.UserRepository, zoomSvc *service.ZoomService, emailSvc *service.EmailService, storageSvc *service.StorageService, publicBaseURL, timezone string, auditLogRepo *repository.AuditLogRepository, feedbackFormRepo *repository.FeedbackFormRepository, batchRecordingRepo *repository.BatchRecordingRepository, guestAccessRepo *repository.GuestAccessRepository) *SessionController {
 	return &SessionController{
 		sessionRepo:        repo,
 		batchRepo:          batchRepo,
@@ -44,6 +45,7 @@ func NewSessionController(repo *repository.SessionRepository, batchRepo *reposit
 		auditLogRepo:       auditLogRepo,
 		feedbackFormRepo:   feedbackFormRepo,
 		batchRecordingRepo: batchRecordingRepo,
+		guestAccessRepo:    guestAccessRepo,
 	}
 }
 
@@ -105,12 +107,13 @@ func sanitizeForRole(s *models.Session, role string) *models.Session {
 }
 
 // stripRecordingIfUnpaid removes RecordingURL for students unless they've been
-// marked fees_paid for the session's batch. Live-class access (ZoomJoinURL) is
-// never touched here — only recordings are fee-gated. Staff roles always see it.
-// Whatever URL survives the fee check is then replaced with this server's own
-// streaming endpoint (see StreamSessionRecording) rather than the stored R2
-// URL — the browser never learns where the file actually lives, and the
-// streaming endpoint re-checks auth itself via the httpOnly session cookie.
+// marked fees_paid for the session's batch, or hold guest access to it.
+// Live-class access (ZoomJoinURL) is never touched here — only recordings
+// are gated. Staff roles always see it. Whatever URL survives the check is
+// then replaced with this server's own streaming endpoint (see
+// StreamSessionRecording) rather than the stored R2 URL — the browser never
+// learns where the file actually lives, and the streaming endpoint
+// re-checks auth itself via the httpOnly session cookie.
 func (ctrl *SessionController) stripRecordingIfUnpaid(c *gin.Context, s *models.Session, role, userID string) *models.Session {
 	if s == nil || s.RecordingURL == "" {
 		return s
@@ -120,7 +123,11 @@ func (ctrl *SessionController) stripRecordingIfUnpaid(c *gin.Context, s *models.
 		if err != nil {
 			log.Printf("check fees paid for session %s: %v", s.ShortID, err)
 		}
-		if err != nil || !paid {
+		guest, gerr := ctrl.guestAccessRepo.HasAccess(c.Request.Context(), s.BatchID, userID)
+		if gerr != nil {
+			log.Printf("check guest access for session %s: %v", s.ShortID, gerr)
+		}
+		if !paid && !guest {
 			s.RecordingURL = ""
 			return s
 		}
@@ -469,6 +476,7 @@ func (ctrl *SessionController) GetBatchRecordings(c *gin.Context) {
 		return
 	}
 
+	var isGuest bool
 	if role == string(models.RoleStudent) {
 		paid, err := ctrl.batchRepo.IsFeesPaidByBatchShortID(c.Request.Context(), batchShortID, userID)
 		if err != nil {
@@ -476,6 +484,14 @@ func (ctrl *SessionController) GetBatchRecordings(c *gin.Context) {
 			return
 		}
 		if !paid {
+			guest, err := ctrl.guestAccessRepo.HasAccessByShortID(c.Request.Context(), batchShortID, userID)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch guest access status"})
+				return
+			}
+			isGuest = guest
+		}
+		if !paid && !isGuest {
 			c.JSON(http.StatusOK, models.BatchRecordingsResponse{
 				FeesPaid:   false,
 				Message:    "Please pay your fees for this batch to access session recordings.",
@@ -533,7 +549,7 @@ func (ctrl *SessionController) GetBatchRecordings(c *gin.Context) {
 		})
 	}
 
-	c.JSON(http.StatusOK, models.BatchRecordingsResponse{FeesPaid: true, Recordings: recordings})
+	c.JSON(http.StatusOK, models.BatchRecordingsResponse{FeesPaid: !isGuest, GuestAccess: isGuest, Recordings: recordings})
 }
 
 type updateBatchRecordingOrderInput struct {
@@ -713,9 +729,16 @@ func (ctrl *SessionController) StreamSessionRecording(c *gin.Context) {
 
 	if role == string(models.RoleStudent) && !session.IsDemo {
 		paid, err := ctrl.batchRepo.IsFeesPaid(c.Request.Context(), session.BatchID, userID)
-		if err != nil || !paid {
+		if err != nil {
 			c.JSON(http.StatusForbidden, gin.H{"error": "please pay your fees for this batch to access session recordings"})
 			return
+		}
+		if !paid {
+			guest, err := ctrl.guestAccessRepo.HasAccess(c.Request.Context(), session.BatchID, userID)
+			if err != nil || !guest {
+				c.JSON(http.StatusForbidden, gin.H{"error": "please pay your fees for this batch to access session recordings"})
+				return
+			}
 		}
 	}
 
@@ -745,9 +768,16 @@ func (ctrl *SessionController) StreamBatchRecording(c *gin.Context) {
 
 	if role == string(models.RoleStudent) && !rec.IsDemo {
 		paid, err := ctrl.batchRepo.IsFeesPaidByBatchShortID(c.Request.Context(), rec.BatchShortID, userID)
-		if err != nil || !paid {
+		if err != nil {
 			c.JSON(http.StatusForbidden, gin.H{"error": "please pay your fees for this batch to access session recordings"})
 			return
+		}
+		if !paid {
+			guest, err := ctrl.guestAccessRepo.HasAccessByShortID(c.Request.Context(), rec.BatchShortID, userID)
+			if err != nil || !guest {
+				c.JSON(http.StatusForbidden, gin.H{"error": "please pay your fees for this batch to access session recordings"})
+				return
+			}
 		}
 	}
 

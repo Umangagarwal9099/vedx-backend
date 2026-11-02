@@ -26,6 +26,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	courseRepo := repository.NewCourseRepository(pool)
 	batchRepo := repository.NewBatchRepository(pool)
 	batchRecordingRepo := repository.NewBatchRecordingRepository(pool)
+	guestAccessRepo := repository.NewGuestAccessRepository(pool)
 	demoClassRepo := repository.NewDemoClassRepository(pool)
 	enrollmentRepo := repository.NewEnrollmentRepository(pool)
 	eventRepo := repository.NewEventRepository(pool)
@@ -88,7 +89,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	studentRegistrationCtrl := controller.NewStudentRegistrationController(studentRegistrationRepo, studentNoteRepo, auditLogRepo, userRepo, collegeRepo, emailSvc, cfg.App.PublicURL)
 	loginActivityCtrl := controller.NewLoginActivityController(loginActivityRepo)
 	courseCtrl := controller.NewCourseController(courseRepo, collegeRepo, auditLogRepo)
-	batchCtrl := controller.NewBatchController(batchRepo, enrollmentRepo, notificationRepo, userRepo, collegeRepo, courseRepo, emailSvc, auditLogRepo, communityRepo)
+	batchCtrl := controller.NewBatchController(batchRepo, enrollmentRepo, notificationRepo, userRepo, collegeRepo, courseRepo, emailSvc, auditLogRepo, communityRepo, guestAccessRepo)
 	eventCtrl := controller.NewEventController(eventRepo, notificationRepo)
 	announcementCtrl := controller.NewAnnouncementController(announcementRepo, notificationRepo)
 	uploadCtrl := controller.NewUploadController(storageSvc)
@@ -105,7 +106,8 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	communityPostCtrl := controller.NewCommunityPostController(communityPostRepo, communityRepo)
 	notificationCtrl := controller.NewNotificationController(notificationRepo)
 	devicePushTokenCtrl := controller.NewDevicePushTokenController(devicePushTokenRepo)
-	sessionCtrl := controller.NewSessionController(sessionRepo, batchRepo, notificationRepo, userRepo, zoomSvc, emailSvc, storageSvc, cfg.App.PublicURL, cfg.App.Timezone, auditLogRepo, feedbackFormRepo, batchRecordingRepo)
+	sessionCtrl := controller.NewSessionController(sessionRepo, batchRepo, notificationRepo, userRepo, zoomSvc, emailSvc, storageSvc, cfg.App.PublicURL, cfg.App.Timezone, auditLogRepo, feedbackFormRepo, batchRecordingRepo, guestAccessRepo)
+	guestAccessCtrl := controller.NewGuestAccessController(guestAccessRepo, batchRepo, notificationRepo, auditLogRepo)
 	demoClassCtrl := controller.NewDemoClassController(sessionRepo, batchRepo, batchRecordingRepo, demoClassRepo)
 	zoomWebhookCtrl := controller.NewZoomWebhookController(zoomSvc, storageSvc, sessionRepo, cfg.App.Timezone)
 	assignmentCtrl := controller.NewAssignmentController(assignmentRepo, batchRepo, notificationRepo, auditLogRepo)
@@ -394,6 +396,7 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				batches.GET("", batchCtrl.GetAll)
 				batches.GET("/filter", batchCtrl.Filter)
 				batches.GET("/mine", batchCtrl.GetMine)
+				batches.GET("/guest-access/mine", guestAccessCtrl.ListMine)
 				batches.GET("/:short_id", batchCtrl.GetByShortID)
 				batches.PATCH("/:short_id", adminOrAbove, batchCtrl.Update)
 				batches.DELETE("/:short_id", adminOrAbove, batchCtrl.Delete)
@@ -403,6 +406,12 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 				// GET /:short_id/me/fees for their own status instead.
 				batches.GET("/:short_id/students", staffOrAbove, batchCtrl.GetStudents)
 				batches.POST("/:short_id/students", adminOrAbove, batchCtrl.AddStudents)
+
+				// Guest access — a student already enrolled elsewhere can also view this
+				// batch's live sessions and recordings, with no second enrollment.
+				batches.POST("/:short_id/guest-access", adminOrAbove, guestAccessCtrl.Grant)
+				batches.GET("/:short_id/guest-access", staffOrAbove, guestAccessCtrl.ListForBatch)
+				batches.DELETE("/:short_id/guest-access/:user_id", adminOrAbove, guestAccessCtrl.Revoke)
 				batches.DELETE("/:short_id/students/:user_id", adminOrAbove, batchCtrl.RemoveStudent)
 				batches.PATCH("/:short_id/students/:user_id/fees", staffOrAbove, batchCtrl.SetStudentFeesPaid)
 				batches.POST("/:short_id/students/:user_id/transfer", adminOrAbove, batchCtrl.TransferStudent)
