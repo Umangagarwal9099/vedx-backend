@@ -137,6 +137,9 @@ func (ctrl *DemoClassController) GetBatchDemoRecordings(c *gin.Context) {
 		if !s.IsDemo || s.RecordingURL == "" {
 			continue
 		}
+		if c.GetString("role") == string(models.RoleStudent) && !recordingReleasedToStudents(&s) {
+			continue // the stream endpoint would refuse it anyway
+		}
 		recordings = append(recordings, models.RecordingListItem{
 			SessionShortID: s.ShortID,
 			Source:         "session",
