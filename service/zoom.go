@@ -8,9 +8,12 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	neturl "net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -129,7 +132,7 @@ func (z *ZoomService) do(method, url string, payload interface{}, out interface{
 
 	respBody, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("zoom API error (%d): %s", resp.StatusCode, string(respBody))
+		return &ZoomAPIError{Status: resp.StatusCode, Body: string(respBody)}
 	}
 
 	if out != nil && len(respBody) > 0 {
@@ -261,14 +264,21 @@ func (z *ZoomService) VerifyWebhookSignature(signatureHeader, timestamp string, 
 	return subtle.ConstantTimeCompare([]byte(signatureHeader), []byte(expected)) == 1
 }
 
-// ZoomRecordingFile is one file within a recorded meeting instance.
+// ZoomRecordingFile is one file within a recorded meeting instance — Zoom
+// produces a separate file per view/format (combined screen+speaker MP4,
+// audio-only M4A, VTT transcript, chat TXT, timeline JSON, ...).
 type ZoomRecordingFile struct {
 	ID             string `json:"id"`
+	MeetingID      string `json:"meeting_id"` // the instance UUID, despite the name
 	FileType       string `json:"file_type"`
+	FileExtension  string `json:"file_extension"`
 	FileSize       int64  `json:"file_size"`
 	DownloadURL    string `json:"download_url"`
+	PlayURL        string `json:"play_url"`
+	Status         string `json:"status"` // "completed" once the file is ready to download
 	RecordingType  string `json:"recording_type"`
 	RecordingStart string `json:"recording_start"`
+	RecordingEnd   string `json:"recording_end"`
 }
 
 // ZoomRecordingInstance is one recorded occurrence of a meeting — a host
@@ -278,57 +288,314 @@ type ZoomRecordingFile struct {
 type ZoomRecordingInstance struct {
 	UUID           string              `json:"uuid"`
 	ID             int64               `json:"id"`
+	AccountID      string              `json:"account_id"`
+	HostID         string              `json:"host_id"`
+	HostEmail      string              `json:"host_email"`
 	Topic          string              `json:"topic"`
 	StartTime      string              `json:"start_time"`
+	Duration       int                 `json:"duration"` // minutes
+	TotalSize      int64               `json:"total_size"`
+	RecordingCount int                 `json:"recording_count"`
 	RecordingFiles []ZoomRecordingFile `json:"recording_files"`
 }
 
-type zoomUserRecordingsResponse struct {
-	Meetings []ZoomRecordingInstance `json:"meetings"`
+// PrimaryVideoFile returns the file the LMS plays back: the combined
+// screen+speaker view Zoom records by default, else the largest completed
+// MP4. Audio-only, transcript and chat files are never selected. nil if the
+// instance has no video at all.
+func (inst *ZoomRecordingInstance) PrimaryVideoFile() *ZoomRecordingFile {
+	for i := range inst.RecordingFiles {
+		f := &inst.RecordingFiles[i]
+		if f.RecordingType == "shared_screen_with_speaker_view" && f.FileType == "MP4" && f.Status != "processing" {
+			return f
+		}
+	}
+	var best *ZoomRecordingFile
+	for i := range inst.RecordingFiles {
+		f := &inst.RecordingFiles[i]
+		if f.FileType == "MP4" && f.Status != "processing" && (best == nil || f.FileSize > best.FileSize) {
+			best = f
+		}
+	}
+	return best
 }
 
-// ListUserRecordings lists every recorded meeting instance for the account's
-// Zoom user within [from, to] (inclusive, YYYY-MM-DD). Used for manual
-// recovery when a meeting ID has multiple recorded instances (e.g. a host
-// rejoin) and the webhook-driven pipeline attached the wrong one — this
-// endpoint returns every instance with its own start_time, unlike
-// GET /meetings/{id}/recordings which only reflects the latest instance.
+// StartTimeParsed parses Zoom's UTC start_time, zero time if missing.
+func (inst *ZoomRecordingInstance) StartTimeParsed() time.Time {
+	t, _ := time.Parse(time.RFC3339, inst.StartTime)
+	return t
+}
+
+// ZoomUser is one user on the Zoom account. Meetings created through the
+// Server-to-Server app land on "me" (the app owner), but a mentor hosting
+// from their own Zoom login records under their own user — so a full audit
+// has to walk every user, not just "me".
+type ZoomUser struct {
+	ID     string `json:"id"`
+	Email  string `json:"email"`
+	Type   int    `json:"type"` // 1 basic, 2 licensed — basic users cannot cloud-record at all
+	Status string `json:"status"`
+}
+
+// isRetryable reports whether a Zoom API failure is worth retrying: rate
+// limiting (429) and Zoom-side 5xx are transient, 4xx are not.
+func isRetryableStatus(code int) bool {
+	return code == http.StatusTooManyRequests || code >= 500
+}
+
+// getWithRetry is do() for idempotent GETs, retried with backoff on network
+// errors, 429 and 5xx. Writes (create/update/delete meeting) deliberately
+// stay single-shot — retrying a POST that actually succeeded server-side
+// would create a duplicate meeting.
+func (z *ZoomService) getWithRetry(url string, out interface{}) error {
+	var lastErr error
+	for attempt := 0; attempt < 4; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Duration(1<<attempt) * time.Second)
+		}
+		err := z.do(http.MethodGet, url, nil, out)
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+		var apiErr *ZoomAPIError
+		if errors.As(err, &apiErr) && !isRetryableStatus(apiErr.Status) {
+			return err
+		}
+	}
+	return lastErr
+}
+
+// ZoomAPIError carries the HTTP status of a failed Zoom API call so callers
+// can tell "not found / no permission" apart from transient failures.
+type ZoomAPIError struct {
+	Status int
+	Body   string
+}
+
+func (e *ZoomAPIError) Error() string {
+	return fmt.Sprintf("zoom API error (%d): %s", e.Status, e.Body)
+}
+
+// IsZoomNotFound reports whether err is a Zoom 404 — e.g. a meeting's
+// recordings were deleted, or never existed.
+func IsZoomNotFound(err error) bool {
+	var apiErr *ZoomAPIError
+	return errors.As(err, &apiErr) && apiErr.Status == http.StatusNotFound
+}
+
+// ListUsers returns every user on the Zoom account (active, inactive and
+// pending), following next_page_token pagination.
+func (z *ZoomService) ListUsers() ([]ZoomUser, error) {
+	var all []ZoomUser
+	for _, status := range []string{"active", "inactive", "pending"} {
+		token := ""
+		for {
+			u := fmt.Sprintf("%s/users?status=%s&page_size=300", zoomAPIBase, status)
+			if token != "" {
+				u += "&next_page_token=" + neturl.QueryEscape(token)
+			}
+			var resp struct {
+				Users         []ZoomUser `json:"users"`
+				NextPageToken string     `json:"next_page_token"`
+			}
+			if err := z.getWithRetry(u, &resp); err != nil {
+				return nil, fmt.Errorf("list zoom users (%s): %w", status, err)
+			}
+			all = append(all, resp.Users...)
+			if resp.NextPageToken == "" {
+				break
+			}
+			token = resp.NextPageToken
+		}
+	}
+	return all, nil
+}
+
+// ListRecordings lists every recorded meeting instance for userID ("me" or a
+// Zoom user ID/email) within [from, to]. Zoom caps a single request at a
+// one-month range and 300 results per page, so this walks the range in
+// 30-day windows and follows next_page_token within each — the previous
+// single-request version silently dropped everything beyond the first month
+// and the first page. trash=true lists recordings in the Zoom trash instead
+// (recoverable for 30 days after deletion).
+func (z *ZoomService) ListRecordings(userID string, from, to time.Time, trash bool) ([]ZoomRecordingInstance, error) {
+	var all []ZoomRecordingInstance
+	seen := map[string]bool{}
+	for winStart := from; !winStart.After(to); winStart = winStart.AddDate(0, 0, 30) {
+		winEnd := winStart.AddDate(0, 0, 29)
+		if winEnd.After(to) {
+			winEnd = to
+		}
+		token := ""
+		for {
+			u := fmt.Sprintf("%s/users/%s/recordings?from=%s&to=%s&page_size=300&trash=%t",
+				zoomAPIBase, neturl.PathEscape(userID), winStart.Format("2006-01-02"), winEnd.Format("2006-01-02"), trash)
+			if token != "" {
+				u += "&next_page_token=" + neturl.QueryEscape(token)
+			}
+			var resp struct {
+				Meetings      []ZoomRecordingInstance `json:"meetings"`
+				NextPageToken string                  `json:"next_page_token"`
+			}
+			if err := z.getWithRetry(u, &resp); err != nil {
+				return nil, fmt.Errorf("list zoom recordings for %s %s..%s: %w", userID, winStart.Format("2006-01-02"), winEnd.Format("2006-01-02"), err)
+			}
+			for _, m := range resp.Meetings {
+				// Windows are inclusive on both ends, so an instance on a
+				// boundary day can come back twice.
+				if !seen[m.UUID] {
+					seen[m.UUID] = true
+					all = append(all, m)
+				}
+			}
+			if resp.NextPageToken == "" {
+				break
+			}
+			token = resp.NextPageToken
+		}
+	}
+	return all, nil
+}
+
+// ListAccountRecordings lists recordings for every user on the account, so
+// nothing recorded under a mentor's own Zoom login is missed.
+func (z *ZoomService) ListAccountRecordings(from, to time.Time) ([]ZoomRecordingInstance, error) {
+	users, err := z.ListUsers()
+	if err != nil {
+		return nil, err
+	}
+	var all []ZoomRecordingInstance
+	seen := map[string]bool{}
+	for _, u := range users {
+		recs, err := z.ListRecordings(u.ID, from, to, false)
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range recs {
+			if !seen[r.UUID] {
+				seen[r.UUID] = true
+				all = append(all, r)
+			}
+		}
+	}
+	return all, nil
+}
+
+// ListUserRecordings is kept for the earlier one-off recovery tools in cmd/;
+// it now paginates and handles ranges longer than a month.
 func (z *ZoomService) ListUserRecordings(from, to time.Time) ([]ZoomRecordingInstance, error) {
-	url := fmt.Sprintf("%s/users/me/recordings?from=%s&to=%s&page_size=300",
-		zoomAPIBase, from.Format("2006-01-02"), to.Format("2006-01-02"))
-	var resp zoomUserRecordingsResponse
-	if err := z.do(http.MethodGet, url, nil, &resp); err != nil {
-		return nil, fmt.Errorf("list zoom recordings: %w", err)
+	return z.ListRecordings("me", from, to, false)
+}
+
+// zoomUUIDPath encodes a meeting instance UUID for use in a URL path. Zoom
+// requires UUIDs that start with "/" or contain "//" to be double-encoded.
+func zoomUUIDPath(uuid string) string {
+	// QueryEscape, not PathEscape: UUIDs are base64 and PathEscape leaves
+	// "+" and "=" untouched, which Zoom then fails to match (404).
+	enc := neturl.QueryEscape(uuid)
+	if strings.HasPrefix(uuid, "/") || strings.Contains(uuid, "//") {
+		enc = neturl.QueryEscape(enc)
+	}
+	return enc
+}
+
+// GetInstanceRecordings fetches one recorded instance by UUID, including
+// fresh download URLs. Always use this right before downloading — download
+// URLs and the per-event download_token in a webhook expire (24h for the
+// token), so a retried job must never rely on the URL it was first given.
+func (z *ZoomService) GetInstanceRecordings(uuid string) (*ZoomRecordingInstance, error) {
+	var inst ZoomRecordingInstance
+	if err := z.getWithRetry(fmt.Sprintf("%s/meetings/%s/recordings", zoomAPIBase, zoomUUIDPath(uuid)), &inst); err != nil {
+		return nil, fmt.Errorf("get zoom recording %s: %w", uuid, err)
+	}
+	return &inst, nil
+}
+
+// ZoomMeetingDetails is the audit-relevant subset of GET /meetings/{id}.
+type ZoomMeetingDetails struct {
+	ID        int64  `json:"id"`
+	HostID    string `json:"host_id"`
+	HostEmail string `json:"host_email"`
+	Topic     string `json:"topic"`
+	Status    string `json:"status"`
+	StartTime string `json:"start_time"`
+	Settings  struct {
+		AutoRecording string `json:"auto_recording"`
+	} `json:"settings"`
+}
+
+// GetMeeting returns a scheduled meeting's details (host, recording setting).
+func (z *ZoomService) GetMeeting(meetingID int64) (*ZoomMeetingDetails, error) {
+	var m ZoomMeetingDetails
+	if err := z.getWithRetry(fmt.Sprintf("%s/meetings/%d", zoomAPIBase, meetingID), &m); err != nil {
+		return nil, err
+	}
+	return &m, nil
+}
+
+// ZoomPastInstance is one occurrence of a meeting that actually took place.
+type ZoomPastInstance struct {
+	UUID      string `json:"uuid"`
+	StartTime string `json:"start_time"`
+}
+
+// ListPastInstances returns the occurrences of meetingID that were actually
+// held — distinguishes "class happened but recording is missing" from "class
+// never started on this meeting ID at all".
+func (z *ZoomService) ListPastInstances(meetingID int64) ([]ZoomPastInstance, error) {
+	var resp struct {
+		Meetings []ZoomPastInstance `json:"meetings"`
+	}
+	if err := z.getWithRetry(fmt.Sprintf("%s/past_meetings/%d/instances", zoomAPIBase, meetingID), &resp); err != nil {
+		return nil, err
 	}
 	return resp.Meetings, nil
 }
 
 // AccessToken returns a valid Server-to-Server OAuth bearer token, for
-// callers (e.g. a manual recovery script) that need to authenticate a
-// recording download outside the normal webhook flow, where Zoom instead
-// supplies a short-lived per-event download_token in the payload.
+// callers that need to authenticate a recording download outside the
+// webhook flow.
 func (z *ZoomService) AccessToken() (string, error) {
 	return z.getAccessToken()
 }
 
-// DownloadRecording streams a completed cloud recording's file straight from
-// Zoom. downloadToken comes from the recording.completed webhook body and
-// authorizes access to that meeting's recording files without a separate
-// OAuth call. Caller must close the returned body.
-func (z *ZoomService) DownloadRecording(downloadURL, downloadToken string) (body io.ReadCloser, contentType string, err error) {
-	req, err := http.NewRequest(http.MethodGet, downloadURL+"?access_token="+downloadToken, nil)
+// DownloadRecording streams a cloud recording file straight from Zoom.
+// token is either a webhook's per-event download_token or a Server-to-Server
+// OAuth access token — Zoom accepts both as a Bearer credential on
+// download_url. Sent as a header rather than ?access_token= so the token
+// never ends up in logged URLs or error messages. Caller must close the
+// returned body.
+func (z *ZoomService) DownloadRecording(downloadURL, token string) (body io.ReadCloser, contentType string, err error) {
+	req, err := http.NewRequest(http.MethodGet, downloadURL, nil)
 	if err != nil {
 		return nil, "", fmt.Errorf("build recording download request: %w", err)
 	}
+	req.Header.Set("Authorization", "Bearer "+token)
 
 	resp, err := z.downloadClient.Do(req)
 	if err != nil {
 		return nil, "", fmt.Errorf("download recording: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(resp.Body)
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
 		resp.Body.Close()
-		return nil, "", fmt.Errorf("download recording failed (%d): %s", resp.StatusCode, string(b))
+		return nil, "", &ZoomAPIError{Status: resp.StatusCode, Body: "download recording: " + string(b)}
 	}
-	return resp.Body, resp.Header.Get("Content-Type"), nil
+	ct := resp.Header.Get("Content-Type")
+	if ct == "" || ct == "application/octet-stream" || strings.HasPrefix(ct, "binary/") {
+		ct = "video/mp4"
+	}
+	return resp.Body, ct, nil
+}
+
+// DownloadRecordingWithOAuth downloads using a fresh Server-to-Server OAuth
+// token — the path every retry/reconciliation download takes, since it
+// never expires the way a webhook's download_token does.
+func (z *ZoomService) DownloadRecordingWithOAuth(downloadURL string) (io.ReadCloser, string, error) {
+	token, err := z.getAccessToken()
+	if err != nil {
+		return nil, "", err
+	}
+	return z.DownloadRecording(downloadURL, token)
 }

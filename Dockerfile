@@ -6,6 +6,8 @@ RUN go mod download
 
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o /bin/server ./cmd/server
+# Zoom recording sync worker — run as a Cloud Run Job (same image, command /syncrecordings).
+RUN CGO_ENABLED=0 GOOS=linux go build -o /bin/syncrecordings ./cmd/syncrecordings
 
 # Font for ffmpeg's drawtext filter, which burns the watermark into
 # recordings — the distroless runtime below has no fontconfig to discover
@@ -21,6 +23,7 @@ FROM mwader/static-ffmpeg:latest AS ffmpeg
 
 FROM gcr.io/distroless/static-debian12
 COPY --from=builder /bin/server /server
+COPY --from=builder /bin/syncrecordings /syncrecordings
 COPY --from=builder /usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf /fonts/DejaVuSans-Bold.ttf
 COPY --from=ffmpeg /ffmpeg /usr/local/bin/ffmpeg
 ENV FFMPEG_PATH=/usr/local/bin/ffmpeg

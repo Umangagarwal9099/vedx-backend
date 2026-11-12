@@ -119,6 +119,10 @@ func (ctrl *SessionController) stripRecordingIfUnpaid(c *gin.Context, s *models.
 		return s
 	}
 	if role == string(models.RoleStudent) {
+		if !recordingReleasedToStudents(s) {
+			s.RecordingURL = ""
+			return s
+		}
 		paid, err := ctrl.batchRepo.IsFeesPaid(c.Request.Context(), s.BatchID, userID)
 		if err != nil {
 			log.Printf("check fees paid for session %s: %v", s.ShortID, err)
@@ -134,6 +138,16 @@ func (ctrl *SessionController) stripRecordingIfUnpaid(c *gin.Context, s *models.
 	}
 	s.RecordingURL = ctrl.sessionRecordingStreamURL(c, s.ShortID)
 	return s
+}
+
+// recordingReleasedToStudents reports whether staff have released a session's
+// recording to students: "Recording visible to students" is on and any
+// "Delay release until" time has passed. Staff ignore both settings.
+func recordingReleasedToStudents(s *models.Session) bool {
+	if !s.RecordingVisible {
+		return false
+	}
+	return s.RecordingAvailableFrom == nil || !time.Now().Before(*s.RecordingAvailableFrom)
 }
 
 // apiBaseURL reconstructs this server's own public origin from the incoming
@@ -512,13 +526,8 @@ func (ctrl *SessionController) GetBatchRecordings(c *gin.Context) {
 		if s.RecordingURL == "" {
 			continue
 		}
-		if role == string(models.RoleStudent) {
-			if !s.RecordingVisible {
-				continue
-			}
-			if s.RecordingAvailableFrom != nil && time.Now().Before(*s.RecordingAvailableFrom) {
-				continue
-			}
+		if role == string(models.RoleStudent) && !recordingReleasedToStudents(&s) {
+			continue
 		}
 		recordings = append(recordings, models.RecordingListItem{
 			SessionShortID: s.ShortID,
@@ -727,6 +736,10 @@ func (ctrl *SessionController) StreamSessionRecording(c *gin.Context) {
 		return
 	}
 
+	if role == string(models.RoleStudent) && !recordingReleasedToStudents(session) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "recording not found"})
+		return
+	}
 	if role == string(models.RoleStudent) && !session.IsDemo {
 		paid, err := ctrl.batchRepo.IsFeesPaid(c.Request.Context(), session.BatchID, userID)
 		if err != nil {

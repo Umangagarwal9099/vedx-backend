@@ -10,6 +10,7 @@ import (
 	_ "github.com/umangagarwal/vedx-backend/docs"
 	"github.com/umangagarwal/vedx-backend/middleware"
 	"github.com/umangagarwal/vedx-backend/models"
+	"github.com/umangagarwal/vedx-backend/recordingsync"
 	"github.com/umangagarwal/vedx-backend/repository"
 	"github.com/umangagarwal/vedx-backend/service"
 )
@@ -109,7 +110,10 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 	sessionCtrl := controller.NewSessionController(sessionRepo, batchRepo, notificationRepo, userRepo, zoomSvc, emailSvc, storageSvc, cfg.App.PublicURL, cfg.App.Timezone, auditLogRepo, feedbackFormRepo, batchRecordingRepo, guestAccessRepo)
 	guestAccessCtrl := controller.NewGuestAccessController(guestAccessRepo, batchRepo, notificationRepo, auditLogRepo)
 	demoClassCtrl := controller.NewDemoClassController(sessionRepo, batchRepo, batchRecordingRepo, demoClassRepo)
-	zoomWebhookCtrl := controller.NewZoomWebhookController(zoomSvc, storageSvc, sessionRepo, cfg.App.Timezone)
+	recordingJobRepo := repository.NewZoomRecordingJobRepository(pool)
+	recordingSyncSvc := recordingsync.New(zoomSvc, storageSvc, recordingJobRepo, batchRecordingRepo, cfg.App.Timezone)
+	zoomWebhookCtrl := controller.NewZoomWebhookController(zoomSvc, recordingSyncSvc, cfg.RecordingSync.WorkerEnabled)
+	recordingSyncCtrl := controller.NewRecordingSyncController(recordingSyncSvc, recordingJobRepo, cfg.RecordingSync.Secret, cfg.RecordingSync.LookbackDays)
 	assignmentCtrl := controller.NewAssignmentController(assignmentRepo, batchRepo, notificationRepo, auditLogRepo)
 	resourceCtrl := controller.NewResourceController(resourceRepo, batchRepo, auditLogRepo)
 	projectCtrl := controller.NewProjectController(projectRepo, batchRepo, notificationRepo, auditLogRepo)
@@ -179,6 +183,10 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 		// Zoom calls this directly (no JWT) — authenticity is instead verified via
 		// the x-zm-signature header against the Event Subscriptions secret token.
 		v1.POST("/zoom/webhook", zoomWebhookCtrl.HandleWebhook)
+		// Cloud Scheduler calls this (no JWT) — authenticated by the
+		// X-Recording-Sync-Secret header. Does the recording work inside the
+		// request so Cloud Run keeps CPU allocated for it.
+		v1.POST("/internal/recordings/sync", recordingSyncCtrl.TriggerSync)
 
 		// ── Protected routes — require a valid JWT ────────────────────────────
 		protected := v1.Group("/")
@@ -216,6 +224,10 @@ func New(pool *pgxpool.Pool, cfg *config.Config) *gin.Engine {
 			// toggles is super_admin only; any authenticated user can read their
 			// OWN resolved features (used to drive every frontend's sidebar).
 			protected.GET("/colleges/me/features", collegeCtrl.GetMyFeatures)
+			// Zoom recording sync visibility / manual run.
+			protected.GET("/recording-sync/jobs", adminOrAbove, recordingSyncCtrl.ListJobs)
+			protected.POST("/recording-sync/run", adminOrAbove, recordingSyncCtrl.AdminSync)
+
 			colleges := protected.Group("/colleges", middleware.RequireRole(models.RoleSuperAdmin))
 			{
 				colleges.POST("", collegeCtrl.Create)

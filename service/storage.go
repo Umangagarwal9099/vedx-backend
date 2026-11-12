@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -16,6 +17,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/umangagarwal/vedx-backend/config"
 )
 
@@ -503,4 +505,51 @@ func randomHex() string {
 		panic("storage: crypto/rand unavailable")
 	}
 	return hex.EncodeToString(b)
+}
+
+// RecordingExists reports whether the object behind a stored recording URL
+// is actually present in R2 — used by the reconciliation audit to catch
+// sessions whose recording_url metadata points at a file that never landed
+// (or was lost, as during the Oct 2026 R2 subscription outage).
+func (s *StorageService) RecordingExists(ctx context.Context, storedURL string) (bool, int64, error) {
+	key := s.recordingKeyFromURL(storedURL)
+	if key == "" {
+		return false, 0, fmt.Errorf("cannot determine object key from recording url %q", storedURL)
+	}
+	size, _, err := s.HeadRecordingObject(ctx, key)
+	if err != nil {
+		var nf *types.NotFound
+		if errors.As(err, &nf) || strings.Contains(err.Error(), "StatusCode: 404") {
+			return false, 0, nil
+		}
+		return false, 0, err
+	}
+	return true, size, nil
+}
+
+// OpenRecording opens a recording object stored under "recordings/<key>"
+// for reading — used to watermark from the archived original instead of
+// downloading from Zoom a second time. Caller must close the body.
+func (s *StorageService) OpenRecording(ctx context.Context, key string) (io.ReadCloser, error) {
+	out, err := s.client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(s.cfg.Bucket),
+		Key:    aws.String("recordings/" + key),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("open recording object: %w", err)
+	}
+	return out.Body, nil
+}
+
+// RecordingKeyExists reports whether "recordings/<key>" is present in R2.
+func (s *StorageService) RecordingKeyExists(ctx context.Context, key string) (bool, error) {
+	_, _, err := s.HeadRecordingObject(ctx, "recordings/"+key)
+	if err != nil {
+		var nf *types.NotFound
+		if errors.As(err, &nf) || strings.Contains(err.Error(), "StatusCode: 404") {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
