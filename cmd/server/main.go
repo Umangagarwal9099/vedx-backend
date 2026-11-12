@@ -16,6 +16,7 @@ import (
 	"github.com/umangagarwal/vedx-backend/docs"
 	"github.com/umangagarwal/vedx-backend/repository"
 	"github.com/umangagarwal/vedx-backend/router"
+	"github.com/umangagarwal/vedx-backend/recordingsync"
 	"github.com/umangagarwal/vedx-backend/scheduler"
 	"github.com/umangagarwal/vedx-backend/service"
 )
@@ -136,6 +137,24 @@ func main() {
 			nil, // no gin.Context in this background sweep — nothing to attribute an actor to
 		),
 	)
+
+	// Background: durable Zoom recording sync (best-effort in-process worker;
+	// Cloud Scheduler → POST /internal/recordings/sync is the guaranteed path).
+	if cfg.RecordingSync.WorkerEnabled && cfg.Zoom.Configured() {
+		go scheduler.RunRecordingSync(
+			reminderCtx,
+			recordingsync.New(
+				service.NewZoomService(cfg.Zoom),
+				service.NewStorageService(cfg.Storage),
+				repository.NewZoomRecordingJobRepository(pool),
+				repository.NewBatchRecordingRepository(pool),
+				cfg.App.Timezone,
+			),
+			3*time.Minute,
+			time.Duration(cfg.RecordingSync.ReconcileEveryMinutes)*time.Minute,
+			cfg.RecordingSync.LookbackDays,
+		)
+	}
 
 	r := router.New(pool, cfg)
 

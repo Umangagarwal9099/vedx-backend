@@ -1,0 +1,11 @@
+# Inherit .gitignore (keeps .env and other credentials out of Cloud Build uploads)
+#!include:.gitignore
+.git
+.gitignore
+.env
+.env.*
+.DS_Store
+# stale local binaries
+/server
+/main
+/repairthumbnails

@@ -8,12 +8,13 @@ import (
 )
 
 type Config struct {
-	App      AppConfig
-	Database DatabaseConfig
-	JWT      JWTConfig
-	Storage  StorageConfig
-	Zoom     ZoomConfig
-	Resend   ResendConfig
+	App           AppConfig
+	Database      DatabaseConfig
+	JWT           JWTConfig
+	Storage       StorageConfig
+	Zoom          ZoomConfig
+	RecordingSync RecordingSyncConfig
+	Resend        ResendConfig
 }
 
 // ResendConfig holds credentials for sending transactional email (session
@@ -64,6 +65,19 @@ func (z ZoomConfig) Configured() bool {
 // event signatures.
 func (z ZoomConfig) WebhookConfigured() bool {
 	return z.WebhookSecretToken != ""
+}
+
+// RecordingSyncConfig controls the durable Zoom recording sync.
+type RecordingSyncConfig struct {
+	// Secret authenticates POST /internal/recordings/sync (Cloud Scheduler).
+	// Empty disables that endpoint.
+	Secret string
+	// WorkerEnabled runs the in-process background worker as well.
+	WorkerEnabled bool
+	// LookbackDays is how far back reconciliation lists Zoom recordings.
+	LookbackDays int
+	// ReconcileEveryMinutes is how often the in-process worker reconciles.
+	ReconcileEveryMinutes int
 }
 
 type AppConfig struct {
@@ -178,6 +192,12 @@ func Load() (*Config, error) {
 			ClientID:           get("ZOOM_CLIENT_ID", ""),
 			ClientSecret:       get("ZOOM_CLIENT_SECRET", ""),
 			WebhookSecretToken: get("ZOOM_WEBHOOK_SECRET_TOKEN", ""),
+		},
+		RecordingSync: RecordingSyncConfig{
+			Secret:                get("RECORDING_SYNC_SECRET", ""),
+			WorkerEnabled:         get("RECORDING_SYNC_WORKER", "true") == "true",
+			LookbackDays:          getInt("RECORDING_SYNC_LOOKBACK_DAYS", 45),
+			ReconcileEveryMinutes: getInt("RECORDING_SYNC_RECONCILE_MINUTES", 360),
 		},
 		Resend: ResendConfig{
 			APIKey:    get("RESEND_API_KEY", ""),

@@ -145,3 +145,20 @@ func (t *tempFileReadCloser) Close() error {
 	}
 	return err
 }
+
+// WatermarkAvailable reports whether this process can burn watermarks —
+// ffmpeg resolvable and a font configured. A worker without it (e.g. an
+// archive-only run on a laptop) defers the watermark step instead of
+// failing and burning a retry.
+func WatermarkAvailable() error {
+	if watermarkFont == "" {
+		return fmt.Errorf("WATERMARK_FONT_PATH not set")
+	}
+	if _, err := os.Stat(watermarkFont); err != nil {
+		return fmt.Errorf("watermark font %q: %w", watermarkFont, err)
+	}
+	if _, err := exec.LookPath(ffmpegBinary); err != nil {
+		return fmt.Errorf("ffmpeg (%q) not found: %w", ffmpegBinary, err)
+	}
+	return nil
+}

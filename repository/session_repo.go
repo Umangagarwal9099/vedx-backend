@@ -382,7 +382,7 @@ func (r *SessionRepository) SetDemoFlags(ctx context.Context, batchShortID strin
 func (r *SessionRepository) HasRecording(ctx context.Context, zoomMeetingID int64) (bool, error) {
 	var hasRecording bool
 	err := r.pool.QueryRow(ctx,
-		`SELECT recording_url IS NOT NULL FROM sessions WHERE zoom_meeting_id = $1`,
+		`SELECT recording_url IS NOT NULL FROM sessions WHERE zoom_meeting_id = $1 AND deleted_at IS NULL LIMIT 1`,
 		zoomMeetingID,
 	).Scan(&hasRecording)
 	if err != nil {
@@ -406,7 +406,7 @@ func (r *SessionRepository) HasRecording(ctx context.Context, zoomMeetingID int6
 // silently.
 func (r *SessionRepository) UpdateRecordingURL(ctx context.Context, zoomMeetingID int64, recordingURL string) (bool, error) {
 	tag, err := r.pool.Exec(ctx,
-		`UPDATE sessions SET recording_url = $1, updated_at = NOW() WHERE zoom_meeting_id = $2 AND recording_url IS NULL`,
+		`UPDATE sessions SET recording_url = $1, updated_at = NOW() WHERE zoom_meeting_id = $2 AND recording_url IS NULL AND deleted_at IS NULL`,
 		recordingURL, zoomMeetingID,
 	)
 	if err != nil {
